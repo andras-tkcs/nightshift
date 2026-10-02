@@ -253,3 +253,55 @@ EOF
   [ "$(grep -c 'get_certificate tailscale' "$out")" -eq 2 ]
   ! grep -q '@TS_HOST@' "$out"
 }
+
+# A git wrapper whose clone fails, as on a network or disk-full error.
+git_clone_fails() {
+  mkdir -p "$BATS_TEST_TMPDIR/gitfail"
+  printf '#!/bin/sh\ncase "$1" in clone) exit 128 ;; esac\nexec %s "$@"\n' "$(command -v git)" \
+    >"$BATS_TEST_TMPDIR/gitfail/git"
+  chmod +x "$BATS_TEST_TMPDIR/gitfail/git"
+  export PATH="$BATS_TEST_TMPDIR/gitfail:$PATH"
+}
+
+@test "--upgrade clone failure needs you, keeps current and the links" {
+  run bootstrap_apply --upgrade v0.1.0
+  assert_success
+  git_clone_fails
+  run bootstrap_apply --upgrade v0.0.9
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[8/11\].*needs you: clone of v0.0.9 failed'
+  ! printf '%s\n' "$output" | grep -E 'changed'
+  [ "$(readlink "$NS_BS_ROOT/opt/nightshift/current")" = v0.1.0 ]
+  [ ! -e "$NS_BS_ROOT/opt/nightshift/v0.0.9" ]
+  [ -z "$(find "$NS_BS_ROOT/opt/nightshift" -name '.clone-*')" ]
+  [ "$(readlink "$NS_BS_ROOT/usr/local/bin/ns")" = /opt/nightshift/current/bin/ns ]
+}
+
+@test "--upgrade clone failure with no current creates no current" {
+  git_clone_fails
+  run bootstrap_apply --upgrade v0.1.0
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[8/11\].*needs you: clone of v0.1.0 failed'
+  [ ! -L "$NS_BS_ROOT/opt/nightshift/current" ]
+  [ ! -L "$NS_BS_ROOT/usr/local/bin/ns" ]
+}
+
+@test "step 1 with a failing apt-get does not report changed and exits non-zero" {
+  mkdir -p "$BATS_TEST_TMPDIR/nocaddy"
+  # The host may have a real caddy: build a PATH of the stubs and every other tool but caddy.
+  for s in /usr/bin/* "$NS_REPO_ROOT"/tests/fixtures/bootstrap/bin/*; do
+    [ "$(basename "$s")" = caddy ] || ln -sf "$s" "$BATS_TEST_TMPDIR/nocaddy/$(basename "$s")"
+  done
+  PATH="$BATS_TEST_TMPDIR/nocaddy:/nonexistent" \
+    APT_STUB_FAIL=1 NS_BS_STEPS=1 run bootstrap_apply
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*needs you: apt-get failed'
+  ! printf '%s\n' "$output" | grep -E '^\[1/11\].*changed'
+}
+
+@test "step 1 with failing systemctl reload and restart does not report changed" {
+  SYSTEMCTL_STUB_FAIL=1 NS_BS_STEPS=1 run bootstrap_apply
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*needs you: systemctl failed'
+  ! printf '%s\n' "$output" | grep -E '^\[1/11\].*changed'
+}

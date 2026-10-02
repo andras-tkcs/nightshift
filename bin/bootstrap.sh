@@ -485,10 +485,23 @@ apply_8() {
   if [ ! -d "$base/$tag" ]; then
     tmp="$base/.clone-$tag.$$"
     rm -rf "$tmp"
-    git clone --quiet --branch "$tag" --depth 1 "$NS_REPO_URL" "$tmp" 2>/dev/null
-    if [ -z "${NS_BS_TEST:-}" ]; then chown -R root:root "$tmp"; fi
-    chmod -R go-w "$tmp"
-    mv "$tmp" "$base/$tag"
+    if ! git clone --quiet --branch "$tag" --depth 1 "$NS_REPO_URL" "$tmp" 2>/dev/null; then
+      rm -rf "$tmp"
+      APPLY_MSG="needs you: clone of $tag failed"
+      return 1
+    fi
+    if { [ -n "${NS_BS_TEST:-}" ] || chown -R root:root "$tmp"; } && chmod -R go-w "$tmp" \
+      && mv "$tmp" "$base/$tag"; then
+      :
+    else
+      rm -rf "$tmp"
+      APPLY_MSG="needs you: installing $tag failed (chown, chmod or mv)"
+      return 1
+    fi
+  fi
+  if [ ! -x "$base/$tag/bin/ns" ]; then
+    APPLY_MSG="needs you: release $tag has no executable bin/ns; current left unchanged"
+    return 1
   fi
   ln -sfn "$tag" "$base/current.new"
   mv -T "$base/current.new" "$base/current"
@@ -674,11 +687,25 @@ for n in $STEPS; do
       continue
       ;;
   esac
-  if apply_"$n"; then
-    printf '[%s/%s] %s: %s\n' "$n" "$N" "$name" "$APPLY_MSG"
-  else
-    printf '[%s/%s] %s: %s\n' "$n" "$N" "$name" "$APPLY_MSG"
-    rc=1
+  # Run the step in a subshell with errexit on. It must not sit in an if/||/&& condition,
+  # or bash would switch errexit off inside the function. The message comes back by file.
+  msgf="$(mktemp)"
+  set +e
+  (
+    set -Eeuo pipefail
+    trap 'printf "%s" "$APPLY_MSG" >"$msgf"' EXIT
+    trap '[ -n "$APPLY_MSG" ] || APPLY_MSG="needs you: ${BASH_COMMAND%% *} failed"' ERR
+    APPLY_MSG=""
+    apply_"$n"
+  )
+  step_rc=$?
+  set -e
+  APPLY_MSG="$(cat "$msgf")"
+  rm -f "$msgf"
+  if [ "$step_rc" -ne 0 ] && [ -z "$APPLY_MSG" ]; then
+    APPLY_MSG="needs you: step $n failed"
   fi
+  printf '[%s/%s] %s: %s\n' "$n" "$N" "$name" "$APPLY_MSG"
+  if [ "$step_rc" -ne 0 ]; then rc=1; fi
 done
 exit "$rc"
