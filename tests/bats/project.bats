@@ -149,13 +149,18 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
   refute_token_in "$GH_STUB_LOG" "$NS_CONFIG_DIR/projects.yaml" "$BATS_TEST_TMPDIR/out.txt"
 }
 
-@test "a repo without a profile prints the onboarding hint and registers" {
+@test "a repo without a profile registers and starts the onboarding run" {
   make_remote acme/bare
   run ns project add acme/bare --prefix bare
   assert_success
-  assert_output_contains "no .claude/project-profile.yaml on main: start onboarding with ns new bare-onboard --onboard"
   assert_output_contains "added acme/bare as bare"
+  assert_output_contains "starting onboarding run bare-onboard"
   [ -d "$NS_DESK_DIR/bare/runs" ]
+  run python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" to-json "$NS_CONFIG_DIR/runs.yaml"
+  [ "$(jq -r '.runs[0].id' <<<"$output")" = bare-onboard ]
+  ledger=$(jq -r '.runs[0].worktree' <<<"$output")/.nightshift/runs/bare-onboard/ledger.yaml
+  [ "$(ns-ledger get "$ledger" .tier)" = T1 ]
+  [ -f "$TMUX_STUB_DIR/bare-onboard" ]
 }
 
 @test "missing desk root fails" {
