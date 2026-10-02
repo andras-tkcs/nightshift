@@ -41,5 +41,5 @@
 | p35-e2e-resume | merged | feature/build-a--p35-e2e-resume | 1 | sandbox PR #6 open, 13 min; kill step hardened to verified pid |
 | p36-docs-guides | merged | feature/build-a--p36-docs-guides | 1 | |
 | p37-docs-reference | merged | feature/build-a--p37-docs-reference | 1 | |
-| p38-docs-final | running | feature/build-a--p38-docs-final | 1 | |
-| p39-release-retire | pending | feature/build-a--p39-release-retire | 0 | |
+| p38-docs-final | merged | feature/build-a--p38-docs-final | 1 | |
+| p39-release-retire | running | feature/build-a--p39-release-retire | 1 | |
