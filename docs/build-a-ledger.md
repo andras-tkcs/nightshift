@@ -25,12 +25,12 @@
 | p20-design-agents | merged | feature/build-a--p20-design-agents | 1 | |
 | p21-implement-skill | merged | feature/build-a--p21-implement-skill | 1 | |
 | p22-dod-ci-skills | merged | feature/build-a--p22-dod-ci-skills | 1 | |
-| p23-review-agents | running | feature/build-a--p23-review-agents | 1 | |
+| p23-review-agents | merged | feature/build-a--p23-review-agents | 1 | |
 | p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
 | p25-drain-up | pending | feature/build-a--p25-drain-up | 0 | |
 | p26-gc | pending | feature/build-a--p26-gc | 0 | |
 | p27-doctor | pending | feature/build-a--p27-doctor | 0 | |
-| p28-ns-gh | pending | feature/build-a--p28-ns-gh | 0 | |
+| p28-ns-gh | running | feature/build-a--p28-ns-gh | 1 | |
 | p29-bootstrap | pending | feature/build-a--p29-bootstrap | 0 | |
 | p29b-bootstrap-release | pending | feature/build-a--p29b-bootstrap-release | 0 | |
 | p30-e2e-harness | pending | feature/build-a--p30-e2e-harness | 0 | |
