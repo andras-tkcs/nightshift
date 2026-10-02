@@ -18,7 +18,7 @@
 | p13-desk | merged | feature/build-a--p13-desk | 1 | |
 | p14-approve | merged | feature/build-a--p14-approve | 1 | |
 | p15-hooks | merged | feature/build-a--p15-hooks | 1 | |
-| p16-conductor-loop | running | feature/build-a--p16-conductor-loop | 1 | |
+| p16-conductor-loop | merged | feature/build-a--p16-conductor-loop | 1 | |
 | p17-core-agents | merged | feature/build-a--p17-core-agents | 1 | |
 | p18-run-skill | merged | feature/build-a--p18-run-skill | 1 | |
 | p19-plan-skill | merged | feature/build-a--p19-plan-skill | 1 | |
@@ -27,7 +27,7 @@
 | p22-dod-ci-skills | merged | feature/build-a--p22-dod-ci-skills | 1 | |
 | p23-review-agents | merged | feature/build-a--p23-review-agents | 1 | |
 | p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
-| p25-drain-up | pending | feature/build-a--p25-drain-up | 0 | |
+| p25-drain-up | running | feature/build-a--p25-drain-up | 1 | |
 | p26-gc | pending | feature/build-a--p26-gc | 0 | |
 | p27-doctor | pending | feature/build-a--p27-doctor | 0 | |
 | p28-ns-gh | merged | feature/build-a--p28-ns-gh | 1 | open: ns-gh jq `//` treats false as missing (workflows_can_approve_prs); fixtures use string "false"; fix in final-review fixup |
