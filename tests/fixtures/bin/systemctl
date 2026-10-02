@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# systemctl stub for tests (see README.md).
+set -euo pipefail
+
+printf 'systemctl %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+args=()
+for a in "$@"; do
+  [ "$a" = --user ] || args+=("$a")
+done
+[ "${args[0]:-}" = is-active ] || exit 0
+rc=0
+for u in "${args[@]:1}"; do
+  case "$u" in -*) continue ;; esac
+  bad=0
+  for i in ${SYSTEMCTL_STUB_INACTIVE:-}; do
+    if [ "$i" = "$u" ]; then bad=1; fi
+  done
+  if [ "$bad" = 1 ]; then
+    echo inactive
+    rc=3
+  else
+    echo active
+  fi
+done
+exit "$rc"

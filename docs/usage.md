@@ -125,6 +125,27 @@ ns up
 
 Run `ns up` after a reboot. It runs `ns doctor` and keeps its exit code, starts the tmux session `rc` with `claude remote-control --spawn worktree` in `remote_control_dir` (from the config, else the first registered project's path) unless it already exists, then lists parked runs and the hint `ns resume --all`. `ns up` exits with the exit code of `ns doctor`.
 
+### ns doctor
+
+```
+ns doctor [--no-claude]
+```
+
+`ns doctor` checks the server and prints one line per check: `ok   <check>: <detail>`, `warn <check>: <detail>` or `FAIL <check>: <detail>`. It exits 1 if any check is a `FAIL`. The checks, in order:
+
+1. The commands `git tmux jq python3 gh claude curl` and the Python modules `yaml` and `jsonschema`.
+2. `gh auth status`.
+3. Every file in `tokens/`: mode other than 600 is a `FAIL`. The expiry comes from the `github-authentication-token-expiration` header of `gh api -i user`: past is a `FAIL`, under 14 days a `warn`, unreadable a `warn` (`expiry unknown`). The token value is never printed.
+4. `projects.yaml` parses and every project path exists.
+5. The desk directory exists and is writable.
+6. `NS_NTFY_TOPIC` and `NS_DESK_URL` are set (`warn` if not).
+7. The services `silverbullet` and `ns-gc.timer` (user units), `caddy` and `cloudflared` are active (`FAIL` if not; without `systemctl` a `warn`).
+8. `NS_DESK_URL` answers with an HTTP status from 200 to 403, else `FAIL`.
+9. Disk use: 80 % or more is a `warn`, 95 % or more a `FAIL`.
+10. A pending reboot is a `warn`.
+11. Auto permission mode works in a headless call (`ns-conductor check-auto`). On failure the `FAIL` line carries the hint to set `NS_WORKER_MODE=bypassPermissions` (R-CON-4). `--no-claude` skips this call and prints a `warn`.
+12. A run in state `running` without a tmux session is a `warn`: `run <id> has no session: ns resume <id>`.
+
 ### ns gc
 
 ```
