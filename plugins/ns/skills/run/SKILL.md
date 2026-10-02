@@ -61,7 +61,7 @@ Ledger step: `discovery`, `gate1`, `phases`, `board`, `integrate`.
 1. `ns-ledger set "$NS_LEDGER" '.step="discovery"'`. Skip any output that already exists and is committed.
 2. Subagent `ns:product-analyst` (lite) writes `RUN/acceptance.md`.
 3. Subagent `ns:architect` (lite) writes `RUN/design.md`.
-4. Subagent `ns:planner` writes the plan document at `git.plan_doc` with an Implementation manifest of 1 to 3 phases, following `/ns:plan`, plus `RUN/manual-steps.md` when the plan has manual steps.
+4. Subagent `ns:planner` writes the plan document at `git.plan_doc` with an Implementation manifest of 1 to 3 phases, following `/ns:plan`, plus `RUN/manual-steps.md` when the plan has manual steps. The planner has a fresh `ns:code-reviewer` review the plan and writes its findings to `RUN/plan-review.md`; commit it with the plan. A T2 plan is always the large-scope plan document; the planner's small-scope `RUN/prompt.md` is not used inside a run.
 5. Subagent `ns:test-architect` writes `RUN/test-strategy.md` and commits acceptance tests on `plan/<id>`, marked as expected failures (Python: `pytest.mark.xfail(strict=True, reason="ns:<id> acceptance")`).
 6. Checkpoint. `ns-ledger set "$NS_LEDGER" '.step="gate1"'`, then `ns-conductor gate <id> 1 <plan_doc>:plan.md RUN/acceptance.md RUN/design.md RUN/test-strategy.md [RUN/manual-steps.md]` and end the session.
 7. After approval (resumed with `--resume`, gate null, step `gate1`): `ns-conductor feature <id>`, then `ns-ledger set "$NS_LEDGER" '.step="phases"'`.
