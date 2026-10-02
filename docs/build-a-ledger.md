@@ -30,7 +30,7 @@
 | p25-drain-up | pending | feature/build-a--p25-drain-up | 0 | |
 | p26-gc | pending | feature/build-a--p26-gc | 0 | |
 | p27-doctor | pending | feature/build-a--p27-doctor | 0 | |
-| p28-ns-gh | running | feature/build-a--p28-ns-gh | 1 | |
+| p28-ns-gh | merged | feature/build-a--p28-ns-gh | 1 | open: ns-gh jq `//` treats false as missing (workflows_can_approve_prs); fixtures use string "false"; fix in final-review fixup |
 | p29-bootstrap | pending | feature/build-a--p29-bootstrap | 0 | |
 | p29b-bootstrap-release | pending | feature/build-a--p29b-bootstrap-release | 0 | |
 | p30-e2e-harness | pending | feature/build-a--p30-e2e-harness | 0 | |
