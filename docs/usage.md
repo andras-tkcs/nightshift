@@ -180,7 +180,117 @@ An onboarding run (`<prefix>-onboard`) is approved differently: the desk files `
 
 ## Commands inside Claude Code
 
+The plugin `ns` adds these slash commands. The conductor uses most of them itself; you type `/ns:status`, `/ns:resume` and `/ns:review` yourself, and the others when you work on a repository by hand.
+
+### /ns:run
+
+```
+/ns:run <run id> [--triage-only] [--resume] [--onboard]
+```
+
+`/ns:run` drives one run from its ledger through triage, the tier pipeline, the review board and the pull request. `ns-launch` starts it headless inside the run's tmux session. You do not type it; use `ns new` and `ns resume`. The model cannot invoke it on its own.
+
+### /ns:plan
+
+```
+/ns:plan <what to build: the request, an issue number, or both>
+```
+
+`/ns:plan` researches a change and writes either a single-session prompt (small scope) or a plan document with an implementation manifest (large scope), plus step-by-step manual steps for anything only a human can do. Use it when you want a plan without a full run. It plans only and implements nothing.
+
+### /ns:implement
+
+```
+/ns:implement <run id>
+```
+
+`/ns:implement` runs the phases of a plan manifest with phase workers, reviews each phase, merges them into one feature branch and runs the review board. The conductor uses it for T2 and T3 runs; use it by hand to run the phases of a plan in a run worktree.
+
+### /ns:dod
+
+```
+/ns:dod [path or test target]
+```
+
+`/ns:dod` runs the project's definition of done (the profile's checks plus the project's `docs.dod` section) on the current branch and prints a pass/fail table. It reports and never fixes. Use it before you open or merge a pull request.
+
+### /ns:status
+
+```
+/ns:status [run id]
+```
+
+`/ns:status` summarises one run (`ns status <id>`) or lists all runs (`ns ls`) and says what the run waits for. It only reads.
+
+### /ns:resume
+
+```
+/ns:resume <run id>
+```
+
+`/ns:resume` restarts a parked, stopped or crashed run (`ns resume <id>`). For a run waiting at a gate it does not resume: it tells you to edit the desk documents and run `ns approve <id>`.
+
+### /ns:review
+
+```
+/ns:review <run id>
+```
+
+`/ns:review` walks you through gate 2: it summarises the handoff report on the desk, shows the pull request with `gh pr view`, and lists the manual steps for after the merge. It never merges; you merge on GitHub.
+
 ## Tiers and gates
+
+Triage picks a tier from the size of the request and the risk of the paths it touches (a risk zone raises it to at least T1). You can override it with `ns new --tier`.
+
+| Tier | Typical | Pipeline | Gates | Default budget |
+|---|---|---|---|---|
+| T0 | typo, docs, config value | implementer, checks, PR | PR review only | 30 min, 1 review round |
+| T1 | one bug | mini-plan, failing test, fix, checks, code review, PR | PR review only | 2 h, 3 review rounds |
+| T2 | feature in one area | analysis, plan, tests, gate 1, 1 to 3 phases, review, integration, PR | gate 1, gate 2 | 8 h |
+| T3 | epic | research, analysis, ADR, plan, tests, gate 1, parallel phases, review board, integration, PR | gate 1, gate 1.5 if needed, gate 2 | 36 h |
+
+A run stops at a gate with state `waiting` and sends you a notification. What you do at each:
+
+- Gate 1 (plan approval, T2 and T3): read the published plan and acceptance documents on the review desk. Edit the Markdown in place if something is wrong or an open question needs your answer, then run `ns approve <id>`. It shows the diff of your edits, commits them and starts the run again.
+- Gate 1.5 (budget or escalation): the run exceeded a time or review-round budget, or hit something it cannot decide. It parks and publishes an escalation document. Answer under `## Owner's answer` in that document, then `ns approve <id>`.
+- Gate 2 (pull request review): read the handoff report on the desk and the pull request (`/ns:review <id>` does this with you). Merge the pull request on GitHub yourself, then do the manual steps listed in it. Nightshift never merges.
+
+For T0 and T1 the only stop is your review of the pull request. See [The review desk](#the-review-desk) for where the documents are.
+
+## Daily use
+
+tmux keeps every run alive on the server. Your device only attaches and detaches, so closing the iPad or the work browser tab never stops anything.
+
+From the iPad (Blink Shell):
+
+```
+mosh ns@ns-main         # over Tailscale
+ns ls                   # runs, tier, phase, state
+ns new sbx-123          # start a run for issue 123 of project sbx
+ns attach sbx-123       # jump into a run
+Ctrl-b d                # detach, the run keeps going
+```
+
+From the work browser (Cloudflare):
+
+```
+https://ns-desk.<domain>     # plans, edit Markdown
+https://ns-view.<domain>     # HTML reports
+# terminal (Tailscale SSH console or https://ns-ssh.<domain>), then:
+ns ls
+ns attach sbx-123            # answer an escalation
+ns status sbx-123            # read the ledger, no attach
+```
+
+## Helper commands
+
+These sit on `PATH` next to `ns`. You rarely type them; the conductor and the `ns` commands do.
+
+- `ns-notify "<text>" [url]` sends a push notification through ntfy (`NS_NTFY_TOPIC`); see `ns publish` above.
+- `ns-ledger <subcommand> <ledger> ...` reads and updates a run's ledger; see [ledger.md](ledger.md).
+- `ns-conductor <subcommand> ...` starts, waits for and stops phase workers and checks auto mode; see [conductor.md](conductor.md).
+- `ns-launch <id> [--triage|--resume]` runs a run's conductor session headless and logs its stream; `ns new` and `ns resume` call it.
+- `ns-gh audit|apply owner/repo` audits or applies Nightshift's GitHub repository settings; see [operations.md](operations.md).
 
 ## The review desk
 

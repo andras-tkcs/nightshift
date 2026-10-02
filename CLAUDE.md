@@ -32,6 +32,7 @@ bats tests/bats
 claude plugin validate --strict .
 claude plugin validate --strict plugins/ns
 claude plugin validate --strict plugins/ns-python
-tests/docs-check
+tests/docs-check --final
+tests/e2e/run.sh preflight       # on ns-main only
 tests/e2e/run.sh <scenario>      # on ns-main only, against nightshift-sandbox
 ```
