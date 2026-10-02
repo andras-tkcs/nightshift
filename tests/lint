@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  echo "usage: tests/lint"
+  echo "Run shellcheck on every bash file under bin/, plugins/ and tests/."
+  exit 0
+fi
+
+files=()
+for dir in bin plugins tests; do
+  [ -d "$dir" ] || continue
+  while IFS= read -r -d '' f; do
+    case "$f" in tests/fixtures/sandbox-base/*) continue ;; esac
+    first=""
+    IFS= read -r first <"$f" || true
+    case "$f" in
+      *.sh|*.bash) files+=("$f") ;;
+      *) if [[ "$first" =~ ^#!.*(/|[[:space:]])bash([[:space:]]|$) ]]; then files+=("$f"); fi ;;
+    esac
+  done < <(find "$dir" -type f -print0 | sort -z)
+done
+
+# bin/lib/*.sh are sourced libraries: force the shell dialect
+libs=()
+others=()
+for f in "${files[@]}"; do
+  case "$f" in bin/lib/*.sh) libs+=("$f") ;; *) others+=("$f") ;; esac
+done
+
+rc=0
+if [ "${#others[@]}" -gt 0 ]; then
+  shellcheck -x "${others[@]}" || rc=1
+fi
+if [ "${#libs[@]}" -gt 0 ]; then
+  shellcheck -x --shell=bash "${libs[@]}" || rc=1
+fi
+if [ "$rc" -ne 0 ]; then
+  exit 1
+fi
+echo "lint: ok (${#files[@]} files)"
