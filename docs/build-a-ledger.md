@@ -2,7 +2,7 @@
 
 | id | state | branch | attempts | note |
 |---|---|---|---|---|
-| p01-scaffold | pending | feature/build-a--p01-scaffold | 0 | |
+| p01-scaffold | running | feature/build-a--p01-scaffold | 1 | |
 | p02-common | pending | feature/build-a--p02-common | 0 | |
 | p03-docs-check | pending | feature/build-a--p03-docs-check | 0 | |
 | p04-cli | pending | feature/build-a--p04-cli | 0 | |
