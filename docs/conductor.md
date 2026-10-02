@@ -82,6 +82,79 @@ ns-conductor park <id>
 
 Ends the conductor's work on a stop request: runs `stop`, sets phases that were `running` to `pending`, sets the run state to the `stop_requested` value (`stopped` or `parked`; `parked` when none is set), clears `stop_requested`, checkpoints and pushes the ledger. It prints `parked <id>: end this session now`; the conductor then ends its session.
 
+### fix-branch
+
+```
+ns-conductor fix-branch <id>
+```
+
+For T0 and T1 runs. Creates the branch `git.fix_branch` and its worktree `<id>--fix` from `origin/<base>`, runs the stack setup, records the branch as `feature_branch` in the ledger and prints the worktree path. A rerun changes nothing. Exit 0, or 1 on failure.
+
+### feature
+
+```
+ns-conductor feature <id>
+```
+
+For T2 and T3 runs. Fetches, then creates the branch `git.feature_branch` and its worktree `<id>--feature` from `origin/<base>`, so the branch carries none of the run's `ns-ledger:` commits (ADR 0002). It copies the plan document and the acceptance tests from `plan/<id>` (every added or modified file except those under `.nightshift/`) into one commit `ns: plan and acceptance tests for <id>`, when anything changed. Then it runs the stack setup, pushes with `-u`, records `feature_branch` and prints the worktree path. A rerun changes nothing. Exit 0, or 1 on failure.
+
+### checks
+
+```
+ns-conductor checks <id> <phase|feature>
+```
+
+Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>` or `FAIL <stack> <name>` for each check. The full output goes to `logs/<id>/<phase>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0.
+
+### report
+
+```
+ns-conductor report <id> <phase>
+```
+
+Prints the `PHASE-REPORT` line and everything after it from the last `result` text of `logs/<id>/<phase>.jsonl`. Exit 0 when it says `status=done` and its `head=` equals `origin/<phase branch>` after a fetch. Otherwise it prints why (no report, `status` other than `done`, head mismatch) and exits 1.
+
+### review-round
+
+```
+ns-conductor review-round <id> <phase>
+```
+
+Adds one to the phase's `review_rounds` and adds an event `review`. Exit 0, or 7 when the count now exceeds `budgets.<tier>.review_rounds` of the profile (R-CON-3); the conductor then escalates.
+
+### merge
+
+```
+ns-conductor merge <id> <phase>
+```
+
+Merges the phase branch into the code branch, in its worktree. When the branch already holds a commit with the line `<trailer>: <phase>` it prints `already merged` and exits 0. Otherwise it fetches and runs `git merge --no-ff origin/<phase branch> -m "Merge <id> <phase>: <title>" -m "<trailer>: <phase>"`. A conflict is aborted, `conflict` is printed and the exit code is 1. Then it runs `checks <id> feature`; when they fail the merge is undone (nothing was pushed) and the exit code is 1. On success it pushes, sets the phase to `merged`, adds an event `merge` and removes the phase worktree. Exit 0 on success.
+
+### gate
+
+```
+ns-conductor gate <id> <1|1.5|2> <file>[:<name>]...
+```
+
+Sets the run state to `waiting` with the gate, adds an event `gate`, checkpoints and pushes the ledger, then runs `ns publish <id> <files>`, which also notifies the owner. The conductor then ends its session. Exit 0; 2 for a gate other than `1`, `1.5` or `2`; the exit code of `ns publish` otherwise.
+
+### finish
+
+```
+ns-conductor finish <id> --pr <url>
+```
+
+Records the pull request URL, sets `step` and the state to `done`, adds an event and checkpoints and pushes the ledger. For T2 and T3 runs it also sets gate `2` and publishes `RUN/handoff.html` when that file exists; for T0 and T1 the gate stays unset. Exit 0, or 1 on failure.
+
+### pause and unpause
+
+```
+ns-conductor pause <id>
+ns-conductor unpause <id>
+```
+
+Set `budget.paused` to true or false and add an event `usage-pause` or `usage-resume` (R-BUD-2). `wait` already pauses the budget on a usage-limit finish, so `/ns:implement` calls only `unpause`. Exit 0.
+
 ## Pool files
 
 The pool lives in `~/.config/ns/workers/` (or `$NS_CONFIG_DIR/workers/`).

@@ -18,6 +18,11 @@ source "$NS_HOME/bin/lib/profile.sh"
 source "$NS_HOME/bin/lib/stacks.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/pool.sh"
+# the phase loop subcommands (fix-branch, feature, checks, ...); they use this file's helpers
+if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$NS_HOME/bin/lib/conductor-loop.sh"
+fi
 
 usage() {
   printf 'usage: ns-conductor <subcommand> [args]\n\nsubcommands:\n'
@@ -449,15 +454,11 @@ main() {
     *)
       # later subcommands live in conductor-loop.sh (phase p16): it defines
       # conductor_loop_dispatch <subcommand> [args], which returns 64 for an unknown one
-      if [ -n "$sub" ] && [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ]; then
-        # shellcheck source=/dev/null
-        source "$NS_HOME/bin/lib/conductor-loop.sh"
-        if declare -F conductor_loop_dispatch >/dev/null; then
-          local rc=0
-          conductor_loop_dispatch "$sub" "$@" || rc=$?
-          [ "$rc" -ne 64 ] || { usage >&2; exit 2; }
-          return "$rc"
-        fi
+      if [ -n "$sub" ] && declare -F conductor_loop_dispatch >/dev/null; then
+        local rc=0
+        conductor_loop_dispatch "$sub" "$@" || rc=$?
+        [ "$rc" -ne 64 ] || { usage >&2; exit 2; }
+        return "$rc"
       fi
       usage >&2
       exit 2
