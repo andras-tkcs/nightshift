@@ -12,7 +12,7 @@
 | p07-ledger | merged | feature/build-a--p07-ledger | 1 | |
 | p08-project-add | merged | feature/build-a--p08-project-add | 1 | |
 | p09-run-new | merged | feature/build-a--p09-run-new | 1 | |
-| p10-run-inspect | running | feature/build-a--p10-run-inspect | 1 | |
+| p10-run-inspect | merged | feature/build-a--p10-run-inspect | 1 | |
 | p11-conductor-workers | running | feature/build-a--p11-conductor-workers | 1 | |
 | p12-resume | pending | feature/build-a--p12-resume | 0 | |
 | p13-desk | pending | feature/build-a--p13-desk | 0 | |
@@ -23,7 +23,7 @@
 | p18-run-skill | merged | feature/build-a--p18-run-skill | 1 | |
 | p19-plan-skill | merged | feature/build-a--p19-plan-skill | 1 | |
 | p20-design-agents | merged | feature/build-a--p20-design-agents | 1 | |
-| p21-implement-skill | pending | feature/build-a--p21-implement-skill | 0 | |
+| p21-implement-skill | running | feature/build-a--p21-implement-skill | 1 | |
 | p22-dod-ci-skills | pending | feature/build-a--p22-dod-ci-skills | 0 | |
 | p23-review-agents | pending | feature/build-a--p23-review-agents | 0 | |
 | p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
