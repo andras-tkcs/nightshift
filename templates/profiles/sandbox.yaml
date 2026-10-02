@@ -1,0 +1,11 @@
+project: nightshift-sandbox
+prefix: sbx
+commands: {}
+git:
+  base_branch: main
+stacks: [python]
+budgets:
+  T0: { hours: 1, review_rounds: 1 }
+  T1: { hours: 2 }
+  T2: { hours: 3 }
+  T3: { hours: 4 }

@@ -1,0 +1,42 @@
+# Draft. Paths are placeholders until checked against the PrivacyFence repo in Review 1.
+project: privacyfence
+prefix: pf
+docs:
+  contributing: CONTRIBUTING.md
+  dod: docs/coding-and-testing-guidelines.md#27-definition-of-done
+  releasing: docs/releasing.md
+commands:
+  test: .venv/bin/pytest -q
+  lint: .venv/bin/ruff check .
+git:
+  base_branch: main
+  plan_branch: "plan/{slug}"
+  feature_branch: "feature/{n}"
+  phase_branch: "feature/{n}--{phase}"
+  merge: "--no-ff"
+  phase_trailer: "Plan-Phase"
+  plan_doc: "docs/{slug}-plan.md"
+worktrees: "~/Coding/worktrees/{repo}-{slug}"
+stacks:
+  - { name: python, paths: ["src/", "tests/", "scripts/*.py"] }
+platforms:
+  linux:   { verify: local }
+  macos:   { verify: ci, workflows: [build.yml] }
+  windows: { verify: ci, workflows: [build.yml] }
+platform_paths:
+  macos:   ["**/*macos*"]
+  windows: ["installer/**"]
+ci:
+  dispatch_only_from_main: true
+  workflows:
+    qa-record-fixture.yml: { input: connector, needs_approval: true }
+    connector-live-check.yml: { needs_approval: true }
+    build.yml: {}
+    linux-graphical-session.yml: {}
+risk_zones:
+  policy: { paths: ["src/**/policy/**"], require: [sec-compliance] }
+protected_paths: [".github/workflows/**", "credentials/**"]
+specialists: []
+domain_skills: [pf-invariants]
+budgets:
+  T3: { hours: 36 }
