@@ -6,6 +6,10 @@ set -euo pipefail
 
 NS_HOME="${NS_HOME:-$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")}"
 
+# Test-only switches (never set them on a real run): NS_BS_TEST=1 lets a non-root user
+# run the apply path (skips the root rule and the chown to root), NS_BS_STEPS="8 9"
+# limits the steps, NS_REPO_URL points step 8 at a local bare repo.
+#
 # Overridable for tests: a prefix for every absolute system path, the service user,
 # its home (used as given, not prefixed) and the templates directory.
 NS_BS_ROOT="${NS_BS_ROOT:-}"
@@ -20,8 +24,11 @@ if [ -z "${NS_USER_HOME:-}" ]; then
   fi
 fi
 
-STEPS="1 2 3 4 5"
+STEPS="${NS_BS_STEPS:-1 2 3 4 5 6 7 8 9 10 11}"
 N=11
+NS_REPO_URL="${NS_REPO_URL:-https://github.com/andras-tkcs/nightshift.git}"
+RELEASE_LINKS="ns ns-conductor ns-notify ns-gh ns-ledger ns-launch"
+TARGET_TAG=""
 CHECK_MSG=""
 APPLY_MSG=""
 
@@ -31,7 +38,8 @@ usage: bootstrap.sh [--check | --upgrade <tag>]
 
 Turns a phase-2 server into a Nightshift runtime. Idempotent; run as root.
   --check          report each step (ok, would change, needs you, unknown); change nothing
-  --upgrade <tag>  install a release tag (not available yet)
+  --upgrade <tag>  install release <tag> under /opt/nightshift and re-pin the plugins
+                   (runs steps 8 and 9 only; earlier releases stay for rollback)
   --help           show this text
 Exit status: 0 everything ok, 1 something to do or needs you, 2 usage error.
 EOF
@@ -46,6 +54,12 @@ step_name() {
     3) echo "SilverBullet" ;;
     4) echo "cloudflared tunnel" ;;
     5) echo "Cloudflare SSH CA (optional)" ;;
+    6) echo "hcloud CLI and lab context" ;;
+    7) echo "ntfy topic and desk settings" ;;
+    8) echo "Release install /opt/nightshift" ;;
+    9) echo "Plugin marketplace and plugins" ;;
+    10) echo "ns-gc timer and Remote Control" ;;
+    11) echo "ns doctor" ;;
     *) echo "step $1" ;;
   esac
 }
@@ -64,7 +78,8 @@ ask_secret() { # ask_secret <prompt> -> REPLY
 as_ns() {
   local uid
   uid="$(id -u "$NS_USER")"
-  runuser -u "$NS_USER" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "$@"
+  runuser -u "$NS_USER" -- env "XDG_RUNTIME_DIR=/run/user/$uid" "HOME=$NS_USER_HOME" \
+    "PATH=$NS_USER_HOME/.local/bin:$PATH" "$@"
 }
 
 ts_host() {
@@ -185,6 +200,7 @@ check_3() {
     todo+=("install user unit")
   fi
   [ -L "$(sb_link)" ] || todo+=("enable the unit")
+  [ -e "$(P "/var/lib/systemd/linger/$NS_USER")" ] || todo+=("enable lingering for $NS_USER")
   if [ "${#todo[@]}" -eq 0 ]; then
     CHECK_MSG="ok"
     return 0
@@ -196,6 +212,8 @@ check_3() {
 apply_3() {
   local zip
   command -v unzip >/dev/null 2>&1 || apt-get install -y unzip
+  # The user service must run without a login session.
+  loginctl enable-linger "$NS_USER"
   as_ns mkdir -p "$NS_USER_HOME/opt/silverbullet" "$NS_USER_HOME/sb-data" \
     "$NS_USER_HOME/.config/systemd/user"
   if [ ! -x "$NS_USER_HOME/opt/silverbullet/silverbullet" ]; then
@@ -297,9 +315,301 @@ EOF
   APPLY_MSG="changed"
 }
 
+# ---- step 6: hcloud CLI and the lab context --------------------------------
+
+hc_bin() { printf '%s/.local/bin/hcloud' "$NS_USER_HOME"; }
+hc_cfg() { printf '%s/.config/hcloud/cli.toml' "$NS_USER_HOME"; }
+
+check_6() {
+  local todo=()
+  [ -x "$(hc_bin)" ] || todo+=("install hcloud")
+  grep -qs '^[[:space:]]*name = "nightshift-lab"' "$(hc_cfg)" || todo+=("create context nightshift-lab")
+  if [ "${#todo[@]}" -eq 0 ]; then
+    CHECK_MSG="ok"
+    return 0
+  fi
+  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')"
+  return 1
+}
+
+apply_6() {
+  if [ ! -x "$(hc_bin)" ]; then
+    as_ns mkdir -p "$NS_USER_HOME/.local/bin"
+    # shellcheck disable=SC2016  # $1 is for the inner shell
+    as_ns sh -c 'curl -fsSL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz -C "$1" hcloud' \
+      sh "$NS_USER_HOME/.local/bin"
+  fi
+  if ! grep -qs '^[[:space:]]*name = "nightshift-lab"' "$(hc_cfg)"; then
+    ask_secret "Hetzner nightshift-lab project token (not shown):"
+    if [ -z "$REPLY" ]; then
+      REPLY=""
+      APPLY_MSG="needs you: lab project token"
+      return 1
+    fi
+    # The token travels in the environment only, never on a command line.
+    HCLOUD_TOKEN="$REPLY"
+    REPLY=""
+    export HCLOUD_TOKEN
+    if ! runuser -w HCLOUD_TOKEN -u "$NS_USER" -- env "HOME=$NS_USER_HOME" \
+      "$(hc_bin)" context create --token-from-env nightshift-lab >/dev/null; then
+      unset HCLOUD_TOKEN
+      APPLY_MSG="needs you: hcloud rejected the token"
+      return 1
+    fi
+    unset HCLOUD_TOKEN
+  fi
+  APPLY_MSG="changed"
+}
+
+# ---- step 7: ntfy topic and desk settings -----------------------------------
+
+env_file() { printf '%s/.config/ns/env' "$NS_USER_HOME"; }
+env_has() { grep -qsE "^(export )?$1=." "$(env_file)"; }
+
+check_7() {
+  local todo=() f k mode
+  f="$(env_file)"
+  if [ ! -e "$f" ]; then
+    CHECK_MSG="would change: create ~$NS_USER/.config/ns/env"
+    return 1
+  fi
+  if [ ! -r "$f" ]; then
+    CHECK_MSG="unknown: ~$NS_USER/.config/ns/env is not readable"
+    return 1
+  fi
+  for k in NS_NTFY_TOPIC NS_DESK_URL; do
+    env_has "$k" || todo+=("set $k")
+  done
+  mode="$(stat -c %a "$f" 2>/dev/null || true)"
+  [ "$mode" = 600 ] || todo+=("chmod 600")
+  if [ "${#todo[@]}" -eq 0 ]; then
+    CHECK_MSG="ok"
+    return 0
+  fi
+  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')"
+  return 1
+}
+
+apply_7() {
+  local f topic desk hc first=0
+  f="$(env_file)"
+  as_ns mkdir -p "$(dirname "$f")"
+  if [ ! -e "$f" ]; then as_ns tee "$f" </dev/null >/dev/null; fi
+  as_ns chmod 600 "$f"
+  if env_has NS_NTFY_TOPIC; then
+    topic="$(grep -E '^(export )?NS_NTFY_TOPIC=' "$f" | tail -1 | sed -E "s/^(export )?NS_NTFY_TOPIC=//; s/^'//; s/'\$//")"
+  else
+    topic="ns-$(openssl rand -hex 8)"
+    as_ns tee -a "$f" >/dev/null <<<"export NS_NTFY_TOPIC='$topic'"
+  fi
+  if ! env_has NS_DESK_URL; then
+    ask "NS_DESK_URL, the address of the desk (for example https://ns-desk.example.com):"
+    desk="${REPLY//\'/}"
+    REPLY=""
+    if [ -z "$desk" ]; then
+      printf 'ntfy topic (subscribe to it in the ntfy app): %s\n' "$topic"
+      APPLY_MSG="needs you: NS_DESK_URL"
+      return 1
+    fi
+    as_ns tee -a "$f" >/dev/null <<<"export NS_DESK_URL='$desk'"
+    first=1
+  fi
+  if [ "$first" -eq 1 ] && ! env_has NS_HEALTHCHECK_URL; then
+    ask_secret "NS_HEALTHCHECK_URL, optional, press Enter to skip (not shown):"
+    hc="${REPLY//\'/}"
+    REPLY=""
+    if [ -n "$hc" ]; then
+      as_ns tee -a "$f" >/dev/null <<<"export NS_HEALTHCHECK_URL='$hc'"
+    fi
+  fi
+  printf 'ntfy topic (subscribe to it in the ntfy app): %s\n' "$topic"
+  APPLY_MSG="changed"
+}
+
+# ---- step 8: the release under /opt/nightshift ----------------------------------
+
+newest_tag() { # prints the newest v* tag, nothing when there is none
+  git ls-remote --tags --refs "$NS_REPO_URL" 'v*' 2>/dev/null \
+    | sed 's|.*refs/tags/||' | sort -V | tail -n 1
+}
+
+tag_exists() { # tag_exists <tag>
+  [ -n "$(git ls-remote --tags --refs "$NS_REPO_URL" "refs/tags/$1" 2>/dev/null)" ]
+}
+
+current_tag() { # prints the release current points at, nothing when unset
+  local l
+  l="$(readlink "$(P /opt/nightshift/current)" 2>/dev/null || true)"
+  if [ -n "$l" ]; then basename "$l"; fi
+  return 0
+}
+
+check_8() {
+  local tag cur todo=() n
+  if ! git ls-remote "$NS_REPO_URL" HEAD >/dev/null 2>&1; then
+    CHECK_MSG="unknown: cannot reach $NS_REPO_URL"
+    return 1
+  fi
+  tag="$(newest_tag)"
+  if [ -z "$tag" ]; then
+    CHECK_MSG='needs you: no release tag yet (docs/development.md, "Releasing")'
+    return 1
+  fi
+  cur="$(current_tag)"
+  if [ "$cur" != "$tag" ] || [ ! -d "$(P "/opt/nightshift/$tag")" ]; then
+    todo+=("install release $tag")
+  fi
+  for n in $RELEASE_LINKS; do
+    if [ "$(readlink "$(P "/usr/local/bin/$n")" 2>/dev/null || true)" != "/opt/nightshift/current/bin/$n" ] \
+      || [ ! -e "$(P "/opt/nightshift/current/bin/$n")" ]; then
+      todo+=("link $n")
+    fi
+  done
+  if [ "${#todo[@]}" -eq 0 ]; then
+    CHECK_MSG="ok"
+    return 0
+  fi
+  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')"
+  return 1
+}
+
+apply_8() {
+  local tag base tmp n
+  tag="${TARGET_TAG:-$(newest_tag)}"
+  if [ -z "$tag" ]; then
+    APPLY_MSG='needs you: no release tag yet (docs/development.md, "Releasing")'
+    return 1
+  fi
+  base="$(P /opt/nightshift)"
+  mkdir -p "$base" "$(P /usr/local/bin)"
+  if [ ! -d "$base/$tag" ]; then
+    tmp="$base/.clone-$tag.$$"
+    rm -rf "$tmp"
+    git clone --quiet --branch "$tag" --depth 1 "$NS_REPO_URL" "$tmp" 2>/dev/null
+    if [ -z "${NS_BS_TEST:-}" ]; then chown -R root:root "$tmp"; fi
+    chmod -R go-w "$tmp"
+    mv "$tmp" "$base/$tag"
+  fi
+  ln -sfn "$tag" "$base/current.new"
+  mv -T "$base/current.new" "$base/current"
+  for n in $RELEASE_LINKS; do
+    ln -sfn "/opt/nightshift/current/bin/$n" "$(P "/usr/local/bin/$n")"
+  done
+  APPLY_MSG="changed (release $tag)"
+}
+
+# ---- step 9: marketplace and plugins, as ns ----------------------------------------
+
+pin_file() { printf '%s/.config/ns/release-pin' "$NS_USER_HOME"; }
+
+repo_slug() { # owner/repo from the origin URL of the installed release
+  local url
+  url="$(git -C "$(P /opt/nightshift/current)" remote get-url origin 2>/dev/null || true)"
+  url="${url%.git}"
+  printf '%s\n' "$url" | sed -E 's|^.*[:/]([^/:]+/[^/]+)$|\1|'
+}
+
+check_9() {
+  local tag slug
+  tag="$(current_tag)"
+  if [ -z "$tag" ]; then
+    CHECK_MSG="would change: add the marketplace (needs the release from step 8 first)"
+    return 1
+  fi
+  slug="$(repo_slug)"
+  if [ "$(cat "$(pin_file)" 2>/dev/null || true)" != "$slug#$tag" ]; then
+    CHECK_MSG="would change: pin the marketplace to $slug#$tag, install ns and ns-python"
+    return 1
+  fi
+  CHECK_MSG="ok"
+}
+
+apply_9() {
+  local tag slug pin old
+  tag="$(current_tag)"
+  if [ -z "$tag" ]; then
+    APPLY_MSG="needs you: no release installed (step 8 first)"
+    return 1
+  fi
+  slug="$(repo_slug)"
+  pin="$slug#$tag"
+  old="$(cat "$(pin_file)" 2>/dev/null || true)"
+  if [ "$old" != "$pin" ]; then
+    if [ -n "$old" ]; then as_ns claude plugin marketplace remove nightshift; fi
+    as_ns claude plugin marketplace add "$pin"
+  fi
+  as_ns claude plugin install ns@nightshift --scope user
+  as_ns claude plugin install ns-python@nightshift --scope user
+  as_ns mkdir -p "$(dirname "$(pin_file)")"
+  as_ns tee "$(pin_file)" >/dev/null <<<"$pin"
+  APPLY_MSG="changed (pinned to $pin)"
+}
+
+# ---- step 10: ns-gc timer and the Remote Control session ----------------------------------
+
+ud() { printf '%s/.config/systemd/user' "$NS_USER_HOME"; }
+
+has_project() { grep -qs 'path:' "$NS_USER_HOME/.config/ns/projects.yaml"; }
+
+check_10() {
+  local todo=() u
+  for u in ns-gc.service ns-gc.timer; do
+    cmp -s "$NS_BS_TEMPLATES/systemd/$u" "$(ud)/$u" 2>/dev/null || todo+=("install $u")
+  done
+  [ -L "$(ud)/timers.target.wants/ns-gc.timer" ] || todo+=("enable ns-gc.timer")
+  if has_project && ! as_ns tmux has-session -t rc 2>/dev/null; then
+    todo+=("start the Remote Control session")
+  fi
+  if [ "${#todo[@]}" -eq 0 ]; then
+    if has_project; then CHECK_MSG="ok"; else CHECK_MSG="ok (no project yet; ns up starts it)"; fi
+    return 0
+  fi
+  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')"
+  return 1
+}
+
+apply_10() {
+  local u
+  as_ns mkdir -p "$(ud)"
+  for u in ns-gc.service ns-gc.timer; do
+    as_ns tee "$(ud)/$u" <"$NS_BS_TEMPLATES/systemd/$u" >/dev/null
+  done
+  as_ns systemctl --user daemon-reload
+  as_ns systemctl --user enable --now ns-gc.timer
+  if has_project; then
+    as_ns tmux has-session -t rc 2>/dev/null || as_ns "$(P /usr/local/bin/ns)" up >/dev/null || true
+    APPLY_MSG="changed"
+  else
+    APPLY_MSG="changed (no project yet; ns up starts the Remote Control session)"
+  fi
+}
+
+# ---- step 11: ns doctor ----------------------------------------------------------------------
+
+check_11() {
+  if [ ! -e "$(P /opt/nightshift/current/bin/ns)" ]; then
+    CHECK_MSG="would change: run ns doctor (after step 8)"
+    return 1
+  fi
+  CHECK_MSG="ok"
+}
+
+apply_11() {
+  local out rc=0
+  out="$(runuser -l "$NS_USER" -c '[ ! -r ~/.config/ns/env ] || . ~/.config/ns/env; ns doctor' 2>&1)" || rc=$?
+  [ -z "$out" ] || printf '%s\n' "$out"
+  if [ "$rc" -eq 0 ]; then
+    APPLY_MSG="ok (ns doctor passed)"
+    return 0
+  fi
+  APPLY_MSG="needs you: ns doctor reported problems (exit $rc, see above)"
+  return 1
+}
+
 # ---- main ------------------------------------------------------------------
 
 mode=apply
+upgrade_tag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --help | -h)
@@ -308,8 +618,13 @@ while [ $# -gt 0 ]; do
       ;;
     --check) mode=check ;;
     --upgrade)
-      echo "bootstrap.sh: --upgrade is not available yet" >&2
-      exit 2
+      if [ $# -lt 2 ] || [ -z "$2" ]; then
+        echo "bootstrap.sh: --upgrade needs a tag" >&2
+        exit 2
+      fi
+      mode=upgrade
+      upgrade_tag="$2"
+      shift
       ;;
     *)
       echo "bootstrap.sh: unknown argument: $1" >&2
@@ -320,17 +635,29 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$mode" = apply ] && [ "$(id -u)" -ne 0 ]; then
+if [ "$mode" != check ] && [ "$(id -u)" -ne 0 ] && [ -z "${NS_BS_TEST:-}" ]; then
   echo "bootstrap.sh: run as root, or use --check" >&2
   exit 2
+fi
+
+if [ "$mode" = upgrade ]; then
+  if ! tag_exists "$upgrade_tag"; then
+    echo "bootstrap.sh: tag $upgrade_tag not found in $NS_REPO_URL" >&2
+    exit 1
+  fi
+  TARGET_TAG="$upgrade_tag"
+  STEPS="8 9"
 fi
 
 rc=0
 for n in $STEPS; do
   name="$(step_name "$n")"
-  if check_"$n"; then
-    # An optional step that is not configured is ok, but a real run offers to set it up.
-    if [ "$mode" = check ] || [ "$CHECK_MSG" != "ok (not configured)" ]; then
+  if [ "$mode" = upgrade ]; then
+    CHECK_MSG=""
+  elif check_"$n"; then
+    # An optional step that is not configured is ok, but a real run offers to set it up;
+    # the doctor step always runs in a real run so its verdict is shown every time.
+    if [ "$mode" = check ] || { [ "$CHECK_MSG" != "ok (not configured)" ] && [ "$n" != 11 ]; }; then
       printf '[%s/%s] %s: %s\n' "$n" "$N" "$name" "$CHECK_MSG"
       continue
     fi
