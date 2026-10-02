@@ -302,6 +302,20 @@ End-to-end scenarios (R-E2E), each on a fresh base branch `e2e/<date>-<n>` creat
 
 After each scenario the harness deletes its branches, worktrees and desk folders.
 
+## 16a. Usage monitoring (Build B)
+
+Tokens and an estimated cost per run, phase, agent and model. On a Claude subscription the dollar figure is Claude Code's estimate at API list price, not a bill; it is the common unit for comparing runs and setting budgets. The real constraint is the plan's 5-hour and weekly limits, which `ns` records as events rather than predicting.
+
+- **R-USE-1** Headless workers run with `--output-format json` (or `stream-json`); the conductor stores the final result's token usage and cost estimate in the ledger under the phase (`usage{input, output, cache_read, cache_write, cost_usd, model}`).
+- **R-USE-2** Interactive sessions (the run's main session): the session-start hook records the session id in the ledger; `ns usage` sums the per-message `usage` fields from that session's transcript in `~/.claude/projects/`, including its subagents, and attributes them to the run.
+- **R-USE-3** Budgets gain an optional token or cost cap per tier (`budgets.T3.cost_usd`). The conductor passes the phase's share as `--max-budget-usd` to each worker; hitting it is a budget overrun (R-BUD-1, gate 1.5).
+- **R-USE-4** Usage-limit hits and their waiting time are ledger events (`type: usage_limit`) and don't count against wall-clock budgets (R-BUD-2).
+- **R-USE-5** `ns usage [--run <id>] [--days N] [--by run|phase|agent|model]` prints a table; `--json` for scripts.
+- **R-USE-6** The handoff report has a usage section: per phase and per agent, Opus/Sonnet split, review rounds, usage-limit waits.
+- **R-USE-7** `ns gc`'s daily ntfy line adds yesterday's totals ("4.1 M tokens, ≈ $38 at list price, 1 limit wait"). An optional `usage.daily_alert_usd` in `~/.config/ns/config.yaml` sends a separate alert when exceeded.
+- **R-USE-8** A weekly `usage.html` on the desk (`/srv/ns-space/usage/`) shows the trend per project and per model. Self-contained HTML, R-DSK-2.
+- **R-USE-9** OpenTelemetry export (`CLAUDE_CODE_ENABLE_TELEMETRY`, `claude_code.token.usage`, `claude_code.cost.usage`) is out of scope; it would need a collector service. Revisit only if transcript parsing proves unreliable.
+
 ## 17. Build A and Build B
 
-`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and the PrivacyFence cleanup PRs. Those are Build B.
+`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, usage monitoring (§16a), and the PrivacyFence cleanup PRs. Those are Build B.

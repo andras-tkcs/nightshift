@@ -54,8 +54,9 @@ Run by Nightshift itself: `ns new ns-buildb --tier T3 "Build B from docs/build-p
 | B3 | Stacks | `ns-node`, `ns-web`, `ns-shell`, `ns-powershell` plugins; platform dispatch tested on a sandbox branch with a macOS-only path |
 | B4 | Onboarding | `/ns:init` (starter files from `templates/`), `/ns:onboard` (research a repo, draft profile, `CLAUDE.md` and first domain skill on the desk) |
 | B5 | Lab | Lab helper on hcloud: create, run, delete; gc of servers and snapshots |
-| B6 | PrivacyFence PRs | Two PRs, not merged by Nightshift: (1) `live-qa` environment on the QA workflows, prepared as a patch for the owner because the token has no Workflows permission; (2) remove `/make-plan`, `/implement`, `/dod`, steward; trim `CLAUDE.md`; add the profile and `pf-*` skills |
-| B7 | Docs | `docs/stacks.md`; agents, projects and usage docs updated |
+| B6 | PrivacyFence PRs | Two PRs, not merged by Nightshift: (1) `live-qa` environment on the QA workflows, prepared as a patch for the owner because the token has no Workflows permission, plus a checklist item to confirm the existing `release` environment has the owner as required reviewer, since the agent token can dispatch workflows; (2) remove `/make-plan`, `/implement`, `/dod`, steward; trim `CLAUDE.md`; add the profile and `pf-*` skills |
+| B6a | Usage monitoring | Spec §16a: usage in the ledger from workers and sessions, `ns usage`, `--max-budget-usd` caps per phase, usage section in the handoff report, daily ntfy line and alert, weekly `usage.html` on the desk |
+| B7 | Docs | `docs/stacks.md`; agents, projects and usage docs updated, including `ns usage` |
 | B8 | Release | `v0.2.0` |
 
 ## Review 2 (owner)
