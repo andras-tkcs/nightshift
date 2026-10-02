@@ -5,9 +5,9 @@
 | p01-scaffold | merged | feature/build-a--p01-scaffold | 1 | |
 | p02-common | merged | feature/build-a--p02-common | 1 | |
 | p03-docs-check | merged | feature/build-a--p03-docs-check | 1 | |
-| p04-cli | running | feature/build-a--p04-cli | 1 | |
+| p04-cli | merged | feature/build-a--p04-cli | 1 | |
 | p05-stack-python | pending | feature/build-a--p05-stack-python | 0 | |
-| p06-profile | pending | feature/build-a--p06-profile | 0 | |
+| p06-profile | running | feature/build-a--p06-profile | 1 | |
 | p06b-profile-cli | pending | feature/build-a--p06b-profile-cli | 0 | |
 | p07-ledger | pending | feature/build-a--p07-ledger | 0 | |
 | p08-project-add | pending | feature/build-a--p08-project-add | 0 | |
