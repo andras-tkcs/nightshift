@@ -41,7 +41,7 @@ Workstreams in dependency order. The planner cuts them into phases and waves.
 
 ## Review 1 (owner)
 
-Phase 4 of the architecture page: run `bootstrap.sh`, `ns-gh`, add PrivacyFence, run one real T1 and one real T2 on PrivacyFence, then write `docs/review-1.md` on the desk.
+Phase 4 of the architecture page: run `bootstrap.sh` and `ns-gh` for the personal repos, register Nightshift itself (`ns project add <you>/nightshift --prefix ns`, adopting the dev clone), run one real T1 and one real T2 on Nightshift (suggested T2: spec §16a R-USE-1 and R-USE-5), merge them, then write `docs/review-1.md` on the desk. PrivacyFence isn't added until after Build B.
 
 ## Build B: fixes and breadth
 
@@ -52,13 +52,13 @@ Run by Nightshift itself: `ns new ns-buildb --tier T3 "Build B from docs/build-p
 | B1 | Review fixes | Everything in `docs/review-1.md`, first and in its own phases |
 | B2 | Specialists | database-expert, data-analyst, ui-ux-designer agents; data-modeling, query-review, data-quality, ui-review, mockups skills; triage tags |
 | B3 | Stacks | `ns-node`, `ns-web`, `ns-shell`, `ns-powershell` plugins; platform dispatch tested on a sandbox branch with a macOS-only path |
-| B4 | Onboarding | `/ns:init` (starter files from `templates/`), `/ns:onboard` (research a repo, draft profile, `CLAUDE.md` and first domain skill on the desk) |
+| B4 | Onboarding | `/ns:init` (starter files from `templates/`), `/ns:onboard` (research a repo, draft profile, `CLAUDE.md` and first domain skill on the desk); the onboarding run of `ns project add` uses it, and detects every stack and platform of a repo in one pass. Tested on a sandbox branch with Python, PowerShell and a macOS-only path |
 | B5 | Lab | Lab helper on hcloud: create, run, delete; gc of servers and snapshots |
-| B6 | PrivacyFence PRs | Two PRs, not merged by Nightshift: (1) `live-qa` environment on the QA workflows, prepared as a patch for the owner because the token has no Workflows permission, plus a checklist item to confirm the existing `release` environment has the owner as required reviewer, since the agent token can dispatch workflows; (2) remove `/make-plan`, `/implement`, `/dod`, steward; trim `CLAUDE.md`; add the profile and `pf-*` skills |
-| B6a | Usage monitoring | Spec §16a: usage in the ledger from workers and sessions, `ns usage`, `--max-budget-usd` caps per phase, usage section in the handoff report, daily ntfy line and alert, weekly `usage.html` on the desk |
-| B7 | Docs | `docs/stacks.md`; agents, projects and usage docs updated, including `ns usage` |
+| B6 | PrivacyFence readiness | No phase touches PrivacyFence. The draft profile in `templates/` covers all its stacks and platforms; `docs/projects.md` walks through onboarding a repo like it, including `ns-gh` after the onboarding PR and checking that a `release` environment has the owner as required reviewer (the agent token can dispatch workflows). The two cleanup changes (`live-qa` patch; removing `/make-plan`, `/implement`, `/dod`, steward and trimming `CLAUDE.md`) are ordinary runs at Review 2, not Build B phases |
+| B6a | Usage monitoring | Spec §16a: usage in the ledger from workers and sessions, `ns usage`, `--max-budget-usd` caps per phase, usage section in the handoff report, daily ntfy line and alert, weekly `usage.html` on the desk. Skip whatever Review 1's T2 already delivered |
+| B7 | Docs | `docs/stacks.md`; agents, projects and usage docs updated, including `ns usage`; `docs/architecture.md` and `docs/setup.md` regenerated from the architecture page's new phase 4–5 order |
 | B8 | Release | `v0.2.0` |
 
 ## Review 2 (owner)
 
-Install `v0.2.0`, run a real T3 on PrivacyFence, onboard a second repo with `/ns:onboard`, merge the two PrivacyFence PRs.
+Install `v0.2.0`. Add PrivacyFence following `docs/projects.md` only: agent token, `ns project add privacyfence/privacyfence --prefix pf`, merge the onboarding PR, `ns-gh` with a privacyfence admin token, confirm the `release` environment's required reviewer. Run the two cleanup runs (`pf-cleanup`, `pf-live-qa`) and merge or apply them, then a real T3 on PrivacyFence. Write `docs/review-2.md`.

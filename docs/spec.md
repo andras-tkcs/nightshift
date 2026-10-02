@@ -149,7 +149,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 - **R-CLI-1** All state is in `~/.config/ns/` (config, projects, tokens), the desk, and git. No hidden state elsewhere.
 - **R-CLI-2** Commands that change state are idempotent: running twice equals running once.
 - **R-CLI-3** No command prints a token. Tokens are passed via the environment only and never written to logs, the desk or git.
-- **R-CLI-4** The main checkout of a project is never used as a run's working tree: runs always work in worktrees. That is what lets the Nightshift repo be both the dev clone of phase 3 and a registered project in phase 5.
+- **R-CLI-4** The main checkout of a project is never used as a run's working tree: runs always work in worktrees. That is what lets the Nightshift repo be both the dev clone of phase 3 and a registered project from Review 1 on.
 
 ### Onboarding run (R-ONB)
 
@@ -318,4 +318,4 @@ Tokens and an estimated cost per run, phase, agent and model. On a Claude subscr
 
 ## 17. Build A and Build B
 
-`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, usage monitoring (§16a), and the PrivacyFence cleanup PRs. Those are Build B.
+`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and usage monitoring (§16a). Those are Build B. PrivacyFence is added only after Build B is installed; its cleanup (removing its own orchestration commands, the `live-qa` patch) is ordinary runs at Review 2, not part of either build.
