@@ -27,8 +27,8 @@
 | p22-dod-ci-skills | merged | feature/build-a--p22-dod-ci-skills | 1 | |
 | p23-review-agents | merged | feature/build-a--p23-review-agents | 1 | |
 | p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
-| p25-drain-up | running | feature/build-a--p25-drain-up | 1 | |
-| p26-gc | pending | feature/build-a--p26-gc | 0 | |
+| p25-drain-up | merged | feature/build-a--p25-drain-up | 1 | |
+| p26-gc | running | feature/build-a--p26-gc | 1 | |
 | p27-doctor | pending | feature/build-a--p27-doctor | 0 | |
 | p28-ns-gh | merged | feature/build-a--p28-ns-gh | 1 | open: ns-gh jq `//` treats false as missing (workflows_can_approve_prs); fixtures use string "false"; fix in final-review fixup |
 | p29-bootstrap | pending | feature/build-a--p29-bootstrap | 0 | |
