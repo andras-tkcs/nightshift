@@ -15,7 +15,8 @@ source "$NS_HOME/bin/lib/profile.sh"
 ns_gc_help() {
   printf 'usage: ns gc [--dry-run] [--monthly]\n\n'
   printf 'Housekeeping, run daily by a systemd timer. Removes worktrees, local and remote\n'
-  printf 'plan/phase branches and tmux sessions of done runs whose PR is merged or closed,\n'
+  printf 'plan/phase branches and tmux sessions of done runs whose PR is merged (for a closed PR\n'
+  printf 'only the local work; the remote branches stay),\n'
   printf 'archives their desk folders, drops desk archives older than 90 days, and reports\n'
   printf 'work that needs you. --monthly (or day 01) also clears the stacks gc targets.\n'
   printf '--dry-run prints "would remove" lines and changes nothing.\n'
@@ -66,15 +67,14 @@ gc_human() {
   fi
 }
 
-# gc_run <run-json>: step 1 for one run
-gc_run() {
-  local run="$1" id pname base proj path repo ledger state pr prstate owner
+# gc_run_inner <run-json>: step 1 for one run (the owner token is already exported)
+gc_run_inner() {
+  local run="$1" id pname base proj path ledger state pr prstate
   id=$(jq -r .id <<<"$run")
   pname=$(jq -r .project <<<"$run")
   base=$(jq -r '.worktree // ""' <<<"$run")
   proj=$(ns_project_by_name "$pname") || return 0
   path=$(jq -r .path <<<"$proj")
-  repo=$(jq -r '.repo // ""' <<<"$proj")
   [ -n "$base" ] || return 0
   ledger="$base/.nightshift/runs/$id/ledger.yaml"
   [ -f "$ledger" ] || return 0
@@ -82,12 +82,10 @@ gc_run() {
   [ "$state" = "done" ] || return 0
   pr=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.pr // ""' 2>/dev/null) || return 0
   [ -n "$pr" ] || return 0
-  owner=${repo%%/*}
-  if [ -n "$owner" ]; then
-    # shellcheck disable=SC2030
-    (ns_token_export "$owner") >/dev/null 2>&1 || true
-  fi
-  prstate=$(gh pr view "$pr" --json state -q .state 2>/dev/null) || return 0
+  prstate=$(gh pr view "$pr" --json state -q .state 2>/dev/null) || {
+    gc_needs "$id" "cannot read PR state"
+    return 0
+  }
   case "$prstate" in MERGED | CLOSED) ;; *) return 0 ;; esac
 
   local -a wts=() locals=() remotes=()
@@ -159,7 +157,11 @@ gc_run() {
     fi
   done
 
-  # (c) remote branches
+  # (c) remote branches: only after a merge; a closed PR keeps them (plan/<id> is the ledger)
+  if [ "$prstate" != MERGED ]; then
+    remotes=()
+    printf 'kept remote branches of %s (PR closed, not merged)\n' "$id"
+  fi
   for b in "${remotes[@]}"; do
     [ "$b" != "$basebranch" ] || continue
     git -C "$path" ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 || continue
@@ -199,6 +201,30 @@ gc_run() {
     ns_run_set "$id" '.archived = true'
     ns_desk_index "$pname"
   fi
+}
+
+# gc_run <run-json>: runs gc_run_inner with the project owner's token exported, then
+# restores GH_TOKEN. The token never appears on a command line or in output.
+gc_run() {
+  local run="$1" repo owner id had=0 saved="" rc=0
+  id=$(jq -r .id <<<"$run")
+  repo=$(ns_project_by_name "$(jq -r .project <<<"$run")" 2>/dev/null | jq -r '.repo // ""') || repo=""
+  owner=${repo%%/*}
+  if [ -n "${GH_TOKEN+x}" ]; then
+    had=1
+    saved=$GH_TOKEN
+  fi
+  if [ -n "$owner" ]; then
+    # ns_token_export dies on a wrong file mode, so probe it in a subshell first
+    if ! (ns_token_export "$owner") >/dev/null 2>&1; then
+      gc_needs "$id" "token file for $owner is unusable (must be mode 600)"
+      return 0
+    fi
+    ns_token_export "$owner" >/dev/null 2>&1 || true
+  fi
+  gc_run_inner "$run" || rc=$?
+  if [ "$had" = 1 ]; then export GH_TOKEN="$saved"; else unset GH_TOKEN; fi
+  return "$rc"
 }
 
 ns_gc_main() {
