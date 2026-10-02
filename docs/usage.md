@@ -68,6 +68,38 @@ If the run already exists, `ns new` prints `already running` and exits 0 when it
 
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
+### ns ls
+
+```
+ns ls [--all] [--json]
+```
+
+`ns ls` lists the runs in `~/.config/ns/runs.yaml`, oldest first, one line each: ID, TIER (`-` before a tier is set), PHASE (the phases that are running or in review, else the ledger's step), STATE, WAITING-ON and AGE. WAITING-ON is `owner:gate<g>` when the run waits at a gate, `pool` when a phase is queued for a free worker, and otherwise `-`. A run whose worktree has been deleted shows state `?` and `no-worktree`. With no runs it prints `no runs`. `--all` includes archived runs; `--json` prints an array of `{id, project, tier, state, gate, step, phases, created}`.
+
+### ns status
+
+```
+ns status <id> [--json]
+```
+
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. `--json` prints the whole ledger, the same as `ns-ledger get`.
+
+### ns attach
+
+```
+ns attach <id>
+```
+
+`ns attach` attaches your terminal to the run's tmux session (detach with `Ctrl-b d`; the run keeps going). If the session does not exist it exits 1 with `no tmux session <id>: start it with ns resume <id>`.
+
+### ns stop
+
+```
+ns stop <id>
+```
+
+`ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
+
 ## Commands inside Claude Code
 
 ## Tiers and gates
