@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end harness entry point (docs/build-a-plan.md, D20). On ns-main only.
+# End-to-end harness entry point (see docs/development.md, "End-to-end runs"). On ns-main only.
 set -euo pipefail
 
 readonly E2E_REPO=andras-tkcs/nightshift-sandbox

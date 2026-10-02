@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# t2: a small feature with a plan gate, tier T2 (docs/build-a-plan.md, D20)
+# t2: a small feature with a plan gate, tier T2 (see docs/development.md, "End-to-end runs")
 
 E2E_TIMEOUT=10800
 

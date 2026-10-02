@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# t1: a bug issue, tier T1 (docs/build-a-plan.md, D20)
+# t1: a bug issue, tier T1 (see docs/development.md, "End-to-end runs")
 
 E2E_TIMEOUT=5400
 

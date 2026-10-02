@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# End-to-end harness library (docs/build-a-plan.md, D20). Sourced by tests/e2e/run.sh,
+# End-to-end harness library (see docs/development.md, "End-to-end runs"). Sourced by tests/e2e/run.sh,
 # which defines the readonly constant E2E_REPO before sourcing this file.
 # The only GitHub repository any function here touches is "$E2E_REPO".
 
