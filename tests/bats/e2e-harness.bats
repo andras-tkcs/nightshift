@@ -48,6 +48,30 @@ setup() {
   [ "$n" -ge 5 ]
 }
 
+@test "cleanup deletes a ledger branch only when it grew from the attempt's base (e2e t2)" {
+  # plan/sbx-x1 of an older attempt has unrelated history: compare answers 404
+  gh() {
+    printf '%s\n' "$*" >>"$BATS_TEST_TMPDIR/gh.calls"
+    case "$*" in
+      *compare/e2e/20261002-3...plan/sbx-x1*) return 1 ;;
+      *compare/e2e/20261002-3...feature/x1*) printf 'ahead\n' ;;
+      *compare/e2e/20261002-3...fix/sbx-x2*) printf 'identical\n' ;;
+      *compare/e2e/20261002-3...fix/sbx-x3*) printf 'diverged\n' ;;
+    esac
+  }
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  e2e_gh_delete_attempt_branch e2e/20261002-3 plan/sbx-x1
+  e2e_gh_delete_attempt_branch e2e/20261002-3 feature/x1
+  e2e_gh_delete_attempt_branch e2e/20261002-3 fix/sbx-x2
+  e2e_gh_delete_attempt_branch e2e/20261002-3 fix/sbx-x3
+  run grep -c -- '-X DELETE' "$BATS_TEST_TMPDIR/gh.calls"
+  [ "$output" -eq 2 ]
+  grep -q -- '-X DELETE repos/owner/sandbox/git/refs/heads/feature/x1$' "$BATS_TEST_TMPDIR/gh.calls"
+  grep -q -- '-X DELETE repos/owner/sandbox/git/refs/heads/fix/sbx-x2$' "$BATS_TEST_TMPDIR/gh.calls"
+}
+
 @test "the fixture README has the typo exactly once" {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }

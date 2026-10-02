@@ -106,7 +106,14 @@ ns_new_main() {
     ns_die "could not read the profile of $repo"
   fi
   if [ -z "$id" ]; then
-    id="$prefix-x$(ns_run_next_x "$prefix")"
+    # the index only knows this machine's runs: skip numbers whose plan branch is on origin
+    local k
+    k=$(ns_run_next_x "$prefix")
+    while git -C "$path" ls-remote --exit-code -q --heads origin \
+      "$(ns_branch_name "$(jq -r '.git.plan_branch' <<<"$profile")" "$prefix-x$k")" >/dev/null 2>&1; do
+      k=$((k + 1))
+    done
+    id="$prefix-x$k"
   fi
   base=$(jq -r '.git.base_branch' <<<"$profile")
   plan_branch=$(ns_branch_name "$(jq -r '.git.plan_branch' <<<"$profile")" "$id")
