@@ -39,7 +39,7 @@
 | p33-e2e-t2 | pending | feature/build-a--p33-e2e-t2 | 0 | |
 | p34-e2e-t3 | pending | feature/build-a--p34-e2e-t3 | 0 | |
 | p35-e2e-resume | pending | feature/build-a--p35-e2e-resume | 0 | |
-| p36-docs-guides | running | feature/build-a--p36-docs-guides | 1 | |
-| p37-docs-reference | running | feature/build-a--p37-docs-reference | 1 | |
+| p36-docs-guides | merged | feature/build-a--p36-docs-guides | 1 | |
+| p37-docs-reference | merged | feature/build-a--p37-docs-reference | 1 | |
 | p38-docs-final | pending | feature/build-a--p38-docs-final | 0 | |
 | p39-release-retire | pending | feature/build-a--p39-release-retire | 0 | |
