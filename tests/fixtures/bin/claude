@@ -12,7 +12,7 @@ mkdir -p "$dir"
 n=1
 while [ -e "$dir/call-$n.args" ]; do n=$((n + 1)); done
 printf '%s\n' "$@" >"$dir/call-$n.args"
-cat >"$dir/call-$n.stdin" || true
+if [ ! -t 0 ]; then timeout 2 cat >"$dir/call-$n.stdin" || true; else : >"$dir/call-$n.stdin"; fi
 {
   printf 'cwd=%s\n' "$PWD"
   if [ -n "${GH_TOKEN:-}" ]; then echo token=set; else echo token=unset; fi
