@@ -24,6 +24,22 @@ commands:
   help       list commands
 ```
 
+### ns profile check
+
+```
+ns profile check [path] [--repo <dir>]
+```
+
+`ns profile check` validates a project profile (`path` is a repo directory or a profile file, default `.`) and prints `ok: <file>`, or one line per problem and exit code 1. Problems are: invalid YAML, schema errors, a missing docs file, domain skill or workflow, an unknown stack, and a specialist or risk-zone agent that is not available. `--repo` names the repository the referenced files are looked up in. The keys are listed in [profile-reference.md](profile-reference.md).
+
+### ns profile show
+
+```
+ns profile show [path]
+```
+
+`ns profile show` prints the resolved profile as JSON: defaults applied, stacks as objects, and the `checks` (lint and test per stack) that will run. See [profile-reference.md](profile-reference.md) for every key.
+
 ## Commands inside Claude Code
 
 ## Tiers and gates

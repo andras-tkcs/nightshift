@@ -1,0 +1,18 @@
+project: nightshift
+prefix: ns
+commands:
+  setup: "true"
+  lint: tests/lint
+  test: "bats tests/bats"
+git:
+  base_branch: main
+stacks:
+  - name: python
+    paths: ["bin/lib/*.py", "tests/docs-check"]
+risk_zones:
+  hooks:
+    paths: ["plugins/ns/hooks/**"]
+    require: [sec-compliance]
+  credentials:
+    paths: ["bin/lib/config.sh", "bin/ns-launch"]
+    require: [sec-compliance]
