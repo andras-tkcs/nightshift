@@ -19,7 +19,7 @@
 | p14-approve | pending | feature/build-a--p14-approve | 0 | |
 | p15-hooks | pending | feature/build-a--p15-hooks | 0 | |
 | p16-conductor-loop | pending | feature/build-a--p16-conductor-loop | 0 | |
-| p17-core-agents | pending | feature/build-a--p17-core-agents | 0 | |
+| p17-core-agents | running | feature/build-a--p17-core-agents | 1 | |
 | p18-run-skill | pending | feature/build-a--p18-run-skill | 0 | |
 | p19-plan-skill | pending | feature/build-a--p19-plan-skill | 0 | |
 | p20-design-agents | pending | feature/build-a--p20-design-agents | 0 | |
