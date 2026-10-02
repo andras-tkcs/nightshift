@@ -7,6 +7,8 @@ source "$NS_HOME/bin/lib/config.sh"
 source "$NS_HOME/bin/lib/stacks.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/profile.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/ns-new.sh"
 
 ns_project_help() {
   printf 'usage: ns project add <owner/repo> --prefix <p> [--sandbox] [--branch <b>]\n\n'
@@ -100,7 +102,7 @@ ns_project_add() {
     fi
     git -C "$path" worktree remove --force "$wt"
   elif [ "$rc" -eq 3 ]; then
-    printf 'no .claude/project-profile.yaml on %s: start onboarding with ns new %s-onboard --onboard\n' "$base" "$prefix"
+    printf 'no .claude/project-profile.yaml on %s\n' "$base"
   else
     ns_die "could not read the profile of $repo"
   fi
@@ -110,6 +112,10 @@ ns_project_add() {
     --argjson s "$sandbox" --arg b "$branch" \
     '{name: $n, repo: $r, path: $p, prefix: $x, sandbox: $s} + (if $b == "" then {} else {branch: $b} end)')"
   printf 'added %s as %s at %s\n' "$repo" "$prefix" "$path"
+  if [ "$rc" -eq 3 ]; then
+    printf 'starting onboarding run %s-onboard\n' "$prefix"
+    ns_new_main "$prefix-onboard" --onboard
+  fi
 }
 
 ns_project_main() {
