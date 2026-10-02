@@ -1,0 +1,9 @@
+[Unit]
+Description=SilverBullet desk
+
+[Service]
+ExecStart=%h/opt/silverbullet/silverbullet -L 127.0.0.1 -p 3000 %h/sb-data
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
