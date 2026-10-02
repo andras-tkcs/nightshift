@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'apt-get %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+exit 0

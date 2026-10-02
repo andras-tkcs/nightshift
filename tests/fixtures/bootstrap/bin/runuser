@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md): records the call, runs nothing.
+set -euo pipefail
+printf 'runuser %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+exit 0

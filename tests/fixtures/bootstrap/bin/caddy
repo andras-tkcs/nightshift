@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'caddy %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = version ]; then echo "v2.8.4 stub"; fi
+exit 0
