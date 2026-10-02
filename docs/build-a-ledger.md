@@ -17,10 +17,10 @@
 | p12-resume | pending | feature/build-a--p12-resume | 0 | |
 | p13-desk | pending | feature/build-a--p13-desk | 0 | |
 | p14-approve | pending | feature/build-a--p14-approve | 0 | |
-| p15-hooks | running | feature/build-a--p15-hooks | 1 | |
+| p15-hooks | merged | feature/build-a--p15-hooks | 1 | |
 | p16-conductor-loop | pending | feature/build-a--p16-conductor-loop | 0 | |
 | p17-core-agents | merged | feature/build-a--p17-core-agents | 1 | |
-| p18-run-skill | pending | feature/build-a--p18-run-skill | 0 | |
+| p18-run-skill | running | feature/build-a--p18-run-skill | 1 | |
 | p19-plan-skill | pending | feature/build-a--p19-plan-skill | 0 | |
 | p20-design-agents | pending | feature/build-a--p20-design-agents | 0 | |
 | p21-implement-skill | pending | feature/build-a--p21-implement-skill | 0 | |
