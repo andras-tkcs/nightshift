@@ -10,8 +10,8 @@
 | p06-profile | merged | feature/build-a--p06-profile | 1 | |
 | p06b-profile-cli | merged | feature/build-a--p06b-profile-cli | 1 | |
 | p07-ledger | merged | feature/build-a--p07-ledger | 1 | |
-| p08-project-add | running | feature/build-a--p08-project-add | 1 | |
-| p09-run-new | pending | feature/build-a--p09-run-new | 0 | |
+| p08-project-add | merged | feature/build-a--p08-project-add | 1 | |
+| p09-run-new | running | feature/build-a--p09-run-new | 1 | |
 | p10-run-inspect | pending | feature/build-a--p10-run-inspect | 0 | |
 | p11-conductor-workers | pending | feature/build-a--p11-conductor-workers | 0 | |
 | p12-resume | pending | feature/build-a--p12-resume | 0 | |
