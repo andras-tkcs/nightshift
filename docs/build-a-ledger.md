@@ -26,12 +26,12 @@
 | p21-implement-skill | merged | feature/build-a--p21-implement-skill | 1 | |
 | p22-dod-ci-skills | merged | feature/build-a--p22-dod-ci-skills | 1 | |
 | p23-review-agents | merged | feature/build-a--p23-review-agents | 1 | |
-| p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
+| p24-plugin-complete | merged | feature/build-a--p24-plugin-complete | 1 | |
 | p25-drain-up | merged | feature/build-a--p25-drain-up | 1 | |
 | p26-gc | merged | feature/build-a--p26-gc | 1 | note: gc uses branch -D when tip is on origin (deviation from D17, accepted) |
 | p27-doctor | merged | feature/build-a--p27-doctor | 1 | fix-1 repaired a failing fixture after merge |
 | p28-ns-gh | merged | feature/build-a--p28-ns-gh | 1 | open: ns-gh jq `//` treats false as missing (workflows_can_approve_prs); fixtures use string "false"; fix in final-review fixup |
-| p29-bootstrap | pending | feature/build-a--p29-bootstrap | 0 | |
+| p29-bootstrap | running | feature/build-a--p29-bootstrap | 1 | |
 | p29b-bootstrap-release | pending | feature/build-a--p29b-bootstrap-release | 0 | |
 | p30-e2e-harness | pending | feature/build-a--p30-e2e-harness | 0 | |
 | p31-e2e-t0 | pending | feature/build-a--p31-e2e-t0 | 0 | |
