@@ -37,8 +37,8 @@
 | p31-e2e-t0 | merged | feature/build-a--p31-e2e-t0 | 1 | sandbox PR #1 open, 3 min |
 | p32-e2e-t1 | merged | feature/build-a--p32-e2e-t1 | 1 | sandbox PR #3 open, 4 min |
 | p33-e2e-t2 | merged | feature/build-a--p33-e2e-t2 | 2 | passed attempt 2 (sandbox PR #4, 13 min); attempt 1 failed: x-id collision, missing Skill tool, cleanup hazard — all fixed |
-| p34-e2e-t3 | running | feature/build-a--p34-e2e-t3 | 1 | |
-| p35-e2e-resume | pending | feature/build-a--p35-e2e-resume | 0 | |
+| p34-e2e-t3 | merged | feature/build-a--p34-e2e-t3 | 1 | sandbox PR #5 open, 21 min |
+| p35-e2e-resume | running | feature/build-a--p35-e2e-resume | 1 | |
 | p36-docs-guides | merged | feature/build-a--p36-docs-guides | 1 | |
 | p37-docs-reference | merged | feature/build-a--p37-docs-reference | 1 | |
 | p38-docs-final | pending | feature/build-a--p38-docs-final | 0 | |
