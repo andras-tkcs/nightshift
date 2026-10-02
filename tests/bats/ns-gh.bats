@@ -37,6 +37,23 @@ use_set() { export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/respo
   assert_output_contains "All settings match."
 }
 
+@test "boolean false from the API reads as false: no workflows_can_approve_prs DIFF" {
+  use_set ns-gh-match
+  grep -q '"can_approve_pull_request_reviews":false' "$GH_STUB_RESPONSES/workflow.json"
+  run ns-gh audit acme/widget
+  assert_success
+  assert_output_contains "All settings match."
+}
+
+@test "boolean true from the API shows a DIFF row for workflows_can_approve_prs" {
+  cp -r "$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/ns-gh-match" "$BATS_TEST_TMPDIR/resp"
+  printf '%s\n' '{"default_workflow_permissions":"read","can_approve_pull_request_reviews":true}' >"$BATS_TEST_TMPDIR/resp/workflow.json"
+  export GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/resp"
+  run ns-gh audit acme/widget
+  assert_failure 1
+  grep -E '^workflows_can_approve_prs +.* DIFF$' <<<"$output"
+}
+
 @test "diff audit: exactly four DIFF rows, exit 1, no writes" {
   use_set ns-gh-diff
   run ns-gh audit acme/widget
