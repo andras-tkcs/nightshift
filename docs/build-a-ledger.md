@@ -24,8 +24,8 @@
 | p19-plan-skill | merged | feature/build-a--p19-plan-skill | 1 | |
 | p20-design-agents | merged | feature/build-a--p20-design-agents | 1 | |
 | p21-implement-skill | merged | feature/build-a--p21-implement-skill | 1 | |
-| p22-dod-ci-skills | running | feature/build-a--p22-dod-ci-skills | 1 | |
-| p23-review-agents | pending | feature/build-a--p23-review-agents | 0 | |
+| p22-dod-ci-skills | merged | feature/build-a--p22-dod-ci-skills | 1 | |
+| p23-review-agents | running | feature/build-a--p23-review-agents | 1 | |
 | p24-plugin-complete | pending | feature/build-a--p24-plugin-complete | 0 | |
 | p25-drain-up | pending | feature/build-a--p25-drain-up | 0 | |
 | p26-gc | pending | feature/build-a--p26-gc | 0 | |
