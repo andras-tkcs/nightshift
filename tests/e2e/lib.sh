@@ -234,6 +234,17 @@ e2e_gh_delete_branch() {
   gh api -X DELETE "repos/$E2E_REPO/git/refs/heads/$1" >/dev/null 2>&1 || true
 }
 
+# e2e_gh_delete_attempt_branch <base> <branch>: delete <branch> only when it grew from <base>,
+# so a branch of an older attempt that a ledger happens to name (same run id) survives
+e2e_gh_delete_attempt_branch() {
+  local status
+  status=$(gh api "repos/$E2E_REPO/compare/$1...$2" --jq .status 2>/dev/null) || status=""
+  case "$status" in
+    ahead | identical) e2e_gh_delete_branch "$2" ;;
+    *) e2e_log "keeping branch $2: it does not grow from $1" ;;
+  esac
+}
+
 # e2e_branches_of_ledgers <dir>: branches named in every ledger below <dir>
 e2e_branches_of_ledgers() {
   local f
@@ -273,7 +284,7 @@ e2e_remote_cleanup() {
   e2e_close_prs_on_base "$base"
   e2e_close_issues_naming "$base"
   while IFS= read -r b; do
-    [ -n "$b" ] && e2e_gh_delete_branch "$b"
+    [ -n "$b" ] && e2e_gh_delete_attempt_branch "$base" "$b"
   done < <(e2e_branches_of_ledgers "$root")
   e2e_gh_delete_branch "$base"
 }
