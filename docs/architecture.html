@@ -1781,7 +1781,8 @@ claude
 ~ns/Coding/nightshift/bin/bootstrap.sh</pre><button class="copy" type="button">Copy</button></div>
       <ul>
         <li>Installs Caddy with Tailscale certificates, SilverBullet, cloudflared (asks for the tunnel token), the Cloudflare SSH CA if you chose terminal option B (asks for its key), the hcloud CLI (asks for the lab token), ntfy settings, the <code>ns-gc</code> timer and the Remote Control session.</li>
-        <li>Installs <code>ns</code>, <code>ns-gh</code> and the plugins from the marketplace at <b>user scope</b>: <code>ns@nightshift</code> and <code>ns-python@nightshift</code>. Projects never reference them, so the PrivacyFence repo stays free of Nightshift settings.</li>
+        <li>Installs the <b>release</b>, not your dev clone: the latest tag goes to <code>/opt/nightshift/&lt;tag&gt;</code> (owned by root, read-only for <code>ns</code>), and <code>ns</code>, <code>ns-gh</code> and helpers on the PATH point there. Later work in <code>~/Coding/nightshift</code> can't break the running version; <code>bootstrap.sh --upgrade &lt;tag&gt;</code> switches to a newer one and keeps the old one for rollback.</li>
+        <li>Installs the plugins from the marketplace at <b>user scope</b>, pinned to the same tag: <code>ns@nightshift</code> and <code>ns-python@nightshift</code>. Projects never reference them, so the PrivacyFence repo stays free of Nightshift settings.</li>
         <li>Prints the ntfy topic to subscribe to in the app, and the address of SilverBullet's first-run wizard (create the space <b>nightshift</b> on <code>/srv/ns-space</code>).</li>
         <li>Safe to run again: it only changes what's missing.</li>
       </ul>
@@ -1822,7 +1823,7 @@ sshd -t &amp;&amp; systemctl reload ssh</pre><button class="copy" type="button">
       <div class="st-head"><h3>GitHub settings</h3><span class="who ui">github.com</span><span class="who root">root</span></div>
       <ol>
         <li>From your user account, create two fine-grained <b>admin tokens</b>, 7-day expiry, with Administration, Environments and Issues read and write: one with resource owner <b>you</b> (repos <code>nightshift</code>, <code>nightshift-sandbox</code>), one with resource owner <b>privacyfence</b> (repo <code>privacyfence</code>).</li>
-        <li>Run <code>ns-gh</code> as root, one owner at a time. The token only lives in the shell variable; nothing is saved.</li>
+        <li>Run <code>ns-gh</code> as root, one owner at a time, starting with your personal space. The token only lives in the shell variable; nothing is saved.</li>
       </ol>
       <div class="code"><pre><span class="c"># your personal space</span>
 read -rsp "admin token (you): " GH_TOKEN; export GH_TOKEN; echo
@@ -1830,23 +1831,31 @@ ns-gh audit &lt;you&gt;/nightshift          <span class="c"># read the table fir
 ns-gh apply &lt;you&gt;/nightshift
 ns-gh apply &lt;you&gt;/nightshift-sandbox
 
-<span class="c"># the privacyfence org</span>
-read -rsp "admin token (privacyfence): " GH_TOKEN; export GH_TOKEN; echo
+unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
+      <ul><li>PrivacyFence gets its turn after onboarding (next step): <code>ns-gh</code> reads the project's <code>.claude/ns-github.env</code>, which onboarding adds.</li></ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Add PrivacyFence</h3><span class="who ns">ns</span><span class="who ui">desk · GitHub</span><span class="who root">root</span></div>
+      <p>Onboarding only <b>adds</b> three files to PrivacyFence: the profile, <code>.claude/ns-github.env</code> and a first domain-skill draft. It doesn't touch <code>CLAUDE.md</code> or your existing <code>/make-plan</code>, <code>/implement</code> and <code>/dod</code>; removing those is a separate PR in phase 5.</p>
+      <ol>
+        <li>Create the <b>PrivacyFence agent token</b> (phase 1, privacyfence org, item 3) and store it:</li>
+      </ol>
+      <div class="code"><pre>install -d -m 700 ~/.config/ns/tokens
+(umask 077; cat &gt; ~/.config/ns/tokens/privacyfence)     <span class="c"># paste, then Ctrl-D</span>
+
+ns project add privacyfence/privacyfence --prefix pf     <span class="c"># clones, then starts the run pf-onboard</span></pre><button class="copy" type="button">Copy</button></div>
+      <ol start="2">
+        <li>Wait for the ntfy message "pf-onboard · gate", usually 10–20 minutes.</li>
+        <li>On the desk, open <code>privacyfence/runs/pf-onboard/</code>. Check the profile first, especially lines marked <code># guess:</code>: test and lint commands, stacks and their paths, risk zones, platform paths. Edit in place.</li>
+        <li><code>ns approve pf-onboard</code> shows the diff, commits the drafts to <code>nightshift/onboard</code> and opens a PR on PrivacyFence.</li>
+        <li><b>Review and merge that PR on GitHub.</b> Nightshift never merges it, and until it's merged, <code>ns new pf-…</code> refuses to start.</li>
+        <li>Now the GitHub settings for PrivacyFence, as root, with the privacyfence admin token:</li>
+      </ol>
+      <div class="code"><pre>read -rsp "admin token (privacyfence): " GH_TOKEN; export GH_TOKEN; echo
 ns-gh audit privacyfence/privacyfence
 ns-gh apply privacyfence/privacyfence
 unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
       <ul><li>Delete both admin tokens on GitHub afterwards.</li></ul>
-    </div>
-    <div class="st">
-      <div class="st-head"><h3>Add PrivacyFence</h3><span class="who ns">ns</span></div>
-      <div class="code"><pre><span class="c"># create the PrivacyFence agent token first (phase 1, privacyfence org, item 3)</span>
-<span class="c"># ns uses it for every project owned by privacyfence</span>
-install -d -m 700 ~/.config/ns/tokens
-(umask 077; cat &gt; ~/.config/ns/tokens/privacyfence)     <span class="c"># paste, then Ctrl-D</span>
-
-ns project add privacyfence/privacyfence --prefix pf
-<span class="c"># review the drafted profile on the desk, then</span>
-ns approve pf-onboard</pre><button class="copy" type="button">Copy</button></div>
     </div>
     <div class="st">
       <div class="st-head"><h3>Health check</h3><span class="who ns">ns</span></div>
@@ -2126,6 +2135,7 @@ curl -sI https://ns-main.&lt;tailnet&gt;.ts.net:8443 | head -1</pre><button clas
       <div class="st-head"><h3>Build B · Fixes and breadth</h3><span class="who ns">Nightshift</span></div>
       <div class="code"><pre>ns project add &lt;you&gt;/nightshift --prefix ns
 ns new ns-buildb --tier T3 "Build B from docs/build-plan.md and docs/review-1.md"</pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">No clash with your phase 3 clone: <code>ns project add</code> sees that <code>~/Coding/nightshift</code> already exists with the same origin and adopts it instead of cloning. Runs never work in the main checkout, only in worktrees, and the running Nightshift comes from <code>/opt/nightshift/&lt;tag&gt;</code>, so Build B can't break the version that's executing it. Build A ships Nightshift's own profile, so there's no onboarding step here.</p>
       <ul>
         <li>Everything in <code>docs/review-1.md</code>, first.</li>
         <li>Specialists: database-expert, data-analyst, ui-ux-designer, with their skills.</li>

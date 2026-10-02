@@ -130,7 +130,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 
 | Command | Behavior |
 |---|---|
-| `ns project add owner/repo --prefix p [--sandbox]` | Clone to `~/Coding/<repo>`, run the stacks' worktree setup in the main checkout, create `/srv/ns-space/<repo>/`, register in `~/.config/ns/projects.yaml`. If the repo has no profile, start an onboarding run that drafts one on the desk (`<prefix>-onboard`). `--sandbox` marks the project as a test target (R-E2E). |
+| `ns project add owner/repo --prefix p [--sandbox]` | Register a project. If `~/Coding/<repo>` already exists **and** its `origin` is `owner/repo`, adopt it as the main checkout (no clone, nothing overwritten); if it exists with another origin, stop with an error; otherwise clone it. Then run the stacks' worktree setup, create `/srv/ns-space/<repo>/`, and add it to `~/.config/ns/projects.yaml`. If the repo has no profile on its base branch, start the onboarding run `<prefix>-onboard` (R-ONB). `--sandbox` marks the project as a test target (R-E2E). |
 | `ns new <prefix>-<issue>` / `ns new <prefix> "text"` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. |
 | `ns ls` | One line per run: id, tier, phase, state, waiting-on, age. |
 | `ns attach <id>` | Attach to the run's tmux session. |
@@ -149,6 +149,17 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 - **R-CLI-1** All state is in `~/.config/ns/` (config, projects, tokens), the desk, and git. No hidden state elsewhere.
 - **R-CLI-2** Commands that change state are idempotent: running twice equals running once.
 - **R-CLI-3** No command prints a token. Tokens are passed via the environment only and never written to logs, the desk or git.
+- **R-CLI-4** The main checkout of a project is never used as a run's working tree: runs always work in worktrees. That is what lets the Nightshift repo be both the dev clone of phase 3 and a registered project in phase 5.
+
+### Onboarding run (R-ONB)
+
+`ns project add` starts it when the base branch has no `.claude/project-profile.yaml`. In Build A it is a T1-sized run with a fixed scope:
+
+- **R-ONB-1** It only **adds** files: `.claude/project-profile.yaml`, `.claude/ns-github.env`, and at most one domain skill draft (`.claude/skills/<prefix>-invariants/SKILL.md`). It never edits or deletes existing files. In particular it leaves `CLAUDE.md` and any existing `.claude/commands/` alone. Removing a project's old orchestration commands is a separate, explicitly requested run (Build B, B6).
+- **R-ONB-2** It derives values from the repo (commands from CI workflows and docs, stacks from detection, risk zones from security docs and ADRs) and marks every guess with `# guess:` in the draft.
+- **R-ONB-3** It publishes the drafts to the desk, runs `ns profile check` on them, and waits at a gate.
+- **R-ONB-4** `ns approve <prefix>-onboard` commits the (possibly edited) drafts to branch `nightshift/onboard` and opens a PR to the base branch. Nightshift never merges it.
+- **R-ONB-5** Until that PR is merged, `ns new` for the project refuses to start, with a message naming the PR.
 
 ## 6. Agents
 
@@ -257,13 +268,14 @@ Steps:
 5. Optional: the Cloudflare SSH CA (asks for the public key), principals file mapping to `ns`, `sshd -t` before reload.
 6. hcloud CLI for `ns`; asks for the lab project token and creates the context `nightshift-lab` (Build B uses it).
 7. ntfy topic (generates one if none), `NS_DESK_URL`, optional `NS_HEALTHCHECK_URL` in `~ns/.config/ns/env`.
-8. `ns`, `ns-gh` and helpers onto PATH (`/usr/local/bin` symlinks to the clone's tagged checkout).
+8. Install the release, not the dev clone: `git clone --branch <tag>` into `/opt/nightshift/<tag>` (owned by root, read-only for `ns`), point `/opt/nightshift/current` at it, and link `ns`, `ns-conductor`, `ns-notify` and `ns-gh` from `current/bin` into `/usr/local/bin`. `bootstrap.sh --upgrade <tag>` repeats this for a new tag; the previous one stays for rollback. Work in `~/Coding/nightshift` (Build B, any later change) therefore never affects the running version, and agents running as `ns` can't modify it.
 9. As `ns`: `claude plugin marketplace add <owner>/nightshift` pinned to the latest tag; install `ns` and `ns-python` at user scope.
 10. `ns-gc` timer; Remote Control tmux session.
 11. Ends by running `ns doctor` as `ns`.
 
 - **R-BS-1** Never prints or logs a token. Prompts use `read -rs`.
 - **R-BS-2** Tested by bats with `--check` on a clean container image where possible. The real run is Review 1.
+- **R-BS-3** Order matters for `ns-gh`: it reads `.claude/ns-github.env` from the default branch, so `ns-gh apply` on a project runs after that project's onboarding PR is merged (or again afterwards). `docs/setup.md` says so.
 
 ## 15. Documentation
 
