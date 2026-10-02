@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | p01-scaffold | merged | feature/build-a--p01-scaffold | 1 | |
 | p02-common | running | feature/build-a--p02-common | 1 | |
-| p03-docs-check | running | feature/build-a--p03-docs-check | 1 | |
+| p03-docs-check | merged | feature/build-a--p03-docs-check | 1 | |
 | p04-cli | pending | feature/build-a--p04-cli | 0 | |
 | p05-stack-python | pending | feature/build-a--p05-stack-python | 0 | |
 | p06-profile | pending | feature/build-a--p06-profile | 0 | |
