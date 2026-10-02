@@ -95,7 +95,7 @@ row dependabot_security_updates  true "$(api_or '{"enabled":false}' "repos/$REPO
 # ---------- 3. Actions
 WP=$(api_or '{}' "repos/$REPO/actions/permissions/workflow")
 row workflow_token_permissions   "$WORKFLOW_PERMISSIONS" "$(jq -r '.default_workflow_permissions // "unknown"' <<<"$WP")"
-row workflows_can_approve_prs    false                   "$(jq -r '.can_approve_pull_request_reviews // "unknown"' <<<"$WP")"
+row workflows_can_approve_prs    false                   "$(jq -r '(.can_approve_pull_request_reviews | if . == null then "unknown" else tostring end)' <<<"$WP")"
 AR=$(api_or '{}' "repos/$REPO/actions/permissions/artifact-and-log-retention")
 if [[ $(jq -r '.days // empty' <<<"$AR") ]]; then
   row artifact_retention_days "$ARTIFACT_RETENTION_DAYS" "$(jq -r .days <<<"$AR")"
