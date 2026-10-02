@@ -5,7 +5,7 @@ argument-hint: "<path to docs/<slug>-plan.md on its plan/<slug> branch>"
 
 Execute the plan at: **$ARGUMENTS**
 
-You are the orchestrator. You don't write feature code yourself; phase workers do. You keep the ledger, merge finished phases, run the final review and open one pull request. This is the local replacement for PrivacyFence's `/implement` (kept in `seed/implement.md` for reference): there are no cloud sessions here, so phases run as **subagents** in git worktrees on this machine.
+You are the orchestrator. You don't write feature code yourself; phase workers do. You keep the ledger, merge finished phases, run the final review and open one pull request. This is the local replacement for PrivacyFence's `/implement`: there are no cloud sessions here, so phases run as **subagents** in git worktrees on this machine.
 
 ## Ground rules
 

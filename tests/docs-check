@@ -12,7 +12,7 @@ SPEC15 = [
     "docs/projects.md", "docs/profile-reference.md", "docs/agents.md",
     "docs/development.md", "CHANGELOG.md", "docs/adr",
 ]
-SKIP_PREFIXES = ("seed/", "tests/fixtures/", ".claude/")
+SKIP_PREFIXES = ("tests/fixtures/", ".claude/")
 
 
 def git(root, *args):
