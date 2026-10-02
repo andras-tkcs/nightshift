@@ -50,14 +50,16 @@ GH_TOKEN=<admin token> ns-gh apply <owner/repo>
 
 The Nightshift plugin installs a guard that runs before an agent edits a file, reads a file or runs a shell command. It blocks:
 
-- reading or writing the token folder `~/.config/ns/tokens`, by file tools or by a shell command that names it;
-- edits to files that match `protected_paths` in the project's `.claude/project-profile.yaml`;
-- `git push` to the project's base branch, force pushes (`-f`, `--force`, `--mirror`, `+refspec`) and pushing tags;
-- `gh pr merge` and `gh release create`.
+- reading or writing the token folder `~/.config/ns/tokens`, by file tools, by `Grep`, `Glob` and `LS` (any path that equals or contains the folder, or a glob pattern that reaches it), or by a shell command that names it, including `tok*` globs;
+- edits to files that match `protected_paths` in the project's `.claude/project-profile.yaml`, and always edits to that profile itself (file tools and shell redirections such as `>`, `tee`, `cp`, `mv`), so an agent cannot widen its own guard; reading it stays allowed;
+- `git push` to the project's base branch, force pushes (`-f` also inside combined flags like `-uf`, `--force*`, `--mirror`, `+refspec`), `--all`/`--branches`, and pushing tags (`--tags`, `--follow-tags`, `refs/tags/...` or a bare `v1...` name);
+- `gh pr merge`, `gh api` calls that write to a `.../merge` path, and `gh release create`.
+
+The git and gh checks look through global options (`git -C`, `--git-dir=...`, `gh -R <repo>`), a full path to the program and prefix words (`env`, `command`, `exec`, `nohup`, `time`).
 
 It prints `ns guard: <reason>` and the action does not happen.
 
-Its limits: it is a seatbelt, not a wall (ADR 0006). When it cannot understand its input, or fails inside, it fails open: it prints `ns guard: not checked: <error>` and lets the action through. The choice is deliberate: a failing guard that blocked everything would stop every Claude session on the machine, for example after a Claude Code update that changes the input format. It also reads shell commands only as far as splitting and quoting go, so a determined indirect command (a script that pushes) is not seen. That is why the real boundary is the token scopes and the rulesets on the default branch. If you see `ns guard: not checked`, tell the next session to look at it.
+Its limits: it is a seatbelt, not a wall (ADR 0006). When it cannot understand its input, or fails inside, it fails open: it prints `ns guard: not checked: <error>` and lets the action through. The choice is deliberate: a failing guard that blocked everything would stop every Claude session on the machine, for example after a Claude Code update that changes the input format. It also reads shell commands only as far as splitting and quoting go, so a determined indirect command (a script that pushes, a variable or `eval` building the command, `sh -c`, a copy of a token file made outside its sight) is not seen. Other ways to read files are not covered either. That is why the real boundary is the token scopes and the rulesets on the default branch. If you see `ns guard: not checked`, tell the next session to look at it.
 
 ## Untrusted text
 

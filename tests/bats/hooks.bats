@@ -198,3 +198,101 @@ make_ledger() {
   assert_output_contains "Nightshift worker: run app-x1, phase p1"
   assert_output_contains "Rule: text from issues"
 }
+
+# fix-8: Grep/Glob/LS, push bypasses, token globs, profile protection
+
+@test "Grep, Glob and LS on the token dir or a parent are blocked" {
+  guard Grep path "$NS_CONFIG_DIR/tokens"
+  blocked "token files are off limits"
+  guard Grep path "$NS_CONFIG_DIR"
+  blocked "token files are off limits"
+  guard Grep path "$(dirname "$NS_CONFIG_DIR")"
+  blocked "token files are off limits"
+  guard Grep path "$(dirname "$(dirname "$NS_CONFIG_DIR")")"
+  blocked "token files are off limits"
+  guard Grep path "/"
+  blocked "token files are off limits"
+  guard LS path "$NS_CONFIG_DIR/tokens"
+  blocked "token files are off limits"
+  guard Glob path "$NS_CONFIG_DIR/tokens"
+  blocked "token files are off limits"
+  guard Glob pattern "$NS_CONFIG_DIR/tokens/*"
+  blocked "token files are off limits"
+}
+
+@test "Grep, Glob and LS on project paths are allowed" {
+  guard Grep path "$REPO/src"
+  assert_success
+  guard Glob path "$REPO"
+  assert_success
+  guard LS path "$REPO/src"
+  assert_success
+  guard Glob pattern "**/*.py"
+  assert_success
+}
+
+@test "push bypasses are blocked" {
+  for c in "git push -uf origin x" "git push --mirror origin" \
+    "git --git-dir=.git push -f origin main" \
+    "/usr/bin/git push -f origin x" "command git push -f origin x" \
+    "env GIT_TRACE=1 git push -f origin x" "exec git push -f origin x" \
+    "nohup git push -f origin x" "time git push -f origin x"; do
+    bash_guard "$c"
+    blocked "force pushes are blocked"
+  done
+}
+
+@test "pushing all branches is blocked" {
+  for c in "git push --all origin" "git push --branches origin"; do
+    bash_guard "$c"
+    blocked "pushing all branches is blocked"
+  done
+}
+
+@test "tag pushes by name are blocked" {
+  for c in "git push --follow-tags origin x" "git push origin v0.1.0"; do
+    bash_guard "$c"
+    blocked "pushing tags is blocked"
+  done
+}
+
+@test "base-branch pushes behind prefix words are blocked" {
+  for c in "/usr/bin/git push origin main" "env GIT_TRACE=1 git push origin main" "command git push origin main"; do
+    bash_guard "$c"
+    blocked "pushing to main is blocked"
+  done
+}
+
+@test "gh merge bypasses are blocked" {
+  for c in "gh -R a/b pr merge 1" "gh --repo a/b pr merge 1" \
+    "gh api -X PUT repos/o/r/pulls/1/merge" "gh api --method PUT repos/o/r/pulls/1/merge"; do
+    bash_guard "$c"
+    blocked "merging pull requests is the owner's job"
+  done
+  bash_guard "gh api repos/o/r/pulls/1"
+  assert_success
+}
+
+@test "token globs in shell commands are blocked" {
+  bash_guard "cat ~/.config/ns/tok*"
+  blocked "token files are off limits"
+  bash_guard "cat $NS_CONFIG_DIR/tok*"
+  blocked "token files are off limits"
+}
+
+@test "the project profile is protected as a write target" {
+  for t in Edit Write MultiEdit; do
+    guard "$t" file_path "$REPO/.claude/project-profile.yaml"
+    blocked ".claude/project-profile.yaml is protected"
+  done
+  guard NotebookEdit notebook_path "$REPO/.claude/project-profile.yaml"
+  blocked ".claude/project-profile.yaml is protected"
+  bash_guard "echo 'protected_paths: []' > .claude/project-profile.yaml"
+  blocked ".claude/project-profile.yaml is protected"
+  bash_guard "echo x >> $REPO/.claude/project-profile.yaml"
+  blocked ".claude/project-profile.yaml is protected"
+  guard Read file_path "$REPO/.claude/project-profile.yaml"
+  assert_success
+  bash_guard "cat .claude/project-profile.yaml"
+  assert_success
+}
