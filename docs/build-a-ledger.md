@@ -32,8 +32,8 @@
 | p27-doctor | merged | feature/build-a--p27-doctor | 1 | fix-1 repaired a failing fixture after merge |
 | p28-ns-gh | merged | feature/build-a--p28-ns-gh | 1 | open: ns-gh jq `//` treats false as missing (workflows_can_approve_prs); fixtures use string "false"; fix in final-review fixup |
 | p29-bootstrap | merged | feature/build-a--p29-bootstrap | 1 | open: apply_3 lacks loginctl enable-linger (check in Review 1); stat stub missing from fixtures/bin/README.md |
-| p29b-bootstrap-release | running | feature/build-a--p29b-bootstrap-release | 1 | |
-| p30-e2e-harness | pending | feature/build-a--p30-e2e-harness | 0 | |
+| p29b-bootstrap-release | merged | feature/build-a--p29b-bootstrap-release | 1 | open: tests/fixtures/bin/README.md lacks stat, loginctl stubs and RUNUSER_STUB_EXEC |
+| p30-e2e-harness | running | feature/build-a--p30-e2e-harness | 1 | |
 | p31-e2e-t0 | pending | feature/build-a--p31-e2e-t0 | 0 | |
 | p32-e2e-t1 | pending | feature/build-a--p32-e2e-t1 | 0 | |
 | p33-e2e-t2 | pending | feature/build-a--p33-e2e-t2 | 0 | |
