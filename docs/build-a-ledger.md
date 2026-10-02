@@ -7,9 +7,9 @@
 | p03-docs-check | merged | feature/build-a--p03-docs-check | 1 | |
 | p04-cli | merged | feature/build-a--p04-cli | 1 | |
 | p05-stack-python | running | feature/build-a--p05-stack-python | 1 | |
-| p06-profile | running | feature/build-a--p06-profile | 1 | |
+| p06-profile | merged | feature/build-a--p06-profile | 1 | |
 | p06b-profile-cli | pending | feature/build-a--p06b-profile-cli | 0 | |
-| p07-ledger | pending | feature/build-a--p07-ledger | 0 | |
+| p07-ledger | running | feature/build-a--p07-ledger | 1 | |
 | p08-project-add | pending | feature/build-a--p08-project-add | 0 | |
 | p09-run-new | pending | feature/build-a--p09-run-new | 0 | |
 | p10-run-inspect | pending | feature/build-a--p10-run-inspect | 0 | |
