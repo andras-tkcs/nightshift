@@ -109,6 +109,22 @@ ns resume --all
 
 `ns resume` restarts a parked or stopped run, or one that crashed (state `running` but no tmux session). It rebuilds a deleted run worktree from the run's branch (local, else `origin`), marks phases whose `Plan-Phase: <phase>` trailer is already on the feature branch as `merged`, resets `running` phases without a live worker to `pending`, sets the state to `running`, records a `resumed` event, pushes the ledger and starts the conductor in a new tmux session. A run that is already running prints `<id> is already running`; a `done` or `failed` run prints `<id> is <state>; nothing to resume`; a run waiting at a gate tells you to edit the desk documents and `ns approve` it. `--all` does this for every non-archived run that is parked, stopped or crashed and leaves the others alone.
 
+### ns drain
+
+```
+ns drain [--timeout <s>]
+```
+
+Run `ns drain` before a reboot. For every non-archived run that is `running` or `queued`, it sets `stop_requested` to `parked` (when the run has a tmux session) or parks the run directly (when it has none), then checks the ledgers every 10 seconds until no run is `running` and prints `parked: <ids>`. If that takes longer than `--timeout` (default 1800 seconds) it prints `still running: <ids>` and exits 1. Runs that are `waiting` at a gate are left alone.
+
+### ns up
+
+```
+ns up
+```
+
+Run `ns up` after a reboot. It runs `ns doctor` and keeps its exit code, starts the tmux session `rc` with `claude remote-control --spawn worktree` in `remote_control_dir` (from the config, else the first registered project's path) unless it already exists, then lists parked runs and the hint `ns resume --all`. `ns up` exits with the exit code of `ns doctor`.
+
 ### ns publish
 
 ```
