@@ -17,8 +17,8 @@ Workstreams in dependency order. The planner cuts them into phases and waves.
 | # | Workstream | Delivers | Spec | Depends on |
 |---|---|---|---|---|
 | A1 | Scaffold | Repo layout, marketplace + `ns` and `ns-python` plugin manifests, `README.md` skeleton, CI workflow (shellcheck, bats, plugin validate), `CHANGELOG.md` | §3, R-TST-1 | — |
-| A2 | Profile | `schema/profile.schema.json`, `ns profile check`, generator for `docs/profile-reference.md`, schema tests, example profiles (sandbox, a draft for PrivacyFence in `templates/`) | §4 | A1 |
-| A3 | CLI core | `bin/ns` dispatcher, config/registry/token handling, `project add`, `new`, `ls`, `attach`, `status`, `stop`, `help`; bats tests | §5, R-CLI-* | A1 |
+| A2 | Profile | `schema/profile.schema.json`, `ns profile check`, generator for `docs/profile-reference.md`, schema tests, example profiles (sandbox, a draft for PrivacyFence in `templates/`), and **Nightshift's own** `.claude/project-profile.yaml` and `.claude/ns-github.env`, so registering this repo in phase 5 needs no onboarding run | §4 | A1 |
+| A3 | CLI core | `bin/ns` dispatcher, config/registry/token handling, `project add` (adopts an existing clone, R-CLI-4), `new`, `ls`, `attach`, `status`, `stop`, `help`; the onboarding run (R-ONB); bats tests | §5, R-CLI-*, R-ONB | A1 |
 | A4 | Desk and notify | `ns publish`, `ns approve` (diff + commit + `--yes` for sandbox only), `index.md`, `ns-notify` | §10 | A3 |
 | A5 | Ledger | Ledger format, read/write library, checkpoint hook, resume algorithm, tests incl. corrupted/partial ledger | §8, R-HK-2 | A3 |
 | A6 | Guard and session hooks | `guard` and `session-start` hooks with tests | R-HK-1, R-HK-3, R-SEC-* | A2 |
@@ -28,7 +28,7 @@ Workstreams in dependency order. The planner cuts them into phases and waves.
 | A10 | T2/T3 execution | `/ns:implement` (ported from the seed orchestrator onto the conductor), integrator agent, `/ns:dod` (ported), ci-dispatch skill (ported from steward), researcher and sec-compliance agents, HTML handoff report template | §6, §9, R-CON-5/6 | A8, A9 |
 | A11 | Operations | `ns drain`, `up`, `resume`, `gc` (with `--dry-run`), `doctor`, systemd user unit and timer files | §5, §12 | A9 |
 | A12 | GitHub settings | `bin/ns-gh` from the draft, gh stub, tests | §13 | A1 |
-| A13 | Bootstrap | `bin/bootstrap.sh` with `--check`, tests of `--check`, Caddyfile and unit templates | §14 | A4, A11 |
+| A13 | Bootstrap | `bin/bootstrap.sh` with `--check` and `--upgrade <tag>`, release install under `/opt/nightshift/<tag>`, tests of `--check`, Caddyfile and unit templates | §14, R-BS-* | A4, A11 |
 | A14 | E2E harness | `tests/e2e/` runner, `tests/fixtures/sandbox-base/`, scenarios R-E2E-1…5, cleanup | §16 | A10, A11 |
 | A15 | Documentation | All files of §15 except `docs/stacks.md`, `docs-check` test, `README.md` final, `docs/architecture.md` from the architecture page | §15 | all; may run alongside A12–A14 |
 | A16 | Release | Tag `v0.1.0`, CHANGELOG entry, `manual_after` checklist = phase 4 of the architecture page | R-LAY-3 | A14, A15 |
