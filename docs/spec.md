@@ -225,6 +225,13 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 - **R-NOT-1** `ns-notify "<text>" [url]` posts to `ntfy.sh/$NS_NTFY_TOPIC`. Messages contain the run id, the gate and a desk link, never code, findings or tokens.
 - **R-NOT-2** If `NS_HEALTHCHECK_URL` is set, `ns gc` pings it on success.
 
+Self-hosted ntfy (R-NOT-3 at Review 1, the rest in Build B):
+
+- **R-NOT-3** `ns-notify` posts to `$NS_NTFY_URL/$NS_NTFY_TOPIC`, with `NS_NTFY_URL` from `~/.config/ns/env` (default `https://ntfy.sh`, so R-NOT-1 still holds when unset). If `~/.config/ns/tokens/ntfy` exists, it sends `Authorization: Bearer <token>`, passing the header to curl from a file or stdin so the token never appears in argv, logs or error output. A failed post (any non-2xx) is logged and returns non-zero, but never stops a run.
+- **R-NOT-4** `bootstrap.sh` installs ntfy from `archive.ntfy.sh` and writes `/etc/ntfy/server.yml`: `listen-http: 127.0.0.1:2586`, `base-url` = the Caddy address below, `behind-proxy: true`, `auth-default-access: deny-all`, `upstream-base-url: https://ntfy.sh` (iOS wake-ups carry only a message ID and a topic hash), `web-root: disable`, no attachments. Caddy serves it on `ns-main.<tailnet>.ts.net:8444` with the Tailscale certificate. Users: `ns-notify` (write-only on the topic, with a token stored in `~/.config/ns/tokens/ntfy`) and `phone` (read-only). Safe to rerun; it never replaces existing users or tokens.
+- **R-NOT-5** `ns doctor` checks the ntfy server: the service is running, an anonymous publish is refused (403), and a test publish with the token succeeds. It warns when `NS_NTFY_URL` still points at `ntfy.sh`.
+- **R-NOT-6** With a self-hosted ntfy, `NS_HEALTHCHECK_URL` is required: `ns doctor` fails without it, because a dead ns-main can no longer report itself.
+
 ## 11. Hooks and guard rails
 
 - **R-HK-1** `guard` (PreToolUse on Edit/Write/Bash): blocks edits to `protected_paths`, blocks `git push` to `git.base_branch`, blocks force pushes, blocks reads of `~/.config/ns/tokens/`.
@@ -318,4 +325,4 @@ Tokens and an estimated cost per run, phase, agent and model. On a Claude subscr
 
 ## 17. Build A and Build B
 
-`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and usage monitoring (§16a). Those are Build B. PrivacyFence is added only after Build B is installed; its cleanup (removing its own orchestration commands, the `live-qa` patch) is ordinary runs at Review 2, not part of either build.
+`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and usage monitoring (§16a) and self-hosted ntfy (R-NOT-3 to R-NOT-6). Those are Build B, except R-NOT-3, which is a T1 run at Review 1. PrivacyFence is added only after Build B is installed; its cleanup (removing its own orchestration commands, the `live-qa` patch) is ordinary runs at Review 2, not part of either build.

@@ -1839,6 +1839,77 @@ unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
       <div class="code"><pre>ns doctor          <span class="c"># services, logins, tokens, desk, tunnel, timers, disk</span></pre><button class="copy" type="button">Copy</button></div>
       <p class="note">Done when <code>ns doctor</code> is green, <code>https://ns-desk.&lt;domain&gt;</code> opens on the work laptop and on the iPad, and a test ntfy message arrives.</p>
     </div>
+    <div class="st">
+      <div class="st-head"><h3>Self-hosted ntfy</h3><span class="who root">root</span><span class="who ns">ns</span><span class="who ui">phone</span></div>
+      <p>Notifications from your own server instead of the public ntfy.sh. The server only listens on 127.0.0.1; Caddy serves it on the tailnet with the Tailscale certificate, so nothing is public, and nobody can read or post without a login. Do it by hand now; Build B moves it into <code>bootstrap.sh</code> and <code>ns doctor</code> (R-NOT-4 to R-NOT-6).</p>
+      <ul>
+        <li><b>iPhone and iPad:</b> only ntfy.sh can send iOS pushes, so your server sends it a wake-up with just a message ID and a hash of the topic. The app then fetches the text from ns-main over Tailscale. Without Tailscale on, nothing arrives, so turn on <b>VPN On Demand</b> in the Tailscale app.</li>
+        <li><b>Android:</b> no relay; the app keeps its own connection to your server.</li>
+      </ul>
+      <h4 class="sub">Install and configure, as root</h4>
+      <div class="code"><pre><span class="c"># ntfy from its own apt repository</span>
+mkdir -p /etc/apt/keyrings
+curl -fsSL -o /etc/apt/keyrings/ntfy.gpg https://archive.ntfy.sh/apt/keyring.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/ntfy.gpg] https://archive.ntfy.sh/apt stable main" \
+  &gt; /etc/apt/sources.list.d/ntfy.list
+apt update &amp;&amp; apt -y install ntfy
+
+TS=ns-main.&lt;tailnet&gt;.ts.net
+install -d -o ntfy -g ntfy /var/cache/ntfy /var/lib/ntfy
+cat &gt; /etc/ntfy/server.yml &lt;&lt;EOF
+base-url: "https://$TS:8444"
+listen-http: "127.0.0.1:2586"
+behind-proxy: true
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "24h"
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+upstream-base-url: "https://ntfy.sh"
+web-root: "disable"
+EOF
+systemctl enable --now ntfy
+systemctl restart ntfy
+
+<span class="c"># Caddy: one more block next to the desk and the HTML listener</span>
+cat &gt;&gt; /etc/caddy/Caddyfile &lt;&lt;EOF
+
+$TS:8444 {
+    tls {
+        get_certificate tailscale
+    }
+    reverse_proxy 127.0.0.1:2586
+}
+EOF
+caddy validate --config /etc/caddy/Caddyfile &amp;&amp; systemctl reload caddy</pre><button class="copy" type="button">Copy</button></div>
+      <h4 class="sub">Users and the token, as root</h4>
+      <div class="code"><pre><span class="c"># the topic bootstrap.sh generated (read, not sourced: the file belongs to ns)</span>
+TOPIC=$(sed -nE 's/^(export )?NS_NTFY_TOPIC="?([^"]*)"?$/\2/p' ~ns/.config/ns/env)
+echo "$TOPIC"
+
+ntfy user add ns-notify                       <span class="c"># asks for a password; pick a long random one, you won't need it</span>
+ntfy access ns-notify "$TOPIC" write-only
+ntfy token add --label=ns-main ns-notify      <span class="c"># prints tk_…; copy it for the next block</span>
+
+ntfy user add phone                           <span class="c"># the password you'll type into the app</span>
+ntfy access phone "$TOPIC" read-only</pre><button class="copy" type="button">Copy</button></div>
+      <h4 class="sub">Store the token and the address, as ns</h4>
+      <div class="code"><pre>(umask 077; cat &gt; ~/.config/ns/tokens/ntfy)   <span class="c"># paste tk_…, then Ctrl-D</span>
+echo 'NS_NTFY_URL=https://ns-main.&lt;tailnet&gt;.ts.net:8444' &gt;&gt; ~/.config/ns/env
+
+<span class="c"># test: refused without the token, accepted with it</span>
+. ~/.config/ns/env
+curl -s -o /dev/null -w '%{http_code}\n' -d test "$NS_NTFY_URL/$NS_NTFY_TOPIC"       <span class="c"># 403</span>
+curl -s -H @&lt;(printf 'Authorization: Bearer %s\n' "$(cat ~/.config/ns/tokens/ntfy)") \
+  -d "ns-main ntfy works" "$NS_NTFY_URL/$NS_NTFY_TOPIC" | jq -r .id                 <span class="c"># a message id</span></pre><button class="copy" type="button">Copy</button></div>
+      <h4 class="sub">Phone</h4>
+      <ol>
+        <li>Tailscale app: signed in, <b>VPN On Demand</b> on.</li>
+        <li>ntfy app → Settings → <b>Users</b> → add a user for <code>https://ns-main.&lt;tailnet&gt;.ts.net:8444</code>: <code>phone</code> and its password.</li>
+        <li><b>+</b> → the topic → <b>Use another server</b> → the same address, written exactly as <code>base-url</code> (iOS matches on it). Then send the test above again; it should arrive.</li>
+        <li>Delete the old ntfy.sh subscription once <code>ns-notify</code> uses your server (Review 1, below).</li>
+      </ol>
+      <p class="note">Until the Review 1 T1 is installed, <code>ns-notify</code> still posts to ntfy.sh and ignores these two settings. If you rerun <code>bootstrap.sh</code> before Build B, check the <code>:8444</code> block is still in the Caddyfile. ntfy updates come with <code>apt upgrade</code>, like Caddy. Set up the outside health check from "Knowing the server is down" now: with your own ntfy, a dead ns-main can't tell you so.</p>
+    </div>
     <div class="st" style="border-color:var(--gate-line);background:var(--gate-soft)">
       <div class="st-head"><h3 style="color:var(--gate)">Review 1 · First real work, on Nightshift itself</h3><span class="who ui">you · one evening</span></div>
       <p>The first real runs go to Nightshift's own repo, not PrivacyFence: PrivacyFence comes in phase 5, onboarded once with the finished tools for all its stacks and platforms.</p>
@@ -1849,15 +1920,28 @@ unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
       <div class="code"><pre>ns project add &lt;you&gt;/nightshift --prefix ns</pre><button class="copy" type="button">Copy</button></div>
       <p class="note">No clash with your phase 3 clone: <code>ns project add</code> sees that <code>~/Coding/nightshift</code> already exists with the same origin and adopts it instead of cloning. Runs never work in the main checkout, only in worktrees, and the running Nightshift comes from <code>/opt/nightshift/&lt;tag&gt;</code>, so a run on this repo can't break the version that's executing it.</p>
       <ol start="3">
-        <li>Before you go to bed, start one real T1 and one real T2 on Nightshift. Good candidates: for T1, a fix you noticed in <code>docs/setup.md</code> during this phase; for T2, the first slice of usage monitoring (R-USE-1 and R-USE-5: usage in the ledger and <code>ns usage</code>).</li>
+        <li>Before you go to bed, start three real runs on Nightshift: a T1 with a fix you noticed in <code>docs/setup.md</code> during this phase, a T2 with the first slice of usage monitoring (R-USE-1 and R-USE-5: usage in the ledger and <code>ns usage</code>), and a T1 that points <code>ns-notify</code> at your own ntfy server (R-NOT-3).</li>
       </ol>
       <div class="code"><pre>ns new ns-setup-doc --tier T1 "&lt;the docs/setup.md fix&gt;"
-ns new ns-usage --tier T2 "Usage monitoring, first slice: spec §16a R-USE-1 and R-USE-5"</pre><button class="copy" type="button">Copy</button></div>
+ns new ns-usage --tier T2 "Usage monitoring, first slice: spec §16a R-USE-1 and R-USE-5"
+ns new ns-ntfy --tier T1 "ns-notify for a self-hosted ntfy: spec R-NOT-3"</pre><button class="copy" type="button">Copy</button></div>
       <ol start="4">
-        <li>Next evening, read both handoff reports on the desk and merge the two PRs yourself if they're good, so Build B builds on them. Also judge the docs as a newcomer would: could you have done this phase from <code>docs/setup.md</code> alone?</li>
+        <li>Next evening, read the three handoff reports on the desk and merge the PRs yourself if they're good, so Build B builds on them. Also judge the docs as a newcomer would: could you have done this phase from <code>docs/setup.md</code> alone?</li>
+        <li>Install the result. The running version comes from a tag, so merging alone changes nothing on the server:</li>
+      </ol>
+      <div class="code"><pre><span class="c"># as ns, in ~/Coding/nightshift, after the merges</span>
+git switch main &amp;&amp; git pull
+git tag -a v0.1.1 -m "v0.1.1: Review 1 fixes" &amp;&amp; git push origin v0.1.1
+
+<span class="c"># as root</span>
+~ns/Coding/nightshift/bin/bootstrap.sh --upgrade v0.1.1
+
+<span class="c"># as ns: the test message should now arrive from your own server</span>
+ns-notify "ns-main: self-hosted ntfy is live"</pre><button class="copy" type="button">Copy</button></div>
+      <ol start="6">
         <li>Write what you want changed into <code>docs/review-1.md</code> on the desk. It is Build B's first input.</li>
       </ol>
-      <p class="note">What this review doesn't cover: <code>ns-python</code> and a repo with risk zones, platforms and QA credentials. PrivacyFence is the first test of those, so read its first runs in phase 5 more carefully.</p>
+      <p class="note">You tag here, not an agent: Nightshift never tags outside a build's release phase. What this review doesn't cover: <code>ns-python</code> and a repo with risk zones, platforms and QA credentials. PrivacyFence is the first test of those, so read its first runs in phase 5 more carefully.</p>
     </div>
     <details class="st">
       <summary style="cursor:pointer;font-weight:600">Reference: what bootstrap.sh does, step by step (the manual way)</summary>
@@ -1890,7 +1974,7 @@ EOF
 echo "export NS_NTFY_TOPIC=ns-$(openssl rand -hex 8)" &gt;&gt; ~/.bashrc &amp;&amp; source ~/.bashrc
 echo $NS_NTFY_TOPIC                    <span class="c"># subscribe to this topic in the ntfy app</span>
 curl -d "ns-main is alive" ntfy.sh/$NS_NTFY_TOPIC</pre><button class="copy" type="button">Copy</button></div>
-      <p class="note">An ntfy.sh topic is public to anyone who knows the name. Keep messages to "gate reached, run 123", never code or findings.</p>
+      <p class="note">An ntfy.sh topic is public to anyone who knows the name. Keep messages to "gate reached, run 123", never code or findings. The self-hosted server in phase 4 replaces this.</p>
     </div>
     <div class="st">
       <div class="st-head"><h3>Optional: reading view in the Claude app</h3><span class="who ns">ns on ns-main</span></div>
@@ -2131,6 +2215,7 @@ curl -sI https://ns-main.&lt;tailnet&gt;.ts.net:8443 | head -1</pre><button clas
         <li>Stacks: <code>ns-node</code>, <code>ns-web</code>, <code>ns-shell</code>, <code>ns-powershell</code>; platform dispatch for macOS and Windows code.</li>
         <li><code>/ns:init</code>, <code>/ns:onboard</code> (which the onboarding run of <code>ns project add</code> then uses), the lab helper, <code>ns gc</code>.</li>
         <li>Usage monitoring (spec §16a), whatever Review 1 didn't already do.</li>
+        <li>Self-hosted ntfy in <code>bootstrap.sh</code> and <code>ns doctor</code>, adopting what you set up by hand in phase 4, and the outside health check made required.</li>
         <li>Documentation updated for everything new, under the same docs check.</li>
       </ul>
     </div>
@@ -2246,8 +2331,8 @@ ns new pf-live-qa --tier T1 "Prepare the live-qa environment change for the QA w
     <div class="panel">
       <h3>Knowing the server is down</h3>
       <ul>
-        <li>ntfy messages come from ns-main itself, so a dead server sends nothing.</li>
-        <li>Add a free dead-man's switch such as healthchecks.io: <code>ns gc</code> pings it daily, and a missed ping emails you.</li>
+        <li>ntfy messages come from ns-main itself, and with the self-hosted ntfy the server is ns-main too, so a dead server sends nothing.</li>
+        <li>Add a free dead-man's switch such as healthchecks.io and put its ping URL in <code>NS_HEALTHCHECK_URL</code>: <code>ns gc</code> pings it daily, and a missed ping emails you. Required once ntfy is self-hosted (R-NOT-6).</li>
       </ul>
     </div>
     <div class="panel">
