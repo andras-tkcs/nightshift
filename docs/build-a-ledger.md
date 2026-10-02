@@ -9,7 +9,7 @@
 | p05-stack-python | merged | feature/build-a--p05-stack-python | 1 | |
 | p06-profile | merged | feature/build-a--p06-profile | 1 | |
 | p06b-profile-cli | merged | feature/build-a--p06b-profile-cli | 1 | |
-| p07-ledger | running | feature/build-a--p07-ledger | 1 | |
+| p07-ledger | merged | feature/build-a--p07-ledger | 1 | |
 | p08-project-add | running | feature/build-a--p08-project-add | 1 | |
 | p09-run-new | pending | feature/build-a--p09-run-new | 0 | |
 | p10-run-inspect | pending | feature/build-a--p10-run-inspect | 0 | |
@@ -17,7 +17,7 @@
 | p12-resume | pending | feature/build-a--p12-resume | 0 | |
 | p13-desk | pending | feature/build-a--p13-desk | 0 | |
 | p14-approve | pending | feature/build-a--p14-approve | 0 | |
-| p15-hooks | pending | feature/build-a--p15-hooks | 0 | |
+| p15-hooks | running | feature/build-a--p15-hooks | 1 | |
 | p16-conductor-loop | pending | feature/build-a--p16-conductor-loop | 0 | |
 | p17-core-agents | merged | feature/build-a--p17-core-agents | 1 | |
 | p18-run-skill | pending | feature/build-a--p18-run-skill | 0 | |
