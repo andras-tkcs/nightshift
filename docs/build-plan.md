@@ -1,6 +1,6 @@
 # Build plan
 
-Input for `/make-plan`. It turns this into `docs/build-a-plan.md` with an implementation manifest that `/implement-local` executes. Requirements are in `docs/spec.md` and referenced by ID.
+Input for `/make-plan`. It turns this into a plan document with an implementation manifest that `/implement-local` executes. Requirements are in `docs/spec.md` and referenced by ID.
 
 ## Constraints for both builds
 

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andras-tkcs/nightshift/schema/ledger.schema.json",
+  "title": "Nightshift run ledger",
+  "description": "One ledger per run, .nightshift/runs/<id>/ledger.yaml, committed on the run branch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "project", "request", "tier", "tier_source", "tier_recommended", "tags", "state", "gate", "step", "stop_requested", "branch", "feature_branch", "pr", "created", "updated", "budget", "phases", "events"],
+  "$defs": {
+    "time": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "UTC timestamp, YYYY-MM-DDTHH:MM:SSZ." },
+    "tier": { "enum": [null, "T0", "T1", "T2", "T3"] },
+    "nullable_string": { "type": ["string", "null"] }
+  },
+  "properties": {
+    "version": { "const": 1, "description": "Ledger format version." },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9]{0,9}-([0-9]+|x[0-9]+|onboard)$", "description": "Run id: <prefix>-<n>, <prefix>-x<k> or <prefix>-onboard." },
+    "project": { "type": "string", "minLength": 1, "description": "Project name." },
+    "request": {
+      "description": "What was asked for: exactly one of issue or text.",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["issue"], "properties": { "issue": { "type": "integer", "minimum": 1 } } },
+        { "type": "object", "additionalProperties": false, "required": ["text"], "properties": { "text": { "type": "string", "minLength": 1 } } }
+      ]
+    },
+    "tier": { "$ref": "#/$defs/tier", "description": "Run tier, null until chosen." },
+    "tier_source": { "enum": [null, "triage", "owner"], "description": "Who chose the tier." },
+    "tier_recommended": { "$ref": "#/$defs/tier", "description": "Triage's own recommendation." },
+    "tags": { "type": "array", "items": { "type": "string" }, "description": "Tags from triage." },
+    "state": { "enum": ["queued", "running", "waiting", "parked", "stopped", "done", "failed"], "description": "Run state." },
+    "gate": { "enum": [null, "1", "1.5", "2"], "description": "Gate the run is waiting at." },
+    "step": { "enum": ["intake", "triage", "discovery", "gate1", "implement", "phases", "board", "integrate", "onboard", "done"], "description": "Current step." },
+    "stop_requested": { "enum": [null, "stopped", "parked"], "description": "Pending stop request." },
+    "branch": { "type": "string", "minLength": 1, "description": "Run branch holding the ledger." },
+    "feature_branch": { "$ref": "#/$defs/nullable_string", "description": "Code branch, set when created." },
+    "pr": { "$ref": "#/$defs/nullable_string", "description": "Pull request URL." },
+    "created": { "$ref": "#/$defs/time", "description": "Creation time." },
+    "updated": { "$ref": "#/$defs/time", "description": "Time of the last write." },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["used", "limit", "paused", "since"],
+      "description": "Time budget in hours.",
+      "properties": {
+        "used": { "type": "number", "minimum": 0, "description": "Hours used." },
+        "limit": { "type": ["number", "null"], "minimum": 0, "description": "Hours allowed, null until a tier is set." },
+        "paused": { "type": "boolean", "description": "True while the clock is paused (usage limit)." },
+        "since": { "$ref": "#/$defs/time", "description": "Start of the interval not yet added to used." }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "description": "Implementation phases.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "state", "branch", "worktree", "attempts", "review_rounds"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string" },
+          "state": { "enum": ["pending", "queued", "running", "review", "merged", "failed", "blocked"] },
+          "branch": { "$ref": "#/$defs/nullable_string" },
+          "worktree": { "$ref": "#/$defs/nullable_string" },
+          "attempts": { "type": "integer", "minimum": 0 },
+          "review_rounds": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "description": "Append-only event log.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["time", "type", "note"],
+        "properties": {
+          "time": { "$ref": "#/$defs/time" },
+          "type": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

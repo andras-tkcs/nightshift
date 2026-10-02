@@ -1,0 +1,5 @@
+0	pr-merged.json	^pr view https://github.com/andras-tkcs/nightshift-sandbox/pull/101 --json state$
+0	pr-closed.json	^pr view https://github.com/andras-tkcs/nightshift-sandbox/pull/102 --json state$
+0	pr-open.json	^pr view https://github.com/andras-tkcs/nightshift-sandbox/pull/103 --json state$
+1	-	^pr view https://github.com/andras-tkcs/nightshift-sandbox/pull/106 --json state$
+0	pr-merged.json	^pr view https://github.com/acme/nightshift-sandbox/pull/104 --json state$

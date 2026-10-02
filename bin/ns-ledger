@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# ns-ledger: read and update a Nightshift run ledger. See docs/ledger.md.
+set -euo pipefail
+
+NS_HOME="${NS_HOME:-$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")}"
+export NS_HOME
+export NS_CMD="ns-ledger"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/common.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/ledger.sh"
+
+usage() {
+  cat <<'EOF'
+usage: ns-ledger <subcommand> <ledger> [args]
+
+subcommands:
+  init <ledger> --id <id> --project <p> (--issue <n> | --text <t>) --branch <b>
+  get <ledger> [jq-filter]
+  set <ledger> <jq-program>
+  event <ledger> <type> <note>
+  state <ledger> <state> [--gate <g> | --no-gate] [--note <text>]
+  tier <ledger> <T> --source triage|owner --hours <h> [--recommended <T>] [--tags <a,b>]
+  checkpoint <ledger> [--push]
+  validate <ledger>
+  budget-exceeded <ledger>
+
+Every write holds a lock on <ledger>.lock and validates against
+schema/ledger.schema.json. A corrupt ledger is restored from HEAD. See docs/ledger.md.
+EOF
+}
+
+# lock <ledger>: take the exclusive lock for the rest of the process.
+lock() {
+  exec 9>"$1.lock"
+  flock -w 30 9 || ns_die "ledger busy"
+}
+
+# event_filter <type> <note>: filter reading JSON on stdin, writing JSON with the event added.
+event_filter() {
+  jq -c --arg now "$(ns_now)" --arg type "$1" --arg note "$2" \
+    '.updated = $now | .events += [{time: $now, type: $type, note: $note}]'
+}
+
+git_retry() {
+  local try out
+  for try in 1 2 3; do
+    if out="$(git "$@" 2>&1)"; then
+      return 0
+    fi
+    if [[ $out == *index.lock* ]] && [ "$try" -lt 3 ]; then
+      sleep 1
+      continue
+    fi
+    ns_die "git $1 failed: ${out%%$'\n'*}"
+  done
+}
+
+cmd_init() {
+  local ledger="$1" id="" project="" issue="" text="" branch="" dir now
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --id) id="${2:?--id needs a value}"; shift 2 ;;
+      --project) project="${2:?--project needs a value}"; shift 2 ;;
+      --issue) issue="${2:?--issue needs a value}"; shift 2 ;;
+      --text) text="${2:?--text needs a value}"; shift 2 ;;
+      --branch) branch="${2:?--branch needs a value}"; shift 2 ;;
+      *) ns_usage "ns-ledger init <ledger> --id <id> --project <p> (--issue <n> | --text <t>) --branch <b>" ;;
+    esac
+  done
+  [ -n "$id" ] && [ -n "$project" ] && [ -n "$branch" ] || ns_usage "ns-ledger init <ledger> --id <id> --project <p> (--issue <n> | --text <t>) --branch <b>"
+  if [ -n "$issue" ] && [ -n "$text" ]; then ns_die "give --issue or --text, not both" 2; fi
+  if [ -z "$issue" ] && [ -z "$text" ]; then ns_die "give --issue or --text" 2; fi
+  if [ -n "$issue" ] && ! [[ $issue =~ ^[0-9]+$ ]]; then ns_die "--issue must be a number" 2; fi
+  dir="$(dirname "$ledger")"
+  mkdir -p "$dir"
+  lock "$ledger"
+  [ ! -e "$ledger" ] || ns_die "ledger exists: $ledger"
+  now="$(ns_now)"
+  if jq -n -c --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
+    --arg branch "$branch" --arg now "$now" '{
+      version: 1, id: $id, project: $project,
+      request: (if $issue != "" then {issue: ($issue | tonumber)} else {text: $text} end),
+      tier: null, tier_source: null, tier_recommended: null, tags: [],
+      state: "queued", gate: null, step: "intake", stop_requested: null,
+      branch: $branch, feature_branch: null, pr: null,
+      created: $now, updated: $now,
+      budget: {used: 0, limit: null, paused: false, since: $now},
+      phases: [],
+      events: [{time: $now, type: "created", note: ("run " + $id + " created")}]
+    }' | ns_ledger_write "$ledger"; then
+    printf '*.lock\n*.tmp.*\n' >"$dir/.gitignore"
+  else
+    rmdir "$dir" 2>/dev/null || true
+    exit 1
+  fi
+}
+
+cmd_get() {
+  local ledger="$1" filter="${2:-}"
+  if [ -n "$filter" ]; then
+    ns_ledger_read "$ledger" | jq -r "$filter"
+  else
+    ns_ledger_read "$ledger" | jq .
+  fi
+}
+
+cmd_set() {
+  local ledger="$1" prog="${2:?usage: ns-ledger set <ledger> <jq-program>}"
+  ns_ledger_read "$ledger" |
+    jq -c --arg now "$(ns_now)" "($prog) | .updated = \$now" |
+    ns_ledger_write "$ledger"
+}
+
+cmd_event() {
+  local ledger="$1" type="${2:?usage: ns-ledger event <ledger> <type> <note>}" note="${3:?usage: ns-ledger event <ledger> <type> <note>}"
+  ns_ledger_read "$ledger" | event_filter "$type" "$note" | ns_ledger_write "$ledger"
+}
+
+cmd_state() {
+  local ledger="$1" state="${2:?usage: ns-ledger state <ledger> <state> [--gate <g>|--no-gate] [--note <text>]}" gate="" nogate=0 note="" msg
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --gate) gate="${2:?--gate needs a value}"; shift 2 ;;
+      --no-gate) nogate=1; shift ;;
+      --note) note="${2:?--note needs a value}"; shift 2 ;;
+      *) ns_usage "ns-ledger state <ledger> <state> [--gate <g>|--no-gate] [--note <text>]" ;;
+    esac
+  done
+  msg="$state"
+  [ -z "$gate" ] || msg="$msg gate $gate"
+  [ -z "$note" ] || msg="$msg: $note"
+  ns_ledger_read "$ledger" |
+    jq -c --arg s "$state" --arg g "$gate" --argjson ng "$nogate" \
+      '.state = $s | (if $g != "" then .gate = $g elif $ng == 1 then .gate = null else . end)' |
+    event_filter state "$msg" |
+    ns_ledger_write "$ledger"
+}
+
+cmd_tier() {
+  local ledger="$1" tier="${2:?usage: ns-ledger tier <ledger> <T> --source triage|owner --hours <h>}" source="" hours="" rec="" tags=""
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source) source="${2:?--source needs a value}"; shift 2 ;;
+      --hours) hours="${2:?--hours needs a value}"; shift 2 ;;
+      --recommended) rec="${2:?--recommended needs a value}"; shift 2 ;;
+      --tags) tags="${2:?--tags needs a value}"; shift 2 ;;
+      *) ns_usage "ns-ledger tier <ledger> <T> --source triage|owner --hours <h> [--recommended <T>] [--tags <a,b>]" ;;
+    esac
+  done
+  [ -n "$source" ] && [ -n "$hours" ] || ns_usage "ns-ledger tier <ledger> <T> --source triage|owner --hours <h> [--recommended <T>] [--tags <a,b>]"
+  [[ $hours =~ ^[0-9]+([.][0-9]+)?$ ]] || ns_die "--hours must be a number" 2
+  ns_ledger_read "$ledger" |
+    jq -c --arg t "$tier" --arg s "$source" --argjson h "$hours" --arg r "$rec" --arg tags "$tags" \
+      '.tier = $t | .tier_source = $s | .budget.limit = $h
+       | (if $r != "" then .tier_recommended = $r else . end)
+       | (if $tags != "" then .tags = ($tags | split(",")) else . end)' |
+    event_filter tier "$tier ($source, $hours h)" |
+    ns_ledger_write "$ledger"
+}
+
+cmd_checkpoint() {
+  local ledger="$1" push=0 json now state id branch dir wt msg
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --push) push=1; shift ;;
+      *) ns_usage "ns-ledger checkpoint <ledger> [--push]" ;;
+    esac
+  done
+  now="$(ns_now)"
+  json="$(ns_ledger_read "$ledger" | jq -c --arg now "$now" '
+    (if .state == "running" and (.budget.paused | not)
+     then .budget.used = ((.budget.used + (($now | fromdateiso8601) - (.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100
+     else . end)
+    | .budget.since = $now | .updated = $now')"
+  printf '%s\n' "$json" | ns_ledger_write "$ledger"
+  state="$(jq -r .state <<<"$json")"
+  id="$(jq -r .id <<<"$json")"
+  branch="$(jq -r .branch <<<"$json")"
+  dir="$(readlink -f "$(dirname "$ledger")")"
+  wt="$(ns_ledger_worktree "$ledger")" || ns_die "$ledger is not inside a git worktree"
+  git_retry -C "$wt" add -- "$dir"
+  if ! git -C "$wt" diff --cached --quiet -- "$dir"; then
+    msg="ns-ledger: $id $state"
+    git_retry -C "$wt" commit -q -m "$msg" -- "$dir"
+  fi
+  if [ "$push" -eq 1 ]; then
+    local err
+    if ! err="$(git -C "$wt" push -q origin "HEAD:refs/heads/$branch" 2>&1)"; then
+      err="${err%%$'\n'*}"
+      ns_ledger_read "$ledger" | event_filter push-failed "${err:-push failed}" | ns_ledger_write "$ledger"
+      ns_warn "push failed: $err"
+    fi
+  fi
+}
+
+cmd_validate() {
+  ns_ledger_read "$1" >/dev/null
+}
+
+cmd_budget_exceeded() {
+  ns_ledger_read "$1" | jq -e '.budget.limit != null and .budget.used > .budget.limit' >/dev/null
+}
+
+main() {
+  local sub="${1:-}"
+  case "$sub" in
+    "" | -h | --help | help) usage; [ -n "$sub" ] || exit 2; exit 0 ;;
+  esac
+  shift
+  case "$sub" in
+    init | get | set | event | state | tier | checkpoint | validate | budget-exceeded) ;;
+    *) ns_die "unknown subcommand: $sub (see ns-ledger --help)" 2 ;;
+  esac
+  case "${1:-}" in
+    "" | -h | --help) usage; [ -n "${1:-}" ] || exit 2; exit 0 ;;
+  esac
+  local ledger="$1"
+  if [ "$sub" != init ]; then
+    [ -f "$ledger" ] || ns_die "no such ledger: $ledger"
+    lock "$ledger"
+  fi
+  ns_require jq python3 flock git
+  "cmd_${sub//-/_}" "$@"
+}
+
+main "$@"

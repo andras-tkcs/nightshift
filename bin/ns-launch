@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# ns-launch: run the conductor session of one run, headless. Started by ns new and ns resume
+# inside tmux. Never prints the token.
+set -euo pipefail
+
+NS_HOME="${NS_HOME:-$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")}"
+export NS_HOME
+export NS_CMD="ns-launch"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/common.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/config.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/runs.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/profile.sh"
+
+usage() {
+  printf 'usage: ns-launch <id> [--triage|--resume]\n\n'
+  printf 'Run the conductor session of run <id> headless in its worktree, logging the\n'
+  printf "stream to \$NS_CONFIG_DIR/logs/<id>/conductor.jsonl.\n"
+}
+
+id=""
+mode=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --triage | --resume)
+      mode="$1"
+      shift
+      ;;
+    -*) ns_usage "ns-launch <id> [--triage|--resume]" ;;
+    *)
+      [ -z "$id" ] || ns_usage "ns-launch <id> [--triage|--resume]"
+      id="$1"
+      shift
+      ;;
+  esac
+done
+[ -n "$id" ] || ns_usage "ns-launch <id> [--triage|--resume]"
+
+ns_load_env
+run=$(ns_run_get "$id") || ns_die "unknown run $id"
+pname=$(jq -r .project <<<"$run")
+wt=$(jq -r .worktree <<<"$run")
+project=$(ns_project_by_name "$pname") || ns_die "unknown project $pname"
+repo=$(jq -r .repo <<<"$project")
+ns_token_export "${repo%%/*}"
+
+ledger=$(ns_run_ledger "$id")
+export NS_RUN_ID="$id"
+export NS_LEDGER="$ledger"
+export NS_PROJECT="$pname"
+export PATH="$NS_HOME/bin:$PATH"
+NS_WORKER_MODE="${NS_WORKER_MODE:-$(ns_config_get worker_mode auto)}"
+export NS_WORKER_MODE
+export BASH_DEFAULT_TIMEOUT_MS=600000
+export BASH_MAX_TIMEOUT_MS=600000
+
+prompt="/ns:run $id"
+[ "$mode" != --triage ] || prompt="$prompt --triage-only"
+[ "$mode" != --resume ] || prompt="$prompt --resume"
+[[ $id != *-onboard ]] || prompt="$prompt --onboard"
+
+rc=0
+profile=$(ns_profile_json "$(jq -r .path <<<"$project")" "$(jq -r .prefix <<<"$project")" "$(jq -r '.branch // ""' <<<"$project")" 2>/dev/null) || rc=$?
+model=sonnet
+if [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; then
+  model=$(jq -r '.agents.conductor.model // "sonnet"' <<<"$profile")
+fi
+
+mapfile -t plugin_args < <(ns_plugin_args)
+
+log="$(ns_config_dir)/logs/$id/conductor.jsonl"
+mkdir -p "$(dirname "$log")"
+
+cd "$wt"
+exec "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
+  --model "$model" --agent ns:conductor "${plugin_args[@]}" "$prompt" \
+  < /dev/null > >(tee -a "$log" | python3 "$NS_HOME/bin/lib/stream-view.py")

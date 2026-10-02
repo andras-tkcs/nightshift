@@ -1,0 +1,4 @@
+{"type":"assistant","message":{"content":[{"type":"text","text":"Reading the\nledger first."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ns-ledger get $NS_LEDGER"}}]}}
+this line is garbage {
+{"type":"result","subtype":"success","num_turns":3,"total_cost_usd":0.1234}

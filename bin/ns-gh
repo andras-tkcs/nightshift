@@ -13,11 +13,15 @@
 # KEY=value lines for the keys listed under "Defaults". Read as data, never executed.
 set -euo pipefail
 
-MODE=${1:-}; REPO=${2:-}; FLAG=${3:-}
-if [[ $MODE != audit && $MODE != apply ]] || [[ $REPO != */* ]]; then
-  echo "usage: ns-gh audit|apply owner/repo [--yes]" >&2; exit 2
+usage() { echo "usage: ns-gh audit|apply owner/repo [--yes]" >&2; exit 2; }
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+  sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  exit 0
 fi
-command -v gh >/dev/null && command -v jq >/dev/null || { echo "needs gh and jq" >&2; exit 2; }
+MODE=${1:-}; REPO=${2:-}; FLAG=${3:-}
+if [[ $MODE != audit && $MODE != apply ]] || [[ ! $REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then usage; fi
+if [[ -n $FLAG && $FLAG != --yes ]]; then usage; fi
+if ! command -v gh >/dev/null || ! command -v jq >/dev/null; then echo "needs gh and jq" >&2; exit 2; fi
 
 # ---------- Defaults (override per project in .claude/ns-github.env)
 DEFAULT_BRANCH=main
@@ -91,7 +95,7 @@ row dependabot_security_updates  true "$(api_or '{"enabled":false}' "repos/$REPO
 # ---------- 3. Actions
 WP=$(api_or '{}' "repos/$REPO/actions/permissions/workflow")
 row workflow_token_permissions   "$WORKFLOW_PERMISSIONS" "$(jq -r '.default_workflow_permissions // "unknown"' <<<"$WP")"
-row workflows_can_approve_prs    false                   "$(jq -r '.can_approve_pull_request_reviews // "unknown"' <<<"$WP")"
+row workflows_can_approve_prs    false                   "$(jq -r '(.can_approve_pull_request_reviews | if . == null then "unknown" else tostring end)' <<<"$WP")"
 AR=$(api_or '{}' "repos/$REPO/actions/permissions/artifact-and-log-retention")
 if [[ $(jq -r '.days // empty' <<<"$AR") ]]; then
   row artifact_retention_days "$ARTIFACT_RETENTION_DAYS" "$(jq -r .days <<<"$AR")"
@@ -145,7 +149,7 @@ echo "${#DIFFS[@]} setting(s) differ."
 
 if [[ $FLAG != --yes ]]; then
   read -r -p "Apply these changes to $REPO? [y/N] " ans
-  [[ $ans == y || $ans == Y ]] || { echo "Nothing changed."; exit 1; }
+  [[ $ans == y || $ans == Y || $ans == yes ]] || { echo "Nothing changed."; exit 1; }
 fi
 
 has() { local d; for d in "${DIFFS[@]}"; do [[ $d == "$1"* ]] && return 0; done; return 1; }

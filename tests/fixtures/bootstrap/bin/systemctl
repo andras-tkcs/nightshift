@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'systemctl %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ -n "${SYSTEMCTL_STUB_FAIL:-}" ]; then
+  case "$*" in *reload*|*restart*) echo "systemctl: stub failure" >&2; exit 1 ;; esac
+fi
+case "$*" in
+  *is-active*) echo active ;;
+  *is-enabled*) echo enabled ;;
+esac
+exit 0

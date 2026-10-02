@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andras-tkcs/nightshift/schema/profile.schema.json",
+  "title": "Nightshift project profile",
+  "description": "The .claude/project-profile.yaml of a project repository.",
+  "type": "object",
+  "required": [
+    "project",
+    "prefix",
+    "commands",
+    "git",
+    "stacks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Project name, used in run ids, logs and the registry."
+    },
+    "prefix": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{0,9}$",
+      "description": "Run-id prefix, for example pf gives run ids like pf-123."
+    },
+    "docs": {
+      "type": "object",
+      "description": "Pointers to project documents the agents read, as paths relative to the repo.",
+      "properties": {
+        "contributing": {
+          "type": "string",
+          "description": "Contributing guide."
+        },
+        "dod": {
+          "type": "string",
+          "description": "Definition of done; may carry a #anchor."
+        },
+        "releasing": {
+          "type": "string",
+          "description": "Release procedure."
+        },
+        "guidelines": {
+          "type": "string",
+          "description": "Coding and testing guidelines."
+        },
+        "adr_dir": {
+          "type": "string",
+          "description": "Directory where architecture decision records go."
+        }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "commands": {
+      "type": "object",
+      "description": "Commands run with bash -c in a worktree; they override the stacks' own commands. May be empty.",
+      "properties": {
+        "test": {
+          "type": "string",
+          "description": "Test command."
+        },
+        "lint": {
+          "type": "string",
+          "description": "Lint command."
+        },
+        "typecheck": {
+          "type": "string",
+          "description": "Type-check command."
+        },
+        "audit": {
+          "type": "string",
+          "description": "Dependency audit command."
+        },
+        "setup": {
+          "type": "string",
+          "description": "Setup command run once per worktree; replaces the stacks' setup steps."
+        }
+      },
+      "additionalProperties": false
+    },
+    "git": {
+      "type": "object",
+      "description": "Branch naming and merge conventions. May be empty.",
+      "properties": {
+        "base_branch": {
+          "type": "string",
+          "default": "main",
+          "description": "Branch that pull requests target."
+        },
+        "plan_branch": {
+          "type": "string",
+          "default": "plan/{slug}",
+          "description": "Run branch; holds the ledger."
+        },
+        "fix_branch": {
+          "type": "string",
+          "default": "fix/{slug}",
+          "description": "Code branch for T0 and T1 runs."
+        },
+        "feature_branch": {
+          "type": "string",
+          "default": "feature/{n}",
+          "description": "Feature branch for T2 and T3 runs."
+        },
+        "phase_branch": {
+          "type": "string",
+          "default": "feature/{n}--{phase}",
+          "description": "Phase branch within a feature run."
+        },
+        "merge": {
+          "type": "string",
+          "const": "--no-ff",
+          "default": "--no-ff",
+          "description": "Merge flag used when merging phase branches."
+        },
+        "phase_trailer": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z-]*$",
+          "default": "Plan-Phase",
+          "description": "Commit trailer key naming the plan phase."
+        },
+        "plan_doc": {
+          "type": "string",
+          "default": "docs/{slug}-plan.md",
+          "description": "Path of the plan document."
+        }
+      },
+      "additionalProperties": false
+    },
+    "worktrees": {
+      "type": "string",
+      "default": "{coding}/worktrees/{repo}-{slug}",
+      "description": "Worktree directory template; ~ and {coding} expand to the coding directory."
+    },
+    "stacks": {
+      "type": "array",
+      "description": "Stacks the project uses. A plain name covers the whole repo; an object limits the stack to paths.",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Stack name."
+          },
+          {
+            "type": "object",
+            "description": "Stack with the paths it covers.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "description": "Stack name."
+              },
+              "paths": {
+                "type": "array",
+                "description": "Paths or globs the stack covers.",
+                "items": {
+                  "type": "string",
+                  "description": "Path or glob."
+                }
+              }
+            },
+            "required": [
+              "name",
+              "paths"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "description": "A stack name or a stack with paths."
+      },
+      "minItems": 1
+    },
+    "platforms": {
+      "type": "object",
+      "description": "Per platform verification: locally or in CI.",
+      "patternProperties": {
+        "^(linux|macos|windows)$": {
+          "type": "object",
+          "description": "Verification settings for one platform.",
+          "properties": {
+            "verify": {
+              "type": "string",
+              "enum": [
+                "local",
+                "ci"
+              ],
+              "description": "Where the platform is verified."
+            },
+            "workflows": {
+              "type": "array",
+              "description": "CI workflow files that verify the platform.",
+              "items": {
+                "type": "string",
+                "description": "Workflow file name."
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-key": "platform"
+    },
+    "platform_paths": {
+      "type": "object",
+      "description": "Globs that mark a change as platform specific.",
+      "patternProperties": {
+        "^(linux|macos|windows)$": {
+          "type": "array",
+          "description": "Globs for one platform.",
+          "items": {
+            "type": "string",
+            "description": "Glob."
+          }
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-key": "platform"
+    },
+    "ci": {
+      "type": "object",
+      "description": "CI dispatch settings.",
+      "properties": {
+        "dispatch_only_from_main": {
+          "type": "boolean",
+          "default": true,
+          "description": "Dispatch CI workflows only from the base branch."
+        },
+        "workflows": {
+          "type": "object",
+          "description": "Workflows Nightshift may dispatch, keyed by file name.",
+          "patternProperties": {
+            "^[A-Za-z0-9._-]+\\.ya?ml$": {
+              "type": "object",
+              "description": "Settings for one workflow; an empty object is valid.",
+              "properties": {
+                "input": {
+                  "type": "string",
+                  "description": "Name of the single workflow_dispatch input to pass."
+                },
+                "needs_approval": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether dispatching needs a human approval."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "default": {},
+          "x-key": "file"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk_zones": {
+      "type": "object",
+      "description": "Named code areas that need extra review, keyed by zone name.",
+      "patternProperties": {
+        "^[a-z0-9-]+$": {
+          "type": "object",
+          "description": "One risk zone.",
+          "properties": {
+            "paths": {
+              "type": "array",
+              "description": "Globs that make up the zone.",
+              "items": {
+                "type": "string",
+                "description": "Glob."
+              },
+              "minItems": 1
+            },
+            "require": {
+              "type": "array",
+              "description": "Agents that must review changes in the zone; may be empty.",
+              "items": {
+                "type": "string",
+                "description": "Agent name."
+              }
+            }
+          },
+          "required": [
+            "paths"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-key": "zone"
+    },
+    "protected_paths": {
+      "type": "array",
+      "description": "Globs the guard hook refuses to edit.",
+      "items": {
+        "type": "string",
+        "description": "Glob."
+      },
+      "default": []
+    },
+    "specialists": {
+      "type": "array",
+      "description": "Specialist agents to enable (Build B).",
+      "items": {
+        "type": "string",
+        "enum": [
+          "database-expert",
+          "data-analyst",
+          "ui-ux-designer"
+        ],
+        "description": "Specialist agent name."
+      },
+      "default": []
+    },
+    "domain_skills": {
+      "type": "array",
+      "description": "Project skills under .claude/skills/<name>/SKILL.md that agents load.",
+      "items": {
+        "type": "string",
+        "description": "Skill name."
+      },
+      "default": []
+    },
+    "budgets": {
+      "type": "object",
+      "description": "Per tier budget overrides; missing tiers take the defaults.",
+      "patternProperties": {
+        "^T[0-3]$": {
+          "type": "object",
+          "description": "Budget of one tier.",
+          "properties": {
+            "hours": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Wall-clock hours allowed."
+            },
+            "review_rounds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Review rounds allowed."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {
+        "T0": {
+          "hours": 0.5,
+          "review_rounds": 1
+        },
+        "T1": {
+          "hours": 2,
+          "review_rounds": 3
+        },
+        "T2": {
+          "hours": 8,
+          "review_rounds": 3
+        },
+        "T3": {
+          "hours": 36,
+          "review_rounds": 3
+        }
+      },
+      "x-key": "tier"
+    },
+    "agents": {
+      "type": "object",
+      "description": "Per agent overrides, keyed by agent name.",
+      "patternProperties": {
+        "^(triage|conductor|researcher|product-analyst|architect|planner|test-architect|implementer|code-reviewer|sec-compliance|integrator)$": {
+          "type": "object",
+          "description": "Overrides for one agent.",
+          "properties": {
+            "model": {
+              "type": "string",
+              "enum": [
+                "haiku",
+                "sonnet",
+                "opus",
+                "fable"
+              ],
+              "description": "Model to use."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "default": {},
+      "x-key": "agent"
+    }
+  }
+}

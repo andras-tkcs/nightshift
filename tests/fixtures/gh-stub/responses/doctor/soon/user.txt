@@ -1,0 +1,5 @@
+HTTP/2 200
+github-authentication-token-expiration: 2026-10-08 00:00:00 UTC
+content-type: application/json
+
+{"login":"andras-tkcs"}

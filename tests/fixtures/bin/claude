@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# claude stub for tests (see README.md). Never records the token value.
+set -euo pipefail
+
+printf 'claude %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = plugin ] && [ "${2:-}" = validate ]; then
+  exit 0
+fi
+
+dir="${CLAUDE_STUB_DIR:-$(dirname "${NS_STUB_LOG:?claude-stub: NS_STUB_LOG not set}")/claude}"
+mkdir -p "$dir"
+n=1
+while [ -e "$dir/call-$n.args" ]; do n=$((n + 1)); done
+printf '%s\n' "$@" >"$dir/call-$n.args"
+if [ ! -t 0 ]; then timeout 2 cat >"$dir/call-$n.stdin" || true; else : >"$dir/call-$n.stdin"; fi
+{
+  printf 'cwd=%s\n' "$PWD"
+  if [ -n "${GH_TOKEN:-}" ]; then echo token=set; else echo token=unset; fi
+} >"$dir/call-$n.env"
+
+mode="${CLAUDE_STUB_MODE:-ok}"
+case "$mode" in
+  fail) exit 1 ;;
+  script:*) bash "${mode#script:}" >&2 ;;
+esac
+printf '{"type":"result","subtype":"success","is_error":false,"result":"%s"}\n' "${CLAUDE_STUB_RESULT:-ok}"

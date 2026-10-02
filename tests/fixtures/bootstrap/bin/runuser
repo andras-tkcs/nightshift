@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md): records the call and runs nothing,
+# unless RUNUSER_STUB_EXEC=1 and the call is "runuser [-w VAR] -u USER -- CMD...": then CMD runs
+# as the current user, with the environment the caller exported (so -w VAR needs no handling).
+set -euo pipefail
+printf 'runuser %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${RUNUSER_STUB_EXEC:-}" = 1 ]; then
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -w | -u) shift 2 ;;
+      --)
+        shift
+        exec "$@"
+        ;;
+      *) break ;;
+    esac
+  done
+fi
+exit 0
