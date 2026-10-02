@@ -1,0 +1,19 @@
+name: python
+description: Python projects with pytest and ruff, one virtualenv per worktree
+detect: [pyproject.toml, setup.py, setup.cfg, requirements.txt]
+paths: ["**/*.py", "pyproject.toml", "setup.cfg", "requirements*.txt"]
+commands:
+  test: .venv/bin/python -m pytest -q
+  lint: .venv/bin/python -m ruff check .
+  typecheck: .venv/bin/python -m mypy .
+  audit: .venv/bin/python -m pip_audit
+setup:
+  - python3 -m venv .venv
+  - .venv/bin/python -m pip install --quiet --upgrade pip
+  - "if [ -f pyproject.toml ]; then .venv/bin/python -m pip install --quiet -e '.[test]' || .venv/bin/python -m pip install --quiet -e .; elif [ -f requirements.txt ]; then .venv/bin/python -m pip install --quiet -r requirements.txt; fi"
+  - .venv/bin/python -m pip install --quiet pytest ruff
+gc:
+  monthly: ["~/.cache/pip"]
+apt: [python3, python3-venv, python3-pip, pipx]
+ci_template: templates/ci/python-tests.yml
+skills: [python-conventions, python-testing, python-packaging]
