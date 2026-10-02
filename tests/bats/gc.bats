@@ -81,11 +81,89 @@ set_pr() {
   assert_output_contains "sbx-12"
 }
 
-@test "a CLOSED PR is cleaned up too" {
+@test "a CLOSED PR removes local work but keeps the remote branches" {
   set_pr 102
   run ns gc
   assert_success
   assert_output_contains "remove worktree $WT"
+  assert_output_contains "remove worktree $FWT"
+  assert_output_contains "remove branch plan/sbx-12"
+  assert_output_contains "remove tmux sbx-12"
+  assert_output_contains "kept remote branches of sbx-12 (PR closed, not merged)"
+  assert_output_not_contains "remove remote-branch"
+  [ ! -e "$WT" ]
+  [ ! -e "$FWT" ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  [ -z "$(git -C "$PROJ" branch --list 'plan/sbx-12' 'feature/sbx-12' 'phase/sbx-12--p1')" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'phase/sbx-12--p1')" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'feature/sbx-12')" ]
+  [ -f "$DESK/archive/2026-10/sbx-12/plan.md" ]
+}
+
+# make the run belong to another owner (acme) with its own PR number
+set_owner_acme() {
+  sed -i 's#andras-tkcs/nightshift-sandbox#acme/nightshift-sandbox#' "$NS_CONFIG_DIR/projects.yaml"
+  grep -q 'acme/nightshift-sandbox' "$NS_CONFIG_DIR/projects.yaml"
+  ns-ledger set "$LEDGER" ".pr=\"https://github.com/acme/nightshift-sandbox/pull/$1\""
+  ns-ledger checkpoint "$LEDGER" --push
+}
+
+write_acme_token() {
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf 'github_pat_%s\n' AAAAAAAAAAAAAAAAAAAAAAAAAAAA >"$NS_CONFIG_DIR/tokens/acme"
+  chmod "$1" "$NS_CONFIG_DIR/tokens/acme"
+}
+
+@test "a run of another owner uses that owner's token for gh and is cleaned" {
+  set_owner_acme 104
+  write_acme_token 600
+  run ns gc
+  assert_success
+  assert_output_contains "remove worktree $WT"
+  assert_output_contains "remove remote-branch origin/plan/sbx-12"
+  [ ! -e "$WT" ]
+  grep -q '^gh pr view https://github.com/acme/nightshift-sandbox/pull/104 --json state -q .state \[token\]$' "$GH_STUB_LOG"
+  printf '%s\n' "$output" >"$BATS_TEST_TMPDIR/out"
+  refute_token_in "$GH_STUB_LOG" "$BATS_TEST_TMPDIR/out" "$NS_STUB_LOG"
+}
+
+@test "a run of another owner without a token file needs you and is kept" {
+  # no token file: gh falls back to its default login, which cannot see acme (the stub has no answer for #105)
+  set_owner_acme 105
+  run ns gc
+  assert_success
+  assert_output_contains "needs you: sbx-12"
+  assert_output_contains "1 item(s) need you"
+  assert_output_not_contains "remove "
+  [ -d "$WT" ]
+  [ -d "$FWT" ]
+  [ -d "$DESK/runs/sbx-12" ]
+  [ -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a token file with the wrong mode is reported and the run is kept" {
+  set_owner_acme 104
+  write_acme_token 644
+  run ns gc
+  assert_success
+  assert_output_contains "needs you: sbx-12"
+  assert_output_not_contains "remove "
+  printf '%s\n' "$output" >"$BATS_TEST_TMPDIR/out"
+  refute_token_in "$BATS_TEST_TMPDIR/out"
+  [ -d "$WT" ]
+}
+
+@test "a gh pr view failure is reported, not skipped silently" {
+  set_pr 106
+  run ns gc
+  assert_success
+  assert_output_contains "needs you: sbx-12: cannot read PR state"
+  assert_output_contains "1 item(s) need you"
+  assert_output_not_contains "remove "
+  [ -d "$WT" ]
+  [ -d "$FWT" ]
+  [ -d "$DESK/runs/sbx-12" ]
 }
 
 @test "dry run lists the same items and changes nothing" {
