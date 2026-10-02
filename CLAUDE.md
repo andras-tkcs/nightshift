@@ -12,7 +12,6 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 
 - `/make-plan` is copied from PrivacyFence. Read "PrivacyFence" as "this repo" in it, and use this file's conventions where they differ. Instead of an HTML artifact for manual steps, write `docs/<slug>-manual.md`.
 - `/implement-local <plan path>` executes a plan manifest with subagents in worktrees (`.claude/commands/implement-local.md`). It replaces PrivacyFence's `/implement`, which needs claude.ai cloud session tools that don't exist here.
-- `seed/` holds the original PrivacyFence `implement.md`, `dod.md` and the steward skill as source material for porting into the plugin. Don't run them from there.
 
 ## Conventions
 
