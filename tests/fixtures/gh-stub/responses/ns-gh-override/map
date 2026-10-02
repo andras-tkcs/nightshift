@@ -1,0 +1,13 @@
+0	empty.json	^api -X (PATCH|PUT|POST) 
+0	-	^label create 
+0	ns-github.env	^api repos/acme/widget/contents/
+0	user.json	^api user$
+0	repo.json	^api repos/acme/widget$
+0	pvr.json	^api repos/acme/widget/private-vulnerability-reporting$
+0	-	^api repos/acme/widget/vulnerability-alerts$
+0	security-fixes.json	^api repos/acme/widget/automated-security-fixes$
+0	workflow.json	^api repos/acme/widget/actions/permissions/workflow$
+0	retention.json	^api repos/acme/widget/actions/permissions/artifact-and-log-retention$
+0	rulesets.json	^api repos/acme/widget/rulesets$
+0	ruleset.json	^api repos/acme/widget/rulesets/7$
+0	labels.json	^label list 
