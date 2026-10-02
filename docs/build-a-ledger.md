@@ -21,8 +21,8 @@
 | p16-conductor-loop | pending | feature/build-a--p16-conductor-loop | 0 | |
 | p17-core-agents | merged | feature/build-a--p17-core-agents | 1 | |
 | p18-run-skill | merged | feature/build-a--p18-run-skill | 1 | |
-| p19-plan-skill | running | feature/build-a--p19-plan-skill | 1 | |
-| p20-design-agents | pending | feature/build-a--p20-design-agents | 0 | |
+| p19-plan-skill | merged | feature/build-a--p19-plan-skill | 1 | |
+| p20-design-agents | running | feature/build-a--p20-design-agents | 1 | |
 | p21-implement-skill | pending | feature/build-a--p21-implement-skill | 0 | |
 | p22-dod-ci-skills | pending | feature/build-a--p22-dod-ci-skills | 0 | |
 | p23-review-agents | pending | feature/build-a--p23-review-agents | 0 | |
