@@ -1,0 +1,2291 @@
+<title>Nightshift Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single reading column (~1080px) of stacked sections; components colour-coded by layer
+   — generic (blue), project pack (green), infrastructure (violet), human gates (amber). */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --sunk:#eceef2; --fg:#151821; --muted:#5a6070; --line:#d8dbe2;
+  --gen:#2556c4; --gen-soft:#e6edfb; --gen-line:#b9c9ef;
+  --proj:#22764a; --proj-soft:#e3f2e9; --proj-line:#b3dcc3;
+  --infra:#6a4fb0; --infra-soft:#eee9f8; --infra-line:#cfc3ec;
+  --lang:#0f7a7a; --lang-soft:#e0f3f2; --lang-line:#9fd6d3;
+  --gate:#a86a00; --gate-soft:#fbf0d9; --gate-line:#ecd29c;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12141a; --surface:#1a1d25; --sunk:#20242e; --fg:#e8eaf0; --muted:#9aa0b0; --line:#2e3340;
+  --gen:#7fa2f5; --gen-soft:#1c2740; --gen-line:#34497a;
+  --proj:#6fcf98; --proj-soft:#16291f; --proj-line:#2c5a40;
+  --infra:#b39cf0; --infra-soft:#241e38; --infra-line:#4a3d78;
+  --lang:#5fd3cc; --lang-soft:#132a2a; --lang-line:#2b5c59;
+  --gate:#f0b44a; --gate-soft:#2d2414; --gate-line:#6b5222;
+  color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#12141a; --surface:#1a1d25; --sunk:#20242e; --fg:#e8eaf0; --muted:#9aa0b0; --line:#2e3340;
+  --gen:#7fa2f5; --gen-soft:#1c2740; --gen-line:#34497a;
+  --proj:#6fcf98; --proj-soft:#16291f; --proj-line:#2c5a40;
+  --infra:#b39cf0; --infra-soft:#241e38; --infra-line:#4a3d78;
+  --lang:#5fd3cc; --lang-soft:#132a2a; --lang-line:#2b5c59;
+  --gate:#f0b44a; --gate-soft:#2d2414; --gate-line:#6b5222;
+  color-scheme:dark; }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55;padding:0 20px}
+.wrap{max-width:1080px;margin:0 auto;padding-block:40px 80px;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.6rem;font-weight:700}
+h3{font-size:1.08rem;font-weight:700}
+p{margin:0}
+.lede{max-width:68ch;color:var(--muted);font-size:1.05rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+code,.mono{font-family:var(--mono);font-size:.84em}
+section{display:flex;flex-direction:column;gap:20px}
+.sec-head{display:flex;flex-direction:column;gap:6px}
+.sec-head p{max-width:72ch;color:var(--muted)}
+
+/* language chip */
+.lang{display:inline-block;font-family:var(--mono);font-size:.64rem;font-weight:500;padding:1px 6px;border-radius:4px;border:1px solid var(--lang-line);background:var(--lang-soft);color:var(--lang);margin-left:6px;vertical-align:1px;white-space:nowrap;letter-spacing:.02em}
+.sw.lang{background:var(--lang-soft);border-color:var(--lang)}
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;font-size:.85rem}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.sw{width:14px;height:14px;border-radius:3px;border:2px solid}
+.sw.gen{background:var(--gen-soft);border-color:var(--gen)}
+.sw.proj{background:var(--proj-soft);border-color:var(--proj)}
+.sw.infra{background:var(--infra-soft);border-color:var(--infra)}
+.sw.gate{background:var(--gate-soft);border-color:var(--gate)}
+
+/* topology */
+.topo{display:grid;grid-template-columns:1fr auto 1.15fr auto 1fr;gap:12px;align-items:stretch}
+.node{background:var(--infra-soft);border:1.5px solid var(--infra-line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.node h3{color:var(--infra)}
+.node ul{margin:0;padding-left:18px;font-size:.88rem;display:flex;flex-direction:column;gap:3px}
+.node .where{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.link{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;font-family:var(--mono);font-size:.7rem;color:var(--muted);text-align:center;min-width:70px}
+.link .arr{font-size:1.3rem;color:var(--infra)}
+.side-nodes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.mini{background:var(--surface);border:1px dashed var(--infra-line);border-radius:8px;padding:12px 14px;font-size:.86rem;display:flex;flex-direction:column;gap:4px}
+.mini b{color:var(--infra);font-family:var(--display);font-size:.98rem}
+@media (max-width:860px){
+  .topo{grid-template-columns:1fr}
+  .link{flex-direction:row;min-width:0}
+  .link .arr{transform:rotate(90deg)}
+  .side-nodes{grid-template-columns:1fr}
+}
+
+/* layers */
+.layers{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:860px){.layers{grid-template-columns:1fr}}
+.layer{border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:18px;min-width:0;border:2px solid}
+.layer.gen{background:var(--gen-soft);border-color:var(--gen-line)}
+.layer.proj{background:var(--proj-soft);border-color:var(--proj-line)}
+.layer-head{display:flex;flex-direction:column;gap:4px}
+.layer.gen .layer-head h3{color:var(--gen);font-size:1.3rem}
+.layer.proj .layer-head h3{color:var(--proj);font-size:1.3rem}
+.layer-head .where{font-family:var(--mono);font-size:.76rem;color:var(--muted)}
+.group{display:flex;flex-direction:column;gap:6px}
+.group-title{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:4px;border-bottom:1px solid var(--line)}
+.item{display:grid;grid-template-columns:minmax(9.5rem,auto) 1fr;gap:4px 12px;font-size:.88rem;padding:5px 0;align-items:baseline}
+.item .n{font-family:var(--mono);font-weight:500;font-size:.8rem;overflow-wrap:anywhere}
+.layer.gen .item .n{color:var(--gen)}
+.layer.proj .item .n{color:var(--proj)}
+.item .d{min-width:0}
+.model{font-family:var(--mono);font-size:.66rem;padding:1px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--line);color:var(--muted);margin-left:6px;white-space:nowrap}
+.tag-exist{font-family:var(--mono);font-size:.66rem;padding:1px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--proj-line);color:var(--proj);margin-left:6px;white-space:nowrap}
+@media (max-width:480px){.item{grid-template-columns:1fr}}
+
+.contract{background:var(--surface);border:1.5px dashed var(--line);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center}
+.contract .plug{font-family:var(--mono);font-size:.78rem;padding:6px 10px;border-radius:6px;background:var(--sunk);white-space:nowrap}
+.contract p{font-size:.9rem;min-width:0}
+@media (max-width:560px){.contract{grid-template-columns:1fr}}
+
+/* tiers */
+.tiers{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media (max-width:860px){.tiers{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.tiers{grid-template-columns:1fr}}
+.tier{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.tier .t{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.tier h3{font-size:1.15rem}
+.tier p{font-size:.86rem}
+.tier .meta{margin-top:auto;display:flex;flex-direction:column;gap:2px;font-family:var(--mono);font-size:.72rem;color:var(--muted);padding-top:8px;border-top:1px solid var(--line)}
+.bar{height:6px;border-radius:3px;background:var(--sunk);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--gen)}
+
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.88rem}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:center}
+th:first-child,td:first-child{text-align:left}
+thead th{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--sunk)}
+tbody tr:last-child td{border-bottom:0}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle}
+.dot.f{background:var(--gen)}
+.dot.l{background:linear-gradient(90deg,var(--gen) 50%,transparent 50%);border:1.5px solid var(--gen)}
+.dot.c{border:1.5px dashed var(--gen)}
+.dot.g{background:var(--gate)}
+.keyrow{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.82rem;color:var(--muted)}
+.keyrow span{display:inline-flex;align-items:center;gap:6px}
+
+/* triage */
+.triage{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.triage{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel ul{margin:0;padding-left:18px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}
+.formula{font-family:var(--mono);font-size:.84rem;background:var(--sunk);border-radius:6px;padding:10px 12px;overflow-x:auto;white-space:pre}
+
+/* timeline */
+.timeline{display:flex;flex-direction:column;gap:0;position:relative}
+.step{display:grid;grid-template-columns:140px 22px 1fr;gap:14px;align-items:start}
+.step .when{font-family:var(--mono);font-size:.76rem;color:var(--muted);text-align:right;padding-top:12px}
+.rail{position:relative;align-self:stretch;display:flex;justify-content:center}
+.rail::before{content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--line)}
+.rail i{position:relative;margin-top:14px;width:14px;height:14px;border-radius:50%;background:var(--gen);border:3px solid var(--bg)}
+.step.gate .rail i{background:var(--gate);border-radius:3px;transform:rotate(45deg)}
+.step .card{padding:10px 14px;margin-bottom:12px;border-radius:8px;background:var(--surface);border:1px solid var(--line);min-width:0}
+.step.gate .card{background:var(--gate-soft);border-color:var(--gate-line)}
+.step .card h3{font-size:1rem}
+.step.gate .card h3{color:var(--gate)}
+.step .card p{font-size:.86rem;color:var(--muted)}
+.step:first-child .rail::before{top:14px}
+.step:last-child .rail::before{bottom:auto;height:14px}
+@media (max-width:560px){
+  .step{grid-template-columns:18px 1fr}
+  .step .when{grid-column:2;text-align:left;padding-top:0;order:-1}
+  .step .rail{grid-row:1 / span 2}
+}
+
+.guards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 24px;margin:0;padding:0;list-style:none}
+@media (max-width:700px){.guards{grid-template-columns:1fr}}
+.guards li{font-size:.9rem;padding:8px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:8.5rem 1fr;gap:12px}
+.guards li b{font-family:var(--mono);font-size:.78rem;font-weight:500;color:var(--fg)}
+@media (max-width:480px){.guards li{grid-template-columns:1fr;gap:2px}}
+
+.next ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;max-width:75ch}
+
+.toc{display:flex;flex-wrap:wrap;gap:6px 8px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.toc-h{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--fg);flex-basis:100%;margin-top:4px}
+.toc a{font-family:var(--mono);font-size:.74rem;color:var(--muted);text-decoration:none;padding:3px 8px;border-radius:5px;border:1px solid var(--line);background:var(--surface)}
+.toc a:hover,.toc a:focus-visible{color:var(--fg);border-color:var(--gen)}
+details.st summary::-webkit-details-marker{color:var(--muted)}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+.part{display:flex;flex-direction:column;gap:8px;padding-top:24px;border-top:3px solid var(--fg)}
+.part-title{font-size:clamp(1.8rem,4vw,2.4rem)}
+h4.sub{font-family:var(--display);font-size:.98rem;margin:8px 0 0;color:var(--fg)}
+.st ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:.88rem}
+.st ol ol,.st ol ul,.st ul ol{margin-top:4px}
+/* servers */
+.servers{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:14px}
+@media (max-width:860px){.servers{grid-template-columns:1fr}}
+.srv{background:var(--infra-soft);border:1.5px solid var(--infra-line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.srv.dashed{border-style:dashed;background:var(--surface)}
+.srv h3{color:var(--infra);font-size:1.15rem}
+.srv .spec{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.srv ul{margin:0;padding-left:18px;font-size:.88rem;display:flex;flex-direction:column;gap:3px}
+.srv .price{font-family:var(--mono);font-size:.9rem;font-variant-numeric:tabular-nums;color:var(--fg);padding-top:8px;border-top:1px solid var(--infra-line);margin-top:auto}
+.cost td,.cost th{text-align:right;font-variant-numeric:tabular-nums}
+.cost td:first-child,.cost th:first-child{text-align:left}
+.cost tr.total td{font-weight:600;border-top:2px solid var(--line)}
+
+/* setup guide */
+.steps{display:flex;flex-direction:column;gap:14px;counter-reset:st}
+.st{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.st-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}
+.st-head h3{font-size:1.05rem}
+.st-head h3::before{counter-increment:st;content:counter(st) " · ";color:var(--muted);font-family:var(--mono);font-weight:500;font-size:.9rem}
+.who{font-family:var(--mono);font-size:.68rem;padding:2px 7px;border-radius:4px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.who.root{color:var(--gate);border-color:var(--gate-line);background:var(--gate-soft)}
+.who.ns{color:var(--gen);border-color:var(--gen-line);background:var(--gen-soft)}
+.who.ui{color:var(--infra);border-color:var(--infra-line);background:var(--infra-soft)}
+.st p,.st li{font-size:.88rem}
+.st ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.code{position:relative;background:var(--sunk);border-radius:8px;min-width:0}
+.code pre{margin:0;padding:12px 14px;padding-right:72px;overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.6;white-space:pre}
+.code pre .c{color:var(--muted)}
+.copy{position:absolute;top:8px;right:8px;font-family:var(--mono);font-size:.7rem;padding:4px 9px;border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.copy:hover{border-color:var(--gen)}
+.copy:focus-visible{outline:2px solid var(--gen);outline-offset:2px}
+.note{font-size:.84rem;color:var(--muted);border-left:3px solid var(--gate-line);padding-left:10px}
+footer{font-size:.8rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+
+<header style="display:flex;flex-direction:column;gap:14px">
+  <div class="eyebrow">Agentic coding framework · architecture and plan · first project: privacyfence/privacyfence</div>
+  <h1>Nightshift</h1>
+  <p class="lede">A personal agent pipeline that runs while you are at your day job. Everything runs on one Ubuntu server with the full Claude Code CLI. You reach it from your iPad or a browser tab over a private network, steer at the start and the end, and the server does the long middle. A reusable generic plugin does the work, and a thin PrivacyFence pack tells it what matters in this codebase.</p>
+  <p class="lede" style="font-size:.92rem">Part 1 explains the architecture. Part 2 is the plan in six phases, from creating accounts to running it every day.</p>
+  <div class="legend">
+    <span><i class="sw gen"></i>Generic, reusable in any repo</span>
+    <span><i class="sw proj"></i>PrivacyFence specific</span>
+    <span><i class="sw lang"></i>Language-specific, from a stack plugin <span class="lang">python</span></span>
+    <span><i class="sw infra"></i>Servers and services</span>
+    <span><i class="sw gate"></i>Human gate (you)</span>
+  </div>
+</header>
+<nav class="toc" aria-label="Contents"><span class="toc-h">Architecture</span><a href="#s1">Where things run</a><a href="#s2">What gets installed</a><a href="#stacks">Languages and platforms</a><a href="#s3">Tiers</a><a href="#s4">Triage</a><a href="#s5">A T3 run</a><a href="#s6">Daily use</a><a href="#servers">Servers</a><a href="#desk">Review desk</a><a href="#ops">Operations</a><a href="#creds">Test credentials</a><a href="#s12">Guardrails</a><a href="#projects">More projects</a><a href="#newproject">New project</a><a href="#github">GitHub script</a><a href="#who">Who builds it</a><span class="toc-h">Plan</span><a href="#overview">Overview</a><a href="#ph1">1 · Accounts</a><a href="#ph2">2 · Install ns-main</a><a href="#ph3">3 · Develop</a><a href="#ph4">4 · Set up</a><a href="#ph5">5 · Grow</a><a href="#ph6">6 · Operate</a><a href="#forgotten">Easy to forget</a><a href="#docs">Documentation</a></nav>
+
+
+<div class="part" id="architecture">
+  <div class="eyebrow">Part 1</div>
+  <h2 class="part-title">The architecture</h2>
+  <p class="lede">What Nightshift is and how its pieces fit. The step-by-step plan is <a href="#plan">Part 2</a>.</p>
+</div>
+
+<!-- 1. TOPOLOGY -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="eyebrow">1 · Where things run</div>
+    <h2>Two windows, one server, GitHub as the record</h2>
+    <p>You never run anything on the iPad or the work laptop. They are terminals into the server over Tailscale, so the server has no ports open to the internet. GitHub holds the queue, the branches and the run ledger, so a run survives a server reboot.</p>
+  </div>
+  <div class="topo">
+    <div class="node">
+      <h3>Your windows</h3>
+      <div class="where">nothing runs here</div>
+      <ul>
+        <li><b>iPad:</b> Blink Shell over mosh, so a closed cover or a Wi-Fi drop doesn't cut the session</li>
+        <li><b>Work browser tab:</b> your Cloudflare subdomains behind Cloudflare Access, for the desk and a browser terminal; no install</li>
+        <li><b>Optional:</b> the Claude app and claude.ai/code as a reading view, via Remote Control</li>
+        <li>Review desk in any browser: plans as editable Markdown, reports as HTML</li>
+        <li>Phone gets ntfy pushes at gates, with a <code>ns-desk</code> link to the document</li>
+      </ul>
+    </div>
+    <div class="link"><span class="arr">⇄</span>Tailscale<br>ssh · mosh</div>
+    <div class="node">
+      <h3>ns-main</h3>
+      <div class="where">Hetzner CX43 · Ubuntu 24.04 · tmux</div>
+      <ul>
+        <li>Claude Code CLI, signed in with your subscription</li>
+        <li>Nightshift plugin + PrivacyFence pack</li>
+        <li>One tmux session per run; one worktree per phase</li>
+        <li>Conductor spawns headless <code>claude -p</code> workers</li>
+        <li>Runs T0 to T3, including 1–2 day runs</li>
+      </ul>
+    </div>
+    <div class="link"><span class="arr">⇄</span>git · gh<br>dispatch CI</div>
+    <div class="node">
+      <h3>GitHub</h3>
+      <div class="where">privacyfence/privacyfence</div>
+      <ul>
+        <li>Issues labelled <code>ns:queued</code> = job queue</li>
+        <li><code>plan/*</code>, <code>feature/*</code>, phase branches</li>
+        <li>Run ledger committed on the plan branch</li>
+        <li>Actions: macOS / Windows / Linux matrix</li>
+        <li>Branch protection on <code>main</code></li>
+      </ul>
+    </div>
+  </div>
+  <div class="side-nodes">
+    <div class="mini"><b>ns-lab (temporary)</b>A throwaway CX23 created per test for <code>.deb</code> install and privilege-separation checks, deleted afterwards.</div>
+    <div class="mini"><b>Two networks, two jobs</b>Tailscale is the private network for you and the servers. Cloudflare Tunnel is only the browser door from the work laptop.</div>
+    <div class="mini"><b>Trust boundary</b>The server is now it: repo-scoped fine-grained GitHub token, no connector or release secrets on the box.</div>
+  </div>
+</section>
+
+<!-- 2. LAYERS -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="eyebrow">2 · What gets installed</div>
+    <h2>Generic engine, project pack</h2>
+    <p>The generic layer ships as one Claude Code plugin from its own repo (a one-plugin marketplace), installed on the server with <code>/plugin install</code>, so the next project gets it for free. The project pack lives in the PrivacyFence repo's <code>.claude/</code> and reuses what you already have.</p>
+  </div>
+
+  <div class="layers">
+    <!-- GENERIC -->
+    <div class="layer gen">
+      <div class="layer-head">
+        <div class="eyebrow">Generic layer</div>
+        <h3>ns plugin</h3>
+        <div class="where">repo <code>nightshift</code> · plugin <code>ns</code> · commands appear as <code>/ns:…</code></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Core agents (subagents)</div>
+        <div class="item"><span class="n">triage<span class="model">sonnet</span></span><span class="d">Scores size and risk of the request and picks tier T0–T3.</span></div>
+        <div class="item"><span class="n">conductor<span class="model">sonnet</span></span><span class="d">Runs the chosen pipeline as a resumable state machine with budgets.</span></div>
+        <div class="item"><span class="n">researcher<span class="model">opus</span></span><span class="d">Collects docs, API facts and prior art into cited notes.</span></div>
+        <div class="item"><span class="n">product-analyst<span class="model">opus</span></span><span class="d">Turns the request into user stories, acceptance criteria and a non-goals list.</span></div>
+        <div class="item"><span class="n">architect<span class="model">opus</span></span><span class="d">Designs the change, writes the ADR, names touched modules and interfaces.</span></div>
+        <div class="item"><span class="n">planner<span class="model">opus</span></span><span class="d">Cuts the design into phases with a manifest and dependency graph.</span></div>
+        <div class="item"><span class="n">test-architect<span class="model">opus</span></span><span class="d">Writes the test strategy and acceptance tests before any code.</span></div>
+        <div class="item"><span class="n">implementer<span class="model">sonnet</span></span><span class="d">Codes one phase in its own worktree until its tests pass.</span></div>
+        <div class="item"><span class="n">code-reviewer<span class="model">opus</span></span><span class="d">Read-only review of the diff against plan, guidelines and tests.</span></div>
+        <div class="item"><span class="n">sec-compliance<span class="model">opus</span></span><span class="d">Threat-model delta, vulnerability review and regulation-to-evidence mapping.</span></div>
+        <div class="item"><span class="n">integrator<span class="model">sonnet</span></span><span class="d">Merges phases, runs the full gate and writes the handoff report.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Specialist bench (joins only when triage tags the area)</div>
+        <div class="item"><span class="n">database-expert<span class="model">opus</span></span><span class="d">Schemas, migrations, SQL safety and performance, per-engine quirks (Postgres, MySQL, SQL Server, Snowflake, BigQuery).</span></div>
+        <div class="item"><span class="n">data-analyst<span class="model">opus</span></span><span class="d">Turns questions into metrics and queries, profiles data, designs realistic synthetic datasets, checks results make sense.</span></div>
+        <div class="item"><span class="n">ui-ux-designer<span class="model">opus</span></span><span class="d">User flows, screen states, copy, accessibility (WCAG 2.2 AA); draws HTML mockups for the review desk before code is written, and reviews UI diffs afterwards.</span></div>
+        <div class="item"><span class="n">more later</span><span class="d">Same pattern for any new area: one agent file plus a tag in the triage rubric.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Skills (method, no project facts)</div>
+        <div class="item"><span class="n">triage-rubric</span><span class="d">Size × risk scoring table that maps to a tier.</span></div>
+        <div class="item"><span class="n">run-ledger</span><span class="d">State file format, checkpoints and resume-after-crash rules.</span></div>
+        <div class="item"><span class="n">plan-manifest</span><span class="d">Phase schema with dependencies, budgets and manual steps.</span></div>
+        <div class="item"><span class="n">adr</span><span class="d">Architecture decision record template and lifecycle.</span></div>
+        <div class="item"><span class="n">test-strategy</span><span class="d">Test pyramid, fixtures, acceptance-test-first workflow.</span></div>
+        <div class="item"><span class="n">review-checklist</span><span class="d">Correctness, simplicity, coverage and docs criteria.</span></div>
+        <div class="item"><span class="n">secure-code-review</span><span class="d">OWASP, secrets, supply chain and authorization-path checks.</span></div>
+        <div class="item"><span class="n">compliance-mapping</span><span class="d">Requirement → control → evidence table method.</span></div>
+        <div class="item"><span class="n">research-notes</span><span class="d">Source-cited notes with confidence levels.</span></div>
+        <div class="item"><span class="n">worktree-hygiene</span><span class="d">One worktree per branch, naming and cleanup.</span></div>
+        <div class="item"><span class="n">budget-guard</span><span class="d">Token, time and loop caps plus stop-and-escalate rules.</span></div>
+        <div class="item"><span class="n">handoff-report</span><span class="d">The final review pack you read at gate 2.</span></div>
+        <div class="item"><span class="n">data-modeling</span><span class="d">Schema design, migrations that can roll back, naming and typing rules.</span></div>
+        <div class="item"><span class="n">query-review</span><span class="d">SQL injection, read-only enforcement, row and cost limits, reading query plans.</span></div>
+        <div class="item"><span class="n">data-quality</span><span class="d">Profiling, synthetic data generation, metric definitions with their edge cases.</span></div>
+        <div class="item"><span class="n">ci-dispatch</span><span class="d">Dispatch a workflow against the run's branch, wait, read the result; what a red check means.</span></div>
+        <div class="item"><span class="n">dod-gate</span><span class="d">Runs the project's definition-of-done checklist, whatever the project defines it as.</span></div>
+        <div class="item"><span class="n">ui-review</span><span class="d">States (empty, loading, error, success), keyboard and screen-reader use, contrast, plain-language copy.</span></div>
+        <div class="item"><span class="n">mockups</span><span class="d">Clickable HTML mockups on <code>ns-view</code>, so you choose a design before any code.</span></div>
+        <div class="item"><span class="n">review-desk</span><span class="d">Where and in which format to publish: editable decisions as Markdown, read-only reports as HTML.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Commands and hooks</div>
+        <div class="item"><span class="n">/ns:run &lt;issue|text&gt;</span><span class="d">Triage, show the proposed tier, then run the pipeline for it.</span></div>
+        <div class="item"><span class="n">/ns:plan</span><span class="d">Planning only: a ready prompt for small work, a plan with a manifest for large work. Replaces <code>/make-plan</code>.</span></div>
+        <div class="item"><span class="n">/ns:implement</span><span class="d">Executes a plan manifest phase by phase. Replaces <code>/implement</code>.</span></div>
+        <div class="item"><span class="n">/ns:dod</span><span class="d">The definition-of-done gate. Replaces <code>/dod</code>.</span></div>
+        <div class="item"><span class="n">/ns:status · /ns:resume · /ns:review</span><span class="d">Read the ledger, continue from a checkpoint, walk the final gate.</span></div>
+        <div class="item"><span class="n">guard hook</span><span class="d">Blocks edits to paths the project marks protected.</span></div>
+        <div class="item"><span class="n">checkpoint hook</span><span class="d">Writes the ledger on every stop so runs survive crashes.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Server kit</div>
+        <div class="item"><span class="n">ns (shell CLI)</span><span class="d"><code>ns new · ls · attach · stop · drain · up · resume · gc</code>: one tmux session per run, named after the issue.</span></div>
+        <div class="item"><span class="n">ns-conductor</span><span class="d">Script that spawns headless <code>claude -p</code> workers per phase and watches budgets.</span></div>
+        <div class="item"><span class="n">ns-notify</span><span class="d">Sends an ntfy push at gates, blocks and finish.</span></div>
+        <div class="item"><span class="n">ns publish · approve</span><span class="d">Puts gate documents on the review desk; copies your edits back into the plan branch and commits them.</span></div>
+        <div class="item"><span class="n">bootstrap.sh</span><span class="d">Sets up a fresh Ubuntu box: user, Tailscale, tmux, Claude CLI, gh, plugin, worktree root.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Stack plugins (same marketplace, enabled per project)</div>
+        <div class="item"><span class="n">ns-python<span class="lang">python</span></span><span class="d">Now: Python conventions, pytest, packaging, a venv per worktree.</span></div>
+        <div class="item"><span class="n">ns-node · ns-web · ns-shell · ns-powershell</span><span class="d">Build B: the rest of PrivacyFence (shim and website, settings pages, install scripts, Windows installer).</span></div>
+        <div class="item"><span class="n">ns-swift<span class="lang">swift</span></span><span class="d">Later: Swift, Xcode builds on a Mac, signing kept off ns-main.</span></div>
+      </div>
+    </div>
+
+    <!-- PROJECT -->
+    <div class="layer proj">
+      <div class="layer-head">
+        <div class="eyebrow">Project layer</div>
+        <h3>PrivacyFence pack</h3>
+        <div class="where">privacyfence/.claude/ + docs you already maintain</div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Context the agents read</div>
+        <div class="item"><span class="n">CLAUDE.md<span class="tag-exist">exists</span></span><span class="d">Session rules, worktree convention, pointers to house docs.</span></div>
+        <div class="item"><span class="n">coding-and-testing-guidelines<span class="tag-exist">exists</span></span><span class="d">Code and test conventions and the §2.7 definition of done.</span></div>
+        <div class="item"><span class="n">CONTRIBUTING · releasing<span class="tag-exist">exists</span></span><span class="d">Branching, plan/ADR lifecycle, release rules.</span></div>
+        <div class="item"><span class="n">project-profile.yaml</span><span class="d">The one file the generic layer reads: commands, risk zones, regimes, CI map.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Domain skills</div>
+        <div class="item"><span class="n">pf-invariants</span><span class="d">The governance principles as hard review criteria (AI is not the auth boundary, etc.).</span></div>
+        <div class="item"><span class="n">pf-threat-model</span><span class="d">Assets (credentials, policy, audit key) and the governed AI client as adversary.</span></div>
+        <div class="item"><span class="n">pf-connector-playbook</span><span class="d">End-to-end steps to add or change a connector: tool, rules, dialog, privacy matrix, QA fixture.</span></div>
+        <div class="item"><span class="n">pf-approval-ux</span><span class="d">What every approval dialog must show, from the content reference. The ui-ux-designer's main input here.</span></div>
+        <div class="item"><span class="n">pf-compliance-context</span><span class="d">GDPR and EU AI Act positioning, and the "not a certified product" wording.</span></div>
+        <div class="item"><span class="n">pf-platforms</span><span class="d">macOS, Windows and .deb packaging plus privilege-separation checks.</span></div>
+        <div class="item"><span class="n">pf-data-governance</span><span class="d">New: how PrivacyFence governs database access: query shown in the approval dialog, read-only by default, row limits, column-level PII scan of results, query text in the audit log.</span></div>
+        <div class="item"><span class="n">pf-data-fixtures</span><span class="d">New: synthetic test databases only, how to seed them, never a real dump.</span></div>
+        <div class="item"><span class="n">pf-website</span><span class="d">Content and SEO rules for the <code>website/</code> folder.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Commands that stay (truly PrivacyFence)</div>
+        <div class="item"><span class="n">/qa-record<span class="tag-exist">exists</span></span><span class="d">Live connector fixtures on the QA runner; only this project has them.</span></div>
+        <div class="item"><span class="n">/cut-release<span class="tag-exist">exists</span></span><span class="d">This project's release mechanics; human-triggered only.</span></div>
+        <div class="item"><span class="n">/make-plan · /implement · /dod · steward</span><span class="d">Move to Nightshift, see the table below.</span></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">Risk zones (declared in the profile)</div>
+        <div class="item"><span class="n">policy + auto-accept</span><span class="d">Any change forces sec-compliance review, whatever the size.</span></div>
+        <div class="item"><span class="n">PII gate</span><span class="d">Must keep precedence over read auto-accept rules.</span></div>
+        <div class="item"><span class="n">audit log + key</span><span class="d">Every decision path must still be logged.</span></div>
+        <div class="item"><span class="n">credentials · /mcp auth</span><span class="d">Shim stays credential-free; token auth untouched without ADR.</span></div>
+        <div class="item"><span class="n">privilege separation</span><span class="d">Installer, postinst and separation scripts; needs a platform test.</span></div>
+        <div class="item"><span class="n">query execution</span><span class="d">New: any path that runs SQL or releases a result set needs database-expert and sec-compliance.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="contract">
+    <span class="plug">project-profile.yaml</span>
+    <p>The only contract between the two layers. Generic agents never hard-code PrivacyFence facts; they read test and lint commands, protected paths, risk zones, compliance regimes and which domain skills to load from this file. A new project needs a new profile and its own pack, nothing else.</p>
+  </div>
+
+  <h3 style="margin-top:8px">Moving the orchestration out of PrivacyFence</h3>
+  <p class="lede" style="font-size:.92rem">Today the repo carries both how to work (planning, phased execution, the gate, CI dispatch) and what is true here (branch names, the §2.7 checklist, which workflows exist). The first part moves into Nightshift. The second part becomes data in the profile, so nothing is lost.</p>
+  <div class="tbl-wrap">
+    <table style="min-width:720px">
+      <thead><tr><th>In PrivacyFence today</th><th>Becomes in Nightshift</th><th>Stays in PrivacyFence, as profile data</th></tr></thead>
+      <tbody>
+        <tr><td><code>/make-plan</code></td><td><code>/ns:plan</code> + triage (small → ready prompt, large → plan with manifest)</td><td>plan file path, <code>plan/&lt;slug&gt;</code> branch rule, model per size</td></tr>
+        <tr><td><code>/implement</code></td><td><code>/ns:implement</code> + conductor</td><td><code>feature/&lt;n&gt;--&lt;phase&gt;</code> naming, <code>--no-ff</code>, <code>Plan-Phase:</code> trailer, one PR at the end</td></tr>
+        <tr><td><code>/dod</code></td><td><code>/ns:dod</code> (dod-gate skill)</td><td>a pointer to §2.7 of the coding guidelines and the commands each row runs</td></tr>
+        <tr><td>steward skill</td><td>ci-dispatch skill</td><td>the workflow table: which job runs where, its inputs, "must be on main first"</td></tr>
+        <tr><td>CLAUDE.md worktree section</td><td>worktree-hygiene skill</td><td>worktree root and naming</td></tr>
+        <tr><td><code>/qa-record</code>, <code>/cut-release</code></td><td>nothing</td><td>stay as they are</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code"><pre><span class="c"># .claude/project-profile.yaml (excerpt)</span>
+project: privacyfence
+docs:
+  contributing: CONTRIBUTING.md
+  dod: docs/coding-and-testing-guidelines.md#27-definition-of-done
+  releasing: docs/releasing.md
+commands:
+  test: .venv/bin/pytest -q        # from stack python, overridable
+  lint: .venv/bin/ruff check .
+git:
+  plan_branch: "plan/{slug}"
+  phase_branch: "feature/{n}--{phase}"
+  merge: "--no-ff"
+  phase_trailer: "Plan-Phase"
+  plan_doc: "docs/{slug}-plan.md"
+worktrees: "~/Coding/worktrees/privacyfence-{slug}"
+ci:
+  dispatch_only_from_main: true
+  workflows:
+    qa-record-fixture.yml:  { input: connector, needs_approval: true }
+    connector-live-check.yml: { needs_approval: true }
+    build.yml: {}
+    linux-graphical-session.yml: {}
+specialists: [database-expert, data-analyst, ui-ux-designer]
+stacks: [python, node, web, shell, powershell]   # with paths, see "Languages and platforms"
+risk_zones:
+  query-execution: { paths: ["src/**/connectors/sql*"], require: [database-expert, sec-compliance] }
+domain_skills: [pf-invariants, pf-threat-model, pf-connector-playbook, pf-data-governance]</pre><button class="copy" type="button">Copy</button></div>
+  <p class="note">Paths and commands above are placeholders until we read the real ones from the repo. Migration order: build the Nightshift versions, run both side by side on two or three tasks, then delete the PrivacyFence commands and trim CLAUDE.md to project facts. One trade-off: a claude.ai cloud session on this repo would no longer have these commands, because cloud sessions don't load plugins. That matches the server-only setup.</p>
+</section>
+
+<!-- STACKS -->
+<section id="stacks">
+  <div class="sec-head">
+    <div class="eyebrow">3 · Languages and platforms</div>
+    <h2>One project, several languages</h2>
+    <p>The core (agents, tiers, triage, ledger, review desk) knows no language. Each language is a <b>stack plugin</b>, and a project lists every stack it uses with the paths it covers. Separately, it lists the <b>platforms</b> it ships to, because some code can only be built and tested on its own operating system. Places on this page that depend on Python carry the <span class="lang">python</span> mark.</p>
+  </div>
+
+  <div class="triage">
+    <div class="panel">
+      <h3>PrivacyFence uses five stacks</h3>
+      <p class="note" style="border:0;padding:0">From GitHub's language statistics for the repo: mostly Python, plus TypeScript and JavaScript, HTML and CSS, shell, PowerShell and an Inno Setup installer script.</p>
+      <div class="code"><pre># .claude/project-profile.yaml (paths are placeholders)
+stacks:
+  - { name: python,     paths: ["src/", "tests/", "scripts/*.py"] }
+  - { name: node,       paths: ["mcpb/", "website/"] }
+  - { name: web,        paths: ["src/**/static/", "src/**/templates/"] }
+  - { name: shell,      paths: ["scripts/*.sh", "debian/"] }
+  - { name: powershell, paths: ["installer/**/*.ps1", "installer/**/*.iss"] }
+
+platforms:
+  linux:   { verify: local }                      # ns-main
+  macos:   { verify: ci, workflows: [macos-graphical-session.yml, build.yml] }
+  windows: { verify: ci, workflows: [windows-graphical-session.yml, build.yml] }
+
+platform_paths:                                   # what only runs on one OS
+  macos:   ["**/*macos*", "*.plist", "PrivacyFenceApp.spec"]
+  windows: ["installer/**", "PrivacyFenceApp.win.spec"]</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="panel">
+      <h3>How runs use this</h3>
+      <ul>
+        <li><b>Skills load by path.</b> A change under <code>installer/</code> loads the PowerShell stack's skills; a change in <code>src/</code> loads Python's. A typo fix loads none.</li>
+        <li><b>Checks run per stack.</b> Each touched stack's lint and tests run in its own paths, so one PR can run pytest, shellcheck and PSScriptAnalyzer.</li>
+        <li><b>Platforms decide where the proof comes from.</b> Linux code is verified on ns-main. macOS or Windows code is verified only by dispatching that platform's workflow and reading the result, which PrivacyFence's steward rules already require.</li>
+        <li><b>Triage counts platforms.</b> Touching macOS or Windows code raises the risk floor to at least T1 and adds the dispatch to the plan, because ns-main can't run it.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table style="min-width:860px">
+      <thead><tr><th>Stack plugin</th><th>Detects</th><th>Checks</th><th>Runs on</th><th>Skills</th><th>When</th></tr></thead>
+      <tbody>
+        <tr><td><b>ns-python</b> <span class="lang">python</span></td><td><code>pyproject.toml</code></td><td>pytest, ruff, mypy, pip-audit</td><td>ns-main</td><td>conventions, testing, packaging (pyproject, PyInstaller)</td><td>now</td></tr>
+        <tr><td><b>ns-node</b> <span class="lang">node</span></td><td><code>package.json</code></td><td>npm test, eslint, tsc, npm audit</td><td>ns-main</td><td>TypeScript conventions, the build and bundle step</td><td>Build B</td></tr>
+        <tr><td><b>ns-web</b> <span class="lang">web</span></td><td>HTML, CSS, templates</td><td>HTML validation, accessibility scan in a headless browser</td><td>ns-main</td><td>semantic HTML, CSS without frameworks, works with ui-ux-designer</td><td>Build B</td></tr>
+        <tr><td><b>ns-shell</b> <span class="lang">shell</span></td><td><code>*.sh</code>, <code>debian/</code></td><td>shellcheck, bats</td><td>ns-main; macOS-only scripts in CI</td><td>POSIX vs bash, safe quoting, idempotent install scripts</td><td>Build B</td></tr>
+        <tr><td><b>ns-powershell</b> <span class="lang">powershell</span></td><td><code>*.ps1</code>, <code>*.iss</code></td><td>PSScriptAnalyzer, Pester for pure logic</td><td>lint on ns-main (PowerShell for Linux); real runs on the Windows CI</td><td>PowerShell conventions, Windows services and ACLs, Inno Setup</td><td>Build B</td></tr>
+        <tr><td><b>ns-swift</b> <span class="lang">swift</span></td><td><code>Package.swift</code>, <code>*.xcodeproj</code></td><td>swift test, xcodebuild test, SwiftLint, swift-format</td><td>logic packages on ns-main; apps only on macOS</td><td>Swift concurrency, SwiftUI, Swift Testing, Apple platform rules (entitlements, sandbox, privacy manifest, App Store review)</td><td>later</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="triage">
+    <div class="panel">
+      <h3>What every stack plugin must supply</h3>
+      <ul>
+        <li>Detection rule and default paths</li>
+        <li>Lint, test, type-check and dependency-audit commands</li>
+        <li>Worktree setup (for Python: venv and <code>pip install -e .</code>)</li>
+        <li>Cleanup targets for <code>ns gc</code> (for Python: <code>.venv</code>, pip cache)</li>
+        <li>apt packages for ns-main, which <code>ns project add</code> prints for root</li>
+        <li>A CI workflow template</li>
+        <li>Its skills, written to load only for files of that stack</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>The Swift catch: it needs a Mac</h3>
+      <ul>
+        <li>Xcode, Apple's app frameworks and the iOS simulator run only on macOS. ns-main can edit Swift but can't build or test a Mac or iOS app.</li>
+        <li><b>Start with GitHub's macOS runners</b> through ci-dispatch, as PrivacyFence already does for its macOS installer. Free on public repos; on private repos macOS minutes count extra.</li>
+        <li><b>Later, a Mac build worker</b>: a Mac mini at home or a rented one, on your tailnet as a self-hosted runner. Signing secrets live only there.</li>
+        <li>UI tests produce simulator screenshots for the review desk.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">Adding a stack later: write the stack plugin, add it to the marketplace, list it in the project's profile, install its server packages as root. Nothing in the core changes.</p>
+</section>
+
+<!-- 3. TIERS -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="eyebrow">4 · Adaptive depth</div>
+    <h2>Four tiers, chosen per request</h2>
+    <p>A typo never wakes the architect. Triage picks the smallest tier that is safe, and risk can push a small change up a tier.</p>
+  </div>
+  <div class="tiers">
+    <div class="tier">
+      <div class="t">T0</div><h3>Patch</h3>
+      <div class="bar"><i style="width:8%"></i></div>
+      <p>Typo, docs wording, config value, website copy. One session, hooks run lint and tests.</p>
+      <div class="meta"><span>where: interactive tmux</span><span>time: minutes</span><span>gates: PR merge</span></div>
+    </div>
+    <div class="tier">
+      <div class="t">T1</div><h3>Fix</h3>
+      <div class="bar"><i style="width:25%"></i></div>
+      <p>A single bug-fix issue. Inline mini-plan, failing test first, one reviewer.</p>
+      <div class="meta"><span>where: interactive tmux</span><span>time: under 2 h</span><span>gates: PR merge</span></div>
+    </div>
+    <div class="tier">
+      <div class="t">T2</div><h3>Feature</h3>
+      <div class="bar"><i style="width:55%"></i></div>
+      <p>A change inside one area, such as a new tool on an existing connector. Light design, 1–3 phases.</p>
+      <div class="meta"><span>where: detached run</span><span>time: half a day</span><span>gates: plan, final</span></div>
+    </div>
+    <div class="tier">
+      <div class="t">T3</div><h3>Epic</h3>
+      <div class="bar"><i style="width:100%"></i></div>
+      <p>New connector, policy-model change, new platform. Full discovery, ADR, parallel phases, review board.</p>
+      <div class="meta"><span>where: detached, parallel</span><span>time: 1–2 days</span><span>gates: plan, escalation, final</span></div>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Agent</th><th>T0 Patch</th><th>T1 Fix</th><th>T2 Feature</th><th>T3 Epic</th></tr></thead>
+      <tbody>
+        <tr><td>triage</td><td><i class="dot f"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>conductor</td><td></td><td><i class="dot l"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>researcher</td><td></td><td></td><td><i class="dot c"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>product-analyst</td><td></td><td></td><td><i class="dot l"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>architect</td><td></td><td></td><td><i class="dot l"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>planner</td><td></td><td><i class="dot l"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>test-architect</td><td></td><td><i class="dot l"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>implementer</td><td><i class="dot f"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i> × N</td></tr>
+        <tr><td>code-reviewer</td><td></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i> per phase + whole</td></tr>
+        <tr><td>sec-compliance</td><td><i class="dot c"></i></td><td><i class="dot c"></i></td><td><i class="dot f"></i></td><td><i class="dot f"></i> pre + post</td></tr>
+        <tr><td>database-expert</td><td></td><td><i class="dot c"></i></td><td><i class="dot c"></i></td><td><i class="dot c"></i></td></tr>
+        <tr><td>data-analyst</td><td></td><td></td><td><i class="dot c"></i></td><td><i class="dot c"></i></td></tr>
+        <tr><td>ui-ux-designer</td><td></td><td><i class="dot c"></i></td><td><i class="dot c"></i></td><td><i class="dot c"></i></td></tr>
+        <tr><td>integrator</td><td></td><td></td><td><i class="dot f"></i></td><td><i class="dot f"></i></td></tr>
+        <tr><td>you</td><td><i class="dot g"></i></td><td><i class="dot g"></i></td><td><i class="dot g"></i> <i class="dot g"></i></td><td><i class="dot g"></i> <i class="dot g"></i> <i class="dot g"></i></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="keyrow">
+    <span><i class="dot f"></i>full role</span>
+    <span><i class="dot l"></i>lite (a few lines, same session)</span>
+    <span><i class="dot c"></i>only when triage tags the area (risk zone or specialist domain)</span>
+    <span><i class="dot g"></i>human gate</span>
+  </div>
+</section>
+
+<!-- 4. TRIAGE -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="eyebrow">5 · How triage decides</div>
+    <h2>Size and risk, scored separately</h2>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>Size signals (generic)</h3>
+      <ul>
+        <li>Estimated files and modules touched</li>
+        <li>New public surface: tool, setting, CLI flag, UI page</li>
+        <li>Unknowns that need research</li>
+        <li>Cross-platform or packaging impact</li>
+        <li>Docs that must change with it</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Risk signals (from the profile)</h3>
+      <ul>
+        <li>Path matches a declared risk zone</li>
+        <li>Changes an approval, policy or PII decision</li>
+        <li>Touches credentials, auth or the audit trail</li>
+        <li>Alters what data reaches the AI client</li>
+        <li>Changes a compliance claim in docs or website</li>
+        <li>Runs SQL, changes a schema or releases query results → database-expert</li>
+        <li>Defines metrics, datasets or reports → data-analyst</li>
+        <li>Changes a screen, dialog, settings page or the website → ui-ux-designer</li>
+        <li>Touches macOS- or Windows-only code → at least T1, plus that platform's CI dispatch</li>
+      </ul>
+    </div>
+  </div>
+  <div class="formula">tier = max( size_tier, risk_floor )
+risk_floor: none → T0 · any risk zone → T1 + sec-compliance · invariant at stake → T2 · new trust boundary → T3
+you can always override:  /ns:run --tier T1 "…"</div>
+</section>
+
+<!-- 5. TIMELINE -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="eyebrow">6 · A T3 run, start to finish</div>
+    <h2>Two gates you attend, one you only see if needed</h2>
+    <p>Your time goes to the evening before and the evening after, from the iPad or a browser tab. Everything between runs detached on the server and checkpoints after each phase.</p>
+  </div>
+  <div class="timeline">
+    <div class="step gate"><div class="when">Day 0 · evening<br>~10 min</div><div class="rail"><i></i></div><div class="card"><h3>Gate 0 · Intake</h3><p>On the iPad: <code>ns new 123</code> opens a tmux session and runs <code>/ns:run</code> on issue #123. Triage proposes T3 and a budget; you confirm.</p></div></div>
+    <div class="step"><div class="when">Day 0 · 1–2 h</div><div class="rail"><i></i></div><div class="card"><h3>Discovery</h3><p>Researcher, product-analyst, architect (ADR), test-architect and a security pre-review write to the <code>plan/</code> branch.</p></div></div>
+    <div class="step gate"><div class="when">Day 0 · late<br>~30 min</div><div class="rail"><i></i></div><div class="card"><h3>Gate 1 · Plan review</h3><p>Open the ntfy link: plan, ADR and acceptance tests are on the review desk. Edit the Markdown in place, confirm the manual-before steps, then <code>ns approve 123</code>.</p></div></div>
+    <div class="step"><div class="when">Night + Day 1</div><div class="rail"><i></i></div><div class="card"><h3>Build loop</h3><p>Per phase: implement → tests → review, at most three rounds, then merge into the feature branch. Independent phases run in parallel.</p></div></div>
+    <div class="step gate"><div class="when">only if needed</div><div class="rail"><i></i></div><div class="card"><h3>Gate 1.5 · Escalation</h3><p>ntfy push when a phase is stuck, over budget, or must deviate from the ADR. Answer from the work browser tab with <code>ns attach 123</code>. Other phases keep going.</p></div></div>
+    <div class="step"><div class="when">Day 2 · 1–3 h</div><div class="rail"><i></i></div><div class="card"><h3>Verify</h3><p>Integrator runs the full CI matrix and <code>/dod</code>. Review board: code-reviewer on the whole branch, sec-compliance post-review, product-analyst checks acceptance criteria.</p></div></div>
+    <div class="step gate"><div class="when">Day 2 · evening<br>30–60 min</div><div class="rail"><i></i></div><div class="card"><h3>Gate 2 · Final review</h3><p>Read the HTML handoff report on the review desk, open the PR with the manual-after checklist, merge when satisfied. The server cleans up phase branches and worktrees.</p></div></div>
+  </div>
+</section>
+
+<!-- DAILY USE -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="eyebrow">7 · Daily use</div>
+    <h2>What you type, and where</h2>
+    <p>tmux keeps every run alive on the server. Your device only attaches and detaches, so closing the iPad or the work tab never stops anything.</p>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>iPad · Blink Shell</h3>
+      <div class="formula">mosh ns@ns-main         # over Tailscale
+ns ls                   # runs, tier, phase, state
+ns new 123              # start a run for issue #123
+ns attach 123           # jump into a run
+Ctrl-b d                # detach, run keeps going</div>
+    </div>
+    <div class="panel">
+      <h3>Work browser · Cloudflare</h3>
+      <div class="formula">https://ns-desk.&lt;domain&gt;     # plans, edit Markdown
+https://ns-view.&lt;domain&gt;     # HTML reports
+Tailscale SSH console, or https://ns-ssh.&lt;domain&gt;   # terminal, then:
+ns ls
+ns attach 123           # answer an escalation
+ns status 123           # read the ledger, no attach</div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVERS -->
+<section id="servers">
+  <div class="sec-head">
+    <div class="eyebrow">8 · Servers on Hetzner</div>
+    <h2>One permanent server, one throwaway lab</h2>
+    <p>CPU is not the bottleneck: each Claude worker mostly waits on the model, and your Claude subscription's usage limits cap how many run at once. So one mid-size x86 server is enough. x86 matters because PrivacyFence builds an amd64 <code>.deb</code> and PyInstaller binaries are architecture-specific <span class="lang">python</span>. Pick a German location (Falkenstein or Nuremberg) for low latency from Budapest.</p>
+  </div>
+  <div class="servers">
+    <div class="srv">
+      <h3>ns-main</h3>
+      <div class="spec">CX43 · 8 vCPU (shared) · 16 GB · 160 GB · fsn1 · always on</div>
+      <ul>
+        <li>Claude Code CLI, Nightshift plugin, PrivacyFence pack</li>
+        <li>3–4 parallel workers plus the test suite</li>
+        <li>User <code>ns</code> runs agents and has no sudo</li>
+        <li>Reachable only over Tailscale</li>
+        <li>Daily Hetzner backups</li>
+      </ul>
+      <div class="price">≈ €14.90 / month</div>
+    </div>
+    <div class="srv dashed">
+      <h3>ns-lab-N</h3>
+      <div class="spec">CX23 · 2 vCPU · 4 GB · 40 GB · created on demand</div>
+      <ul>
+        <li>Nothing to pre-install: each test starts from Hetzner's stock image, so it's always clean</li>
+        <li>Pick the image per test: Ubuntu 22.04 / 24.04, Debian 12 / 13</li>
+        <li>For upgrade tests, start from a saved snapshot with the previous release installed</li>
+        <li>Needs root, so it never runs on ns-main; separate Hetzner project and token</li>
+        <li>Deleted at the end of each run</li>
+      </ul>
+      <div class="price">≈ €0.01 per hour it exists</div>
+    </div>
+    <div class="srv dashed">
+      <h3>Upgrade path</h3>
+      <div class="spec">only if ns-main feels slow</div>
+      <ul>
+        <li><b>CPX42</b>, 8 vCPU, 16 GB, more consistent performance</li>
+        <li><b>CCX23</b>, 4 dedicated vCPU, 16 GB, for heavy builds</li>
+        <li>Rescale in the Hetzner console in a few minutes; keep the disk size to allow scaling back down</li>
+        <li>A second permanent server only makes sense with a second Claude subscription</li>
+      </ul>
+      <div class="price">€25.49 · €31.49 / month</div>
+    </div>
+  </div>
+
+  <div class="st" style="border-color:var(--infra-line)">
+    <div class="st-head"><h3>Start on a CX23, grow later</h3><span class="who ui">when bigger types are sold out</span></div>
+    <p>A CX23 (2 vCPU, 4 GB RAM, 40 GB disk) is enough for phases 2 and 3 and for small runs. It's tight for parallel phases, so start with <b>2 workers</b> in the global pool, not 4. Everything below keeps the same server, IP address and Tailscale identity.</p>
+    <div class="tbl-wrap">
+      <table style="min-width:640px">
+        <thead><tr><th>When</th><th>Do</th><th>Reversible?</th></tr></thead>
+        <tbody>
+          <tr><td>RAM or CPU is the limit (runs slow, swap in use)</td><td>Rescale to CX33 / CX43, choosing <b>CPU and RAM only</b></td><td>Yes: the disk stays 40 GB, so you can go back down</td></tr>
+          <tr><td>Disk is the limit, short term</td><td><code>ns gc</code>; fewer parallel worktrees</td><td>Yes</td></tr>
+          <tr><td>Disk is the limit, for good</td><td>Rescale <b>with</b> the disk (CX33: 80 GB, CX43: 160 GB), then check the partition grew</td><td>No: a server can never move to a plan with a smaller disk</td></tr>
+          <tr><td>Disk is the limit, but you want to stay small</td><td>Add a <b>Volume</b> for <code>~/Coding/worktrees</code> and caches</td><td>Volumes only grow, never shrink, but you can detach and delete one</td></tr>
+          <tr><td>CX types are still sold out</td><td>Rescale to <b>CPX32 / CPX42</b> instead: same x86 architecture</td><td>Same rules as above</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><b>How to rescale:</b> <code>ns drain</code>, then Hetzner console → ns-main → <b>Rescale</b>; the server is powered off for a few minutes. Afterwards <code>ns up</code>.</li>
+      <li><b>After a disk upgrade</b>, run <code>df -h /</code>. If the root filesystem didn't grow by itself, as root: <code>growpart /dev/sda 1 &amp;&amp; resize2fs /dev/sda1</code> (Hetzner's FAQ also describes doing it from the Rescue System).</li>
+      <li><b>Volumes</b>: 10 GB to 10 TB, grow at any time, but they are <b>not included in Hetzner backups</b> and are slower than the local disk. That's fine for worktrees and caches, which can be rebuilt from git, and wrong for <code>~/.claude</code>, <code>~/.config/ns</code> or the desk.</li>
+      <li>You can never switch between x86 and ARM by rescaling, so stay on x86 (CX, CPX, CCX).</li>
+      <li><code>ns doctor</code> and <code>ns gc</code> warn at 80 % disk, so you'll see it coming.</li>
+    </ul>
+  </div>
+
+  <div class="tbl-wrap">
+    <table class="cost" style="min-width:480px">
+      <thead><tr><th>Monthly cost</th><th>Item</th><th>EUR</th></tr></thead>
+      <tbody>
+        <tr><td>ns-main</td><td>CX43</td><td>11.99</td></tr>
+        <tr><td>ns-main</td><td>Primary IPv4</td><td>0.50</td></tr>
+        <tr><td>ns-main</td><td>Backups (20 %)</td><td>2.40</td></tr>
+        <tr><td>ns-lab</td><td>≈ 40 test hours</td><td>0.30</td></tr>
+        <tr><td>ns-qa (optional)</td><td>CX23 + IPv4, if you move the QA runner</td><td>4.49</td></tr>
+        <tr><td>Tailscale, ntfy</td><td>Free plans</td><td>0.00</td></tr>
+        <tr class="total"><td>Total</td><td>without / with ns-qa</td><td>≈ 15.20 / 19.70</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Hetzner prices as published after its April 2026 increase, excluding VAT. Check the console before ordering. Blink Shell is a separate ≈ $20 / year.</p>
+</section>
+
+<!-- REVIEW DESK -->
+<section id="desk">
+  <div class="sec-head">
+    <div class="eyebrow">9 · Review desk</div>
+    <h2>Where Claude shows you plans and reports</h2>
+    <p>Agents publish every gate document into one folder on ns-main. Markdown is for things you decide on and may edit (plan, ADR, acceptance criteria, manual steps). HTML is for things you only read (handoff report, architecture views, diagrams). Caddy serves both over HTTPS inside the tailnet, with certificates from Tailscale.</p>
+  </div>
+  <div class="servers">
+    <div class="srv">
+      <h3>Markdown · SilverBullet</h3>
+      <div class="spec">https://ns-main.&lt;tailnet&gt;.ts.net</div>
+      <ul>
+        <li>Browser Markdown editor with live preview, good on the iPad</li>
+        <li>Stores plain <code>.md</code> files in <code>/srv/ns-space</code>, so Claude reads and writes the same files</li>
+        <li>Notices changes on disk and updates open pages within moments</li>
+        <li>Its own login on top of the tailnet</li>
+      </ul>
+    </div>
+    <div class="srv">
+      <h3>HTML · Caddy file server</h3>
+      <div class="spec">https://ns-main.&lt;tailnet&gt;.ts.net:8443</div>
+      <ul>
+        <li>Serves the same folder read-only, with a directory listing</li>
+        <li>Separate port = separate browser origin, so an agent-written page can't script the editor</li>
+        <li>No index by search engines, nothing public</li>
+      </ul>
+    </div>
+    <div class="srv">
+      <h3>From anywhere · Cloudflare</h3>
+      <div class="spec">ns-desk · ns-view · ns-ssh .&lt;your-domain&gt;</div>
+      <ul>
+        <li>The work laptop has no Tailscale, so tailnet pages don't open there</li>
+        <li>A Cloudflare tunnel publishes the desk on your domain, behind Cloudflare Access: only your Google account can sign in</li>
+        <li>No open ports: the tunnel connects outwards from ns-main</li>
+        <li>Same URLs on every device, so ntfy links always open</li>
+        <li>Free plan is enough</li>
+      </ul>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table style="min-width:560px">
+      <thead><tr><th>Path in /srv/ns-space</th><th>Format</th><th>Written by</th><th>You</th></tr></thead>
+      <tbody>
+        <tr><td><code>index.md</code></td><td>md</td><td>ns publish</td><td>list of open runs and their gate</td></tr>
+        <tr><td><code>runs/123/plan.md</code>, <code>adr.md</code>, <code>acceptance.md</code></td><td>md</td><td>planner, architect, test-architect</td><td>edit, then <code>ns approve 123</code></td></tr>
+        <tr><td><code>runs/123/manual-steps.md</code></td><td>md</td><td>planner</td><td>tick the checkboxes as you do them</td></tr>
+        <tr><td><code>runs/123/escalation.md</code></td><td>md</td><td>conductor</td><td>write your answer under the question</td></tr>
+        <tr><td><code>runs/123/handoff.html</code>, <code>architecture.html</code></td><td>html</td><td>integrator, architect</td><td>read</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Git stays the source of truth. The desk holds working copies; <code>ns approve</code> is the only way edited Markdown goes back into the plan branch, and it shows you the diff first.</p>
+</section>
+
+<!-- OPERATIONS -->
+<section id="ops">
+  <div class="sec-head">
+    <div class="eyebrow">10 · Operations · <span style="color:var(--gen)">generic</span></div>
+    <h2>Reboots and housekeeping</h2>
+    <p>A reboot never loses a run, because every run's state is in its ledger in git. It can lose the step that was in progress, so drain first when you can. Claude and the runs are started by hand after a reboot, with one command.</p>
+  </div>
+
+  <div class="triage">
+    <div class="panel">
+      <h3>Before a planned reboot</h3>
+      <div class="formula">ns drain                # workers finish their current step,
+                        # write a checkpoint and stop
+ns ls                   # every run shows "parked"
+ssh root@ns-main
+reboot</div>
+      <ul>
+        <li>Security updates install on their own, but never reboot on their own. ns-gc pushes "reboot required" to your phone when an update needs one.</li>
+        <li>An unplanned reboot (Hetzner maintenance, a crash) is the same, minus the drain. Each run loses at most its current step.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>After the reboot</h3>
+      <div class="formula">mosh ns@ns-main
+ns up                   # checks services, Claude login, gh, disk;
+                        # restarts the Remote Control session
+ns ls                   # parked runs
+ns resume 123           # or: ns resume --all</div>
+      <ul>
+        <li><b>Back on their own:</b> Tailscale, Caddy, cloudflared, SilverBullet, the ns-gc timer.</li>
+        <li><b>Started by you, on purpose:</b> Claude sessions, Nightshift runs, Remote Control. You see the state before agents spend usage again.</li>
+        <li>A plain interactive session comes back with <code>claude --continue</code> in its folder.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:8px">What piles up, and what drops it</h3>
+  <div class="tbl-wrap">
+    <table style="min-width:760px">
+      <thead><tr><th>What</th><th>Where</th><th>Dropped when</th><th>By</th></tr></thead>
+      <tbody>
+        <tr><td>Phase and feature worktrees, with their <code>.venv</code> and build output<span class="lang">python</span></td><td><code>~/Coding/worktrees/</code></td><td>The run's PR is merged or closed</td><td>ns gc, daily</td></tr>
+        <tr><td>Worktrees Claude made itself (Remote Control, subagents)</td><td><code>&lt;repo&gt;/.claude/worktrees/</code></td><td>Clean ones: on exit, or after 30 days. Ones with unsaved work: never; ns gc lists them for you</td><td>Claude Code, ns gc report</td></tr>
+        <tr><td>Local branches; remote <code>plan/</code> and phase branches</td><td>git</td><td>Merged into the feature branch or <code>main</code></td><td>ns gc, daily</td></tr>
+        <tr><td>Session transcripts</td><td><code>~/.claude/projects/</code></td><td>Older than <code>cleanupPeriodDays</code> (30)</td><td>Claude Code</td></tr>
+        <tr><td>Finished runs' tmux sessions</td><td>tmux</td><td>The run reaches "done"</td><td>ns gc, daily</td></tr>
+        <tr><td>Review desk documents</td><td><code>/srv/ns-space/runs/&lt;id&gt;</code></td><td>Moved to <code>archive/&lt;yyyy-mm&gt;/</code> at merge; deleted after 90 days</td><td>ns gc, daily</td></tr>
+        <tr><td>Lab servers</td><td>Hetzner nightshift-lab</td><td>Any server older than 12 hours (should already be gone)</td><td>ns gc, daily</td></tr>
+        <tr><td>Lab snapshots</td><td>Hetzner nightshift-lab</td><td>All but the newest two</td><td>ns gc, monthly</td></tr>
+        <tr><td>pip cache<span class="lang">python</span></td><td><code>~/.cache/pip</code></td><td>Monthly</td><td>ns gc, monthly</td></tr>
+        <tr><td>System logs</td><td>journald</td><td>Capped at 500 MB</td><td>journald</td></tr>
+        <tr><td>Old packages and kernels</td><td>apt</td><td>Monthly</td><td>You, as root: <code>apt autoremove --purge</code></td></tr>
+        <tr><td>GitHub Actions artifacts</td><td>Repo settings</td><td>After 14 days</td><td>GitHub (one-time setting)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>Never dropped automatically</h3>
+      <ul>
+        <li>Anything belonging to a run that isn't "done"</li>
+        <li>A worktree with uncommitted or unpushed work: ns gc reports it and waits for you</li>
+        <li>The main checkout, git history, merged PRs, ADRs</li>
+        <li>Hetzner backups, which rotate on their own (seven kept)</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>How ns gc runs</h3>
+      <ul>
+        <li>A systemd user timer, daily at 04:00, monthly tasks on the 1st</li>
+        <li><code>ns gc --dry-run</code> shows what it would drop, without dropping anything</li>
+        <li>Ends with one ntfy line, for example: "freed 3.1 GB · 1 worktree needs you · reboot required"</li>
+        <li>Also warns when the disk is over 80 % full</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE CREDENTIALS -->
+<section id="creds">
+  <div class="sec-head">
+    <div class="eyebrow">11 · Live test credentials · <span style="color:var(--proj)">PrivacyFence</span></div>
+    <h2>Not on ns-main</h2>
+    <p>PrivacyFence already decided this in ADR 0019: the QA accounts' OAuth tokens live only as local files on a self-hosted GitHub Actions runner labelled <code>privacyfence-test</code>, never as Actions secrets and never on a GitHub-hosted runner. Agents never see them. They dispatch <code>qa-record-fixture.yml</code> or <code>connector-live-check.yml</code> and get back only the redacted fixture and the report, which is what <code>/qa-record</code> and the steward skill already do.</p>
+  </div>
+  <div class="servers">
+    <div class="srv">
+      <h3>ns-main</h3>
+      <div class="spec">agents · open internet · no credentials</div>
+      <ul>
+        <li>Reads untrusted text all day (web pages, issues), so it must hold nothing worth stealing</li>
+        <li>Can only dispatch the QA workflows and read their results</li>
+        <li>Can't reach the runner over the network (Tailscale tags)</li>
+        <li>Also must never get a packaged PrivacyFence install: its marker makes source runs refuse to start</li>
+      </ul>
+    </div>
+    <div class="srv">
+      <h3>privacyfence-test runner</h3>
+      <div class="spec">separate host · holds the QA tokens</div>
+      <ul>
+        <li>Keep it wherever it runs today</li>
+        <li>Or move it to its own CX23 (≈ €4.50 / month) in a third Hetzner project, <b>privacyfence-qa</b></li>
+        <li>No Claude, no agents, nothing else on it</li>
+        <li>Only runs jobs that come from <code>schedule</code> or <code>workflow_dispatch</code>, as the ADR requires</li>
+      </ul>
+    </div>
+    <div class="srv dashed">
+      <h3>New: your approval</h3>
+      <div class="spec">GitHub environment "live-qa"</div>
+      <ul>
+        <li>A dispatched job runs the scripts from the agent's branch on the runner that holds the tokens</li>
+        <li>So a manipulated agent could change the recorder and dispatch it</li>
+        <li>Fix: the dispatched QA jobs run in an environment with you as required reviewer; GitHub asks you to approve each one</li>
+        <li>The weekly scheduled check runs from <code>main</code> and needs no approval</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">Dedicated test accounts with synthetic data limit the damage, but a leaked grant can still be abused (spam from the test Slack or Gmail, or a suspended OAuth app). That's why the tokens get the same treatment as real ones. Required reviewers on environments are free for public repositories.</p>
+</section>
+
+
+
+
+
+<!-- 6. GUARDRAILS -->
+<section id="s12">
+  <div class="sec-head">
+    <div class="eyebrow">12 · Guardrails</div>
+    <h2>What keeps a two-day run from going wrong</h2>
+  </div>
+  <ul class="guards">
+    <li><b>no main</b><span>Branch protection on <code>main</code>; agents never merge, tag a release, or run <code>/cut-release</code>.</span></li>
+    <li><b>scoped token</b><span>Fine-grained GitHub token for this repo only, no admin or workflow-secret rights.</span></li>
+    <li><b>no open ports</b><span>The server is reachable only inside your tailnet.</span></li>
+    <li><b>no live grants</b><span>QA tokens stay on the separate runner; dispatched QA jobs wait for your approval.</span></li>
+    <li><b>untrusted text</b><span>Issue bodies, PR comments and web pages are data; agents never follow instructions found in them.</span></li>
+    <li><b>budgets</b><span>Each tier has a token and wall-clock cap; hitting it stops and escalates.</span></li>
+    <li><b>loop cap</b><span>Three review rounds per phase, then a human decides.</span></li>
+    <li><b>split roles</b><span>Reviewers are read-only and never see the implementer's reasoning.</span></li>
+    <li><b>tests first</b><span>Acceptance tests are written before code and cannot be weakened to pass.</span></li>
+    <li><b>ledger</b><span>Every step is checkpointed, so a reboot resumes instead of restarting.</span></li>
+    <li><b>no live data</b><span>The runner never holds connector credentials; live QA stays on your self-hosted runner.</span></li>
+    <li><b>manual steps</b><span>Console setup and real-device checks go only into manual-before or manual-after.</span></li>
+  </ul>
+</section>
+
+<!-- MORE PROJECTS -->
+<section id="projects">
+  <div class="sec-head">
+    <div class="eyebrow">13 · More projects · <span style="color:var(--gen)">generic</span></div>
+    <h2>Same server, one more clone</h2>
+    <p>Yes: another project is another clone on ns-main plus its own project pack. The server, the Claude login, the <code>ns</code> plugin, the review desk, the lab and ntfy are shared. Everything that is a fact about a project lives in that project's repo.</p>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>Shared, set up once</h3>
+      <ul>
+        <li>ns-main, Tailscale, Caddy, SilverBullet, ntfy</li>
+        <li>Claude Code login, and therefore one set of usage limits</li>
+        <li>The <code>ns</code> plugin, installed once at user scope</li>
+        <li>The lab project for throwaway servers</li>
+        <li>Agent GitHub tokens, one per owner (your account, the privacyfence org, any future org): add each new repo to its owner's token</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Per project</h3>
+      <ul>
+        <li>Clone, toolchain and test dependencies</li>
+        <li>Profile, domain skills, short <code>CLAUDE.md</code></li>
+        <li>A short prefix for run names: <code>pf-123</code>, <code>app-7</code></li>
+        <li>Its own desk folder and worktree names</li>
+        <li>QA runner and test credentials, if it has live tests</li>
+      </ul>
+    </div>
+  </div>
+  <div class="code"><pre>~/Coding/
+  privacyfence/                    main checkout
+  other-app/
+  worktrees/
+    privacyfence-&lt;slug&gt;/
+    other-app-&lt;slug&gt;/
+~/.config/ns/projects.yaml         registry: name, repo, path, prefix, max_workers
+/srv/ns-space/
+  privacyfence/runs/123/
+  other-app/runs/7/</pre><button class="copy" type="button">Copy</button></div>
+  <ul class="note" style="list-style:none;padding-left:10px;display:flex;flex-direction:column;gap:4px">
+    <li><b>One worker limit for all projects.</b> Usage limits are per Claude account, not per project, so the conductor shares one pool (4 workers on a CX43, 2 on a CX23) and queues the rest.</li>
+    <li><b>Same Linux user, so no isolation between projects.</b> An agent working on one project could read another clone. Fine for your own projects. Employer or client code, or another project's secrets, belongs on a separate server with its own Claude login, never here.</li>
+    <li><b>Other languages.</b> Each language is a stack plugin (see <a href="#stacks">Languages and platforms</a>). Python is already there. A project's profile lists the apt packages it needs (Node, Go, Java, a database server); <code>ns project add</code> prints them for you to install as root, because <code>ns</code> has no sudo.</li>
+  </ul>
+</section>
+
+<!-- NEW PROJECT KIT -->
+<section id="newproject">
+  <div class="sec-head">
+    <div class="eyebrow">14 · Making a project Nightshift-ready</div>
+    <h2>Two ways in: new or adopt</h2>
+    <p><b>New</b> scaffolds the files below into an empty repo. <b>Adopt</b> is how PrivacyFence and any existing repo come in: an onboarding run reads the code and the docs, drafts the same files from what it finds, and puts them on the review desk for you. Both end in an ordinary PR.</p>
+  </div>
+  <div class="timeline">
+    <div class="step"><div class="when">GitHub</div><div class="rail"><i></i></div><div class="card"><h3>Create or pick the repo, then set it up</h3><p>As root on ns-main: <code>ns-gh apply owner/repo</code> (see <a href="#github">GitHub settings script</a>). Add the repo to the agents' fine-grained token.</p></div></div>
+    <div class="step"><div class="when">ns-main</div><div class="rail"><i></i></div><div class="card"><h3>Register it</h3><p><code>ns project add owner/repo --prefix app</code> clones it, creates the venv or runs the profile's setup, makes the desk folder and adds it to the registry.</p></div></div>
+    <div class="step"><div class="when">ns-main · Claude</div><div class="rail"><i></i></div><div class="card"><h3>Scaffold or onboard</h3><p><code>/ns:init</code> on an empty repo writes the starter files. <code>/ns:onboard</code> on an existing one researches the repo and drafts them. Either way they land on the desk.</p></div></div>
+    <div class="step gate"><div class="when">you · ~30 min</div><div class="rail"><i></i></div><div class="card"><h3>Review the drafts</h3><p>Edit the profile and <code>CLAUDE.md</code> on the desk, mostly the commands, the risk zones and the definition of done, then <code>ns approve</code>. Nightshift opens the PR.</p></div></div>
+    <div class="step"><div class="when">ns-main</div><div class="rail"><i></i></div><div class="card"><h3>Smoke test</h3><p>Merge, then run one T0 job (a typo or a docs fix). If it reaches a green PR, the project is ready for bigger tiers.</p></div></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table style="min-width:680px">
+      <thead><tr><th>Starter file</th><th>What it's for</th></tr></thead>
+      <tbody>
+        <tr><td><code>CLAUDE.md</code></td><td>Short: what the project is, where the house docs are, the few rules every session needs. No workflow, that's Nightshift's.</td></tr>
+        <tr><td><code>.claude/project-profile.yaml</code></td><td>The contract: commands, git conventions, CI workflows, risk zones, specialists, domain skills.</td></tr>
+        <tr><td><code>.claude/settings.json</code></td><td>Permission rules only. The Nightshift plugins are installed at user scope on ns-main, so the project never references them, for example deny reading <code>.env*</code> and <code>credentials/</code>, deny <code>git push --force</code>.</td></tr>
+        <tr><td><code>.claude/skills/&lt;prefix&gt;-invariants/SKILL.md</code></td><td>The project's non-negotiables, used as review criteria. Start with this one domain skill and add more as reviews keep catching the same things.</td></tr>
+        <tr><td><code>.claude/ns-github.env</code></td><td>Overrides for <code>ns-gh</code>: required checks, environments.</td></tr>
+        <tr><td><code>docs/coding-and-testing-guidelines.md</code></td><td>Conventions and a numbered definition-of-done section that <code>/ns:dod</code> runs.</td></tr>
+        <tr><td><code>docs/adr/0001-record-architecture-decisions.md</code></td><td>Starts the ADR log the architect writes into.</td></tr>
+        <tr><td><code>CONTRIBUTING.md</code></td><td>Branch and PR rules for humans; the profile points to it.</td></tr>
+        <tr><td><code>.github/workflows/tests.yml</code></td><td>The CI gate whose check name goes into <code>REQUIRED_CHECKS</code>. The stack plugin supplies a template.</td></tr>
+        <tr><td><code>.github/pull_request_template.md</code></td><td>The definition-of-done checklist and a manual-after section.</td></tr>
+        <tr><td><code>.github/ISSUE_TEMPLATE/nightshift.yml</code></td><td>A request form: goal, acceptance criteria, suggested tier, out of scope.</td></tr>
+        <tr><td><code>.gitignore</code> additions</td><td><code>.claude/worktrees/</code>, <code>.claude/settings.local.json</code>, plus the stack's own (<code>.venv/</code><span class="lang">python</span>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code"><pre># .claude/settings.json (starter; no plugin reference, Nightshift is installed per user on ns-main)
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env*)",
+      "Read(./credentials/**)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ]
+  }
+}</pre><button class="copy" type="button">Copy</button></div>
+</section>
+
+<!-- GITHUB SETUP -->
+<section id="github">
+  <div class="sec-head">
+    <div class="eyebrow">15 · GitHub settings script</div>
+    <h2>ns-gh: audit, then apply</h2>
+    <p>One script checks a repo against Nightshift's defaults and fixes only what differs. <code>audit</code> changes nothing and exits non-zero when something differs; <code>apply</code> shows the same table, asks, then changes the differences. Per-project values come from <code>.claude/ns-github.env</code> on the default branch, read as data and never executed.</p>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>What it checks</h3>
+      <ul>
+        <li>Default branch, allowed merge types, delete branch on merge</li>
+        <li>A ruleset on the default branch: no deletion, no force push, PR required with 0 approvals (you can't approve your own PRs), required checks</li>
+        <li>Secret scanning and push protection, private vulnerability reporting (public repos)</li>
+        <li>Dependabot alerts and security updates</li>
+        <li>Actions: read-only default token, workflows can't approve PRs, artifact retention</li>
+        <li>Nightshift labels: <code>ns:queued</code>, <code>ns:running</code>, <code>ns:needs-you</code>, <code>ns:done</code>, <code>tier:T0–T3</code></li>
+        <li>Environments, such as <code>live-qa</code> with you as reviewer</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>How to run it</h3>
+      <div class="code"><pre><span class="c"># as root on ns-main; one admin token per owner,</span>
+<span class="c"># 7-day expiry, Administration + Environments + Issues: write</span>
+read -rsp "admin token: " GH_TOKEN; export GH_TOKEN; echo
+ns-gh audit privacyfence/privacyfence
+ns-gh apply privacyfence/privacyfence
+unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre># privacyfence/.claude/ns-github.env
+REQUIRED_CHECKS="pytest"
+ENVIRONMENTS="live-qa:reviewer,live-qa-scheduled:main-only"</pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">The admin token never reaches the agents' login under <code>ns</code>. Rulesets on private repos are enforced only with GitHub Pro (or a paid org plan).</p>
+    </div>
+  </div>
+  <details class="st">
+    <summary style="cursor:pointer;font-weight:600">Show the full script (ns-gh, bash, about 200 lines)</summary>
+    <div class="code"><pre>#!/usr/bin/env bash
+# ns-gh: audit or apply Nightshift&#x27;s GitHub repository settings.
+#
+#   ns-gh audit owner/repo          show wanted vs current, change nothing
+#   ns-gh apply owner/repo [--yes]  audit, ask, then fix only what differs
+#
+# Run it as root on ns-main with an admin token for the repo&#x27;s owner in GH_TOKEN
+# (fine-grained, 7-day expiry, Administration + Environments + Issues: write;
+# one token per owner, because a fine-grained token covers a single owner).
+# The agents&#x27; tokens under the ns user deliberately can&#x27;t do this.
+#
+# Per-project overrides: .claude/ns-github.env on the repo&#x27;s default branch,
+# KEY=value lines for the keys listed under &quot;Defaults&quot;. Read as data, never executed.
+set -euo pipefail
+
+MODE=${1:-}; REPO=${2:-}; FLAG=${3:-}
+if [[ $MODE != audit &amp;&amp; $MODE != apply ]] || [[ $REPO != */* ]]; then
+  echo &quot;usage: ns-gh audit|apply owner/repo [--yes]&quot; &gt;&amp;2; exit 2
+fi
+command -v gh &gt;/dev/null &amp;&amp; command -v jq &gt;/dev/null || { echo &quot;needs gh and jq&quot; &gt;&amp;2; exit 2; }
+
+# ---------- Defaults (override per project in .claude/ns-github.env)
+DEFAULT_BRANCH=main
+REQUIRED_CHECKS=&quot;&quot;                 # comma-separated status check names, e.g. &quot;pytest,ruff&quot;
+ALLOW_MERGE_COMMIT=true
+ALLOW_SQUASH_MERGE=true
+ALLOW_REBASE_MERGE=false
+DELETE_BRANCH_ON_MERGE=true
+WORKFLOW_PERMISSIONS=&quot;read&quot;        # default GITHUB_TOKEN permission: read | write
+ARTIFACT_RETENTION_DAYS=14
+ENVIRONMENTS=&quot;&quot;                    # comma-separated name:mode, mode = reviewer | main-only
+LABELS=&quot;ns:queued=0e8a16,ns:running=1d76db,ns:needs-you=d93f0b,ns:done=5319e7,tier:T0=c5def5,tier:T1=c5def5,tier:T2=bfd4f2,tier:T3=bfd4f2&quot;
+RULESET_NAME=&quot;ns-default-branch&quot;
+
+KNOWN=&quot;DEFAULT_BRANCH REQUIRED_CHECKS ALLOW_MERGE_COMMIT ALLOW_SQUASH_MERGE ALLOW_REBASE_MERGE DELETE_BRANCH_ON_MERGE WORKFLOW_PERMISSIONS ARTIFACT_RETENTION_DAYS ENVIRONMENTS LABELS&quot;
+if overrides=$(gh api &quot;repos/$REPO/contents/.claude/ns-github.env&quot; -H &quot;Accept: application/vnd.github.raw&quot; 2&gt;/dev/null); then
+  while IFS= read -r line; do
+    [[ $line =~ ^([A-Z_]+)=(.*)$ ]] || continue
+    key=${BASH_REMATCH[1]}; val=${BASH_REMATCH[2]}
+    val=${val%\&quot;}; val=${val#\&quot;}
+    [[ &quot; $KNOWN &quot; == *&quot; $key &quot;* ]] || { echo &quot;ignoring unknown key $key&quot; &gt;&amp;2; continue; }
+    [[ $val =~ ^[A-Za-z0-9_.,:=/\ -]*$ ]] || { echo &quot;ignoring $key: unexpected characters&quot; &gt;&amp;2; continue; }
+    printf -v &quot;$key&quot; &#x27;%s&#x27; &quot;$val&quot;
+  done &lt;&lt;&lt;&quot;$overrides&quot;
+  echo &quot;using overrides from .claude/ns-github.env&quot;
+fi
+
+# ---------- Output helpers
+DIFFS=()
+row() {  # row &lt;setting&gt; &lt;want&gt; &lt;have&gt;
+  local status=&quot;ok&quot;
+  if [[ $2 != &quot;$3&quot; ]]; then status=&quot;DIFF&quot;; DIFFS+=(&quot;$1&quot;); fi
+  printf &#x27;%-34s %-28s %-28s %s\n&#x27; &quot;$1&quot; &quot;$2&quot; &quot;$3&quot; &quot;$status&quot;
+}
+info() { printf &#x27;%-34s %s\n&#x27; &quot;$1&quot; &quot;$2&quot;; }
+
+api_or() {  # api_or &lt;fallback&gt; &lt;gh api args...&gt;: body on success, fallback on any error
+  local fb=$1 out; shift
+  if out=$(gh api &quot;$@&quot; 2&gt;/dev/null); then printf &#x27;%s\n&#x27; &quot;$out&quot;; else printf &#x27;%s\n&#x27; &quot;$fb&quot;; fi
+}
+
+ME=$(gh api user --jq .login)
+ME_ID=$(gh api user --jq .id)
+R=$(gh api &quot;repos/$REPO&quot;)
+VISIBILITY=$(jq -r .visibility &lt;&lt;&lt;&quot;$R&quot;)
+
+echo
+echo &quot;Repository $REPO ($VISIBILITY) · admin: $ME · mode: $MODE&quot;
+printf &#x27;%-34s %-28s %-28s %s\n&#x27; SETTING WANT HAVE STATUS
+printf &#x27;%.0s-&#x27; {1..100}; echo
+
+# ---------- 1. Repository settings
+row default_branch          &quot;$DEFAULT_BRANCH&quot;         &quot;$(jq -r .default_branch &lt;&lt;&lt;&quot;$R&quot;)&quot;
+row allow_merge_commit      &quot;$ALLOW_MERGE_COMMIT&quot;     &quot;$(jq -r .allow_merge_commit &lt;&lt;&lt;&quot;$R&quot;)&quot;
+row allow_squash_merge      &quot;$ALLOW_SQUASH_MERGE&quot;     &quot;$(jq -r .allow_squash_merge &lt;&lt;&lt;&quot;$R&quot;)&quot;
+row allow_rebase_merge      &quot;$ALLOW_REBASE_MERGE&quot;     &quot;$(jq -r .allow_rebase_merge &lt;&lt;&lt;&quot;$R&quot;)&quot;
+row delete_branch_on_merge  &quot;$DELETE_BRANCH_ON_MERGE&quot; &quot;$(jq -r .delete_branch_on_merge &lt;&lt;&lt;&quot;$R&quot;)&quot;
+
+# ---------- 2. Security
+if [[ $VISIBILITY == public ]]; then
+  row secret_scanning                 enabled &quot;$(jq -r &#x27;.security_and_analysis.secret_scanning.status // &quot;unknown&quot;&#x27; &lt;&lt;&lt;&quot;$R&quot;)&quot;
+  row secret_scanning_push_protection enabled &quot;$(jq -r &#x27;.security_and_analysis.secret_scanning_push_protection.status // &quot;unknown&quot;&#x27; &lt;&lt;&lt;&quot;$R&quot;)&quot;
+  row private_vulnerability_reporting true &quot;$(api_or &#x27;{&quot;enabled&quot;:&quot;unknown&quot;}&#x27; &quot;repos/$REPO/private-vulnerability-reporting&quot; | jq -r .enabled)&quot;
+else
+  info secret_scanning &quot;n/a on private repos without GitHub Secret Protection&quot;
+fi
+if gh api &quot;repos/$REPO/vulnerability-alerts&quot; &gt;/dev/null 2&gt;&amp;1; then VA=true; else VA=false; fi
+row dependabot_alerts            true &quot;$VA&quot;
+row dependabot_security_updates  true &quot;$(api_or &#x27;{&quot;enabled&quot;:false}&#x27; &quot;repos/$REPO/automated-security-fixes&quot; | jq -r .enabled)&quot;
+
+# ---------- 3. Actions
+WP=$(api_or &#x27;{}&#x27; &quot;repos/$REPO/actions/permissions/workflow&quot;)
+row workflow_token_permissions   &quot;$WORKFLOW_PERMISSIONS&quot; &quot;$(jq -r &#x27;.default_workflow_permissions // &quot;unknown&quot;&#x27; &lt;&lt;&lt;&quot;$WP&quot;)&quot;
+row workflows_can_approve_prs    false                   &quot;$(jq -r &#x27;.can_approve_pull_request_reviews // &quot;unknown&quot;&#x27; &lt;&lt;&lt;&quot;$WP&quot;)&quot;
+AR=$(api_or &#x27;{}&#x27; &quot;repos/$REPO/actions/permissions/artifact-and-log-retention&quot;)
+if [[ $(jq -r &#x27;.days // empty&#x27; &lt;&lt;&lt;&quot;$AR&quot;) ]]; then
+  row artifact_retention_days &quot;$ARTIFACT_RETENTION_DAYS&quot; &quot;$(jq -r .days &lt;&lt;&lt;&quot;$AR&quot;)&quot;
+else
+  info artifact_retention_days &quot;not readable via API here; check Settings → Actions → General&quot;
+fi
+
+# ---------- 4. Ruleset on the default branch
+RS_ID=$(api_or &#x27;[]&#x27; &quot;repos/$REPO/rulesets&quot; | jq -r --arg n &quot;$RULESET_NAME&quot; &#x27;.[] | select(.name==$n) | .id&#x27; | head -1)
+WANT_RULES=&quot;deletion,non_fast_forward,pull_request&quot;
+[[ -n $REQUIRED_CHECKS ]] &amp;&amp; WANT_RULES+=&quot;,required_status_checks&quot;
+if [[ -n $RS_ID ]]; then
+  RS=$(gh api &quot;repos/$REPO/rulesets/$RS_ID&quot;)
+  HAVE_RULES=$(jq -r &#x27;[.rules[].type] | sort | join(&quot;,&quot;)&#x27; &lt;&lt;&lt;&quot;$RS&quot;)
+  HAVE_CHECKS=$(jq -r &#x27;[.rules[] | select(.type==&quot;required_status_checks&quot;) | .parameters.required_status_checks[].context] | sort | join(&quot;,&quot;)&#x27; &lt;&lt;&lt;&quot;$RS&quot;)
+  row ruleset_enforcement &quot;active&quot; &quot;$(jq -r .enforcement &lt;&lt;&lt;&quot;$RS&quot;)&quot;
+else
+  HAVE_RULES=&quot;(no ruleset)&quot;; HAVE_CHECKS=&quot;&quot;
+fi
+row ruleset_rules    &quot;$(tr &#x27;,&#x27; &#x27;\n&#x27; &lt;&lt;&lt;&quot;$WANT_RULES&quot; | sort | paste -sd, -)&quot; &quot;$HAVE_RULES&quot;
+row required_checks  &quot;$(tr &#x27;,&#x27; &#x27;\n&#x27; &lt;&lt;&lt;&quot;$REQUIRED_CHECKS&quot; | sed &#x27;/^$/d&#x27; | sort | paste -sd, -)&quot; &quot;$HAVE_CHECKS&quot;
+
+# ---------- 5. Labels
+HAVE_LABELS=$(gh label list -R &quot;$REPO&quot; --limit 200 --json name,color --jq &#x27;.[] | &quot;\(.name)=\(.color)&quot;&#x27; | sort)
+IFS=&#x27;,&#x27; read -ra WANT_LABEL_LIST &lt;&lt;&lt;&quot;$LABELS&quot;
+for l in &quot;${WANT_LABEL_LIST[@]}&quot;; do
+  name=${l%%=*}
+  have=$(grep -E &quot;^${name//./\\.}=&quot; &lt;&lt;&lt;&quot;$HAVE_LABELS&quot; | head -1 || true)
+  row &quot;label $name&quot; &quot;$l&quot; &quot;${have:-(missing)}&quot;
+done
+
+# ---------- 6. Environments
+IFS=&#x27;,&#x27; read -ra ENV_LIST &lt;&lt;&lt;&quot;$ENVIRONMENTS&quot;
+for e in &quot;${ENV_LIST[@]}&quot;; do
+  [[ -z $e ]] &amp;&amp; continue
+  name=${e%%:*}; mode=${e#*:}
+  EJ=$(api_or &#x27;&#x27; &quot;repos/$REPO/environments/$name&quot;)
+  if [[ -z $EJ ]]; then row &quot;environment $name&quot; &quot;$mode&quot; &quot;(missing)&quot;; continue; fi
+  case $mode in
+    reviewer)  have=$(jq -r --argjson me &quot;$ME_ID&quot; &#x27;if ([.protection_rules[]? | select(.type==&quot;required_reviewers&quot;) | .reviewers[]?.reviewer.id] | index($me)) then &quot;reviewer&quot; else &quot;no reviewer&quot; end&#x27; &lt;&lt;&lt;&quot;$EJ&quot;);;
+    main-only) have=$(jq -r &#x27;if .deployment_branch_policy.custom_branch_policies == true then &quot;main-only&quot; else &quot;any branch&quot; end&#x27; &lt;&lt;&lt;&quot;$EJ&quot;);;
+    *) have=&quot;unknown mode&quot;;;
+  esac
+  row &quot;environment $name&quot; &quot;$mode&quot; &quot;$have&quot;
+done
+
+echo
+if [[ ${#DIFFS[@]} -eq 0 ]]; then echo &quot;All settings match.&quot;; exit 0; fi
+echo &quot;${#DIFFS[@]} setting(s) differ.&quot;
+[[ $MODE == audit ]] &amp;&amp; exit 1
+
+if [[ $FLAG != --yes ]]; then
+  read -r -p &quot;Apply these changes to $REPO? [y/N] &quot; ans
+  [[ $ans == y || $ans == Y ]] || { echo &quot;Nothing changed.&quot;; exit 1; }
+fi
+
+has() { local d; for d in &quot;${DIFFS[@]}&quot;; do [[ $d == &quot;$1&quot;* ]] &amp;&amp; return 0; done; return 1; }
+step() { echo &quot;→ $*&quot;; }
+
+# ---------- Apply
+if has default_branch || has allow_ || has delete_branch; then
+  step &quot;repository merge settings&quot;
+  gh api -X PATCH &quot;repos/$REPO&quot; \
+    -f default_branch=&quot;$DEFAULT_BRANCH&quot; \
+    -F allow_merge_commit=&quot;$ALLOW_MERGE_COMMIT&quot; -F allow_squash_merge=&quot;$ALLOW_SQUASH_MERGE&quot; \
+    -F allow_rebase_merge=&quot;$ALLOW_REBASE_MERGE&quot; -F delete_branch_on_merge=&quot;$DELETE_BRANCH_ON_MERGE&quot; &gt;/dev/null
+fi
+if has secret_scanning; then
+  step &quot;secret scanning and push protection&quot;
+  jq -n &#x27;{security_and_analysis:{secret_scanning:{status:&quot;enabled&quot;},secret_scanning_push_protection:{status:&quot;enabled&quot;}}}&#x27; \
+    | gh api -X PATCH &quot;repos/$REPO&quot; --input - &gt;/dev/null
+fi
+if has private_vulnerability_reporting; then step &quot;private vulnerability reporting&quot;; gh api -X PUT &quot;repos/$REPO/private-vulnerability-reporting&quot; &gt;/dev/null; fi
+if has dependabot_alerts;  then step &quot;Dependabot alerts&quot;;           gh api -X PUT &quot;repos/$REPO/vulnerability-alerts&quot; &gt;/dev/null; fi
+if has dependabot_security; then step &quot;Dependabot security updates&quot;; gh api -X PUT &quot;repos/$REPO/automated-security-fixes&quot; &gt;/dev/null; fi
+if has workflow_token || has workflows_can_approve; then
+  step &quot;Actions token permissions&quot;
+  gh api -X PUT &quot;repos/$REPO/actions/permissions/workflow&quot; \
+    -f default_workflow_permissions=&quot;$WORKFLOW_PERMISSIONS&quot; -F can_approve_pull_request_reviews=false &gt;/dev/null
+fi
+if has artifact_retention; then
+  step &quot;artifact retention&quot;
+  gh api -X PUT &quot;repos/$REPO/actions/permissions/artifact-and-log-retention&quot; -F days=&quot;$ARTIFACT_RETENTION_DAYS&quot; &gt;/dev/null \
+    || echo &quot;   could not set; change it in Settings → Actions → General&quot;
+fi
+if has ruleset || has required_checks; then
+  step &quot;ruleset $RULESET_NAME on the default branch&quot;
+  BODY=$(jq -n --arg name &quot;$RULESET_NAME&quot; --arg checks &quot;$REQUIRED_CHECKS&quot; &#x27;
+    {name:$name, target:&quot;branch&quot;, enforcement:&quot;active&quot;,
+     conditions:{ref_name:{include:[&quot;~DEFAULT_BRANCH&quot;], exclude:[]}},
+     rules: ([{type:&quot;deletion&quot;},{type:&quot;non_fast_forward&quot;},
+              {type:&quot;pull_request&quot;, parameters:{required_approving_review_count:0,
+                 dismiss_stale_reviews_on_push:false, require_code_owner_review:false,
+                 require_last_push_approval:false, required_review_thread_resolution:false}}]
+             + (if $checks == &quot;&quot; then [] else
+                 [{type:&quot;required_status_checks&quot;, parameters:{strict_required_status_checks_policy:false,
+                   required_status_checks: ($checks | split(&quot;,&quot;) | map({context:.}))}}] end))}&#x27;)
+  if [[ -n $RS_ID ]]; then
+    gh api -X PUT &quot;repos/$REPO/rulesets/$RS_ID&quot; --input - &lt;&lt;&lt;&quot;$BODY&quot; &gt;/dev/null
+  else
+    gh api -X POST &quot;repos/$REPO/rulesets&quot; --input - &lt;&lt;&lt;&quot;$BODY&quot; &gt;/dev/null
+  fi
+fi
+for l in &quot;${WANT_LABEL_LIST[@]}&quot;; do
+  name=${l%%=*}; color=${l#*=}
+  if has &quot;label $name&quot;; then step &quot;label $name&quot;; gh label create &quot;$name&quot; --color &quot;$color&quot; --force -R &quot;$REPO&quot; &gt;/dev/null; fi
+done
+for e in &quot;${ENV_LIST[@]}&quot;; do
+  [[ -z $e ]] &amp;&amp; continue
+  name=${e%%:*}; mode=${e#*:}
+  has &quot;environment $name&quot; || continue
+  step &quot;environment $name ($mode)&quot;
+  case $mode in
+    reviewer)
+      jq -n --argjson id &quot;$ME_ID&quot; &#x27;{reviewers:[{type:&quot;User&quot;, id:$id}], deployment_branch_policy:null}&#x27; \
+        | gh api -X PUT &quot;repos/$REPO/environments/$name&quot; --input - &gt;/dev/null;;
+    main-only)
+      jq -n &#x27;{deployment_branch_policy:{protected_branches:false, custom_branch_policies:true}}&#x27; \
+        | gh api -X PUT &quot;repos/$REPO/environments/$name&quot; --input - &gt;/dev/null
+      gh api -X POST &quot;repos/$REPO/environments/$name/deployment-branch-policies&quot; -f name=&quot;$DEFAULT_BRANCH&quot; -f type=branch &gt;/dev/null 2&gt;&amp;1 || true;;
+  esac
+done
+
+echo; echo &quot;Done. Re-run &#x27;ns-gh audit $REPO&#x27; to confirm.&quot;
+</pre><button class="copy" type="button">Copy</button></div>
+    <p class="note">Syntax-checked and lint-clean, but not yet run against a real repo. Run <code>audit</code> first and read the table before the first <code>apply</code>. The two least certain API calls (artifact retention, private vulnerability reporting) fall back to telling you to check the setting by hand.</p>
+  </details>
+</section>
+
+<!-- WHO BUILDS -->
+<section id="who">
+  <div class="sec-head">
+    <div class="eyebrow">16 · Who writes Nightshift</div>
+    <h2>Claude Code on ns-main writes it, this chat designs it</h2>
+    <p>Nightshift is mostly scripts, plugin files and prompts that only prove themselves by running: on the real server, with your real login, against real GitHub. Claude Code on ns-main can run, test and fix them in a loop. From here I can't run anything on your server.</p>
+  </div>
+  <div class="servers">
+    <div class="srv">
+      <h3>This chat</h3>
+      <div class="spec">architecture and specs</div>
+      <ul>
+        <li>This page, as the architecture</li>
+        <li>The spec and build plan that seed the repo</li>
+        <li>Reviewing plans and reports you bring back</li>
+      </ul>
+    </div>
+    <div class="srv">
+      <h3>Claude Code on ns-main</h3>
+      <div class="spec">all code and tests</div>
+      <ul>
+        <li>Builds the whole core in one unattended run (Build A)</li>
+        <li>Starts from your proven <code>/make-plan</code> and <code>/implement</code>: copies them into the plugin and turns their PrivacyFence facts into profile keys</li>
+        <li>Checks with <code>claude plugin validate</code>, shellcheck and real runs</li>
+      </ul>
+    </div>
+    <div class="srv dashed">
+      <h3>Nightshift itself</h3>
+      <div class="spec">from Build B on</div>
+      <ul>
+        <li>Build B runs through Nightshift itself, as a T3 run</li>
+        <li>Every run is also a test of the framework</li>
+        <li>Keep a known-good version installed while it rebuilds itself</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- PLAN -->
+<div class="part" id="plan">
+  <div class="eyebrow">Part 2</div>
+  <h2 class="part-title">The plan</h2>
+  <p class="lede">Six phases. Phases 1 and 2 happen once. Phases 3 and 4 make Nightshift exist and run. Phase 5 grows it, built by Nightshift itself. Phase 6 keeps it healthy. Only two moments need a real review from you: the end of phase 4 and the end of phase 5.</p>
+</div>
+
+<section id="overview">
+  <div class="sec-head">
+    <div class="eyebrow">P · Overview</div>
+    <h2>The phases at a glance</h2>
+  </div>
+  <div class="tbl-wrap">
+    <table style="min-width:760px">
+      <thead><tr><th>Phase</th><th>How often</th><th>Who</th><th>Your time</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#ph1">1 · Accounts</a></td><td>once</td><td>you, in browsers</td><td>≈ 1 h</td><td>Hetzner, Tailscale, Cloudflare and GitHub configured; repos and tokens exist</td></tr>
+        <tr><td><a href="#ph2">2 · Install ns-main</a></td><td>once; again only if you rebuild the server</td><td>you, over SSH</td><td>≈ 45 min</td><td>A hardened Ubuntu server with Claude Code, gh and tmux, reachable only over Tailscale</td></tr>
+        <tr><td><a href="#ph3">3 · Develop Nightshift</a></td><td>once, then per change</td><td>this chat, then Claude Code on ns-main</td><td>a 5-minute plan check</td><td>The core, its tests and its documentation in the <code>nightshift</code> repo</td></tr>
+        <tr><td><a href="#ph4">4 · Set up Nightshift on ns-main</a></td><td>once, and per new server</td><td>you, with <code>bootstrap.sh</code></td><td>one evening</td><td>Review desk, Cloudflare door, ntfy, timers; PrivacyFence added; <b>Review 1</b></td></tr>
+        <tr><td><a href="#ph5">5 · Grow</a></td><td>once, then as needed</td><td>Nightshift on itself</td><td>a 5-minute plan check, then one evening</td><td>Specialists, all PrivacyFence stacks, onboarding; <b>Review 2</b></td></tr>
+        <tr><td><a href="#ph6">6 · Operate</a></td><td>recurring</td><td>you</td><td>≈ 15 min a month</td><td>Updates, renewals, cleanup checks, backups, new projects</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- PHASE 1 -->
+<section id="ph1">
+  <div class="sec-head">
+    <div class="eyebrow">P1 · Accounts and configuration</div>
+    <h2>Phase 1 · Accounts, once</h2>
+    <p>All in browsers, mostly on the iPad. Menu names follow the consoles as of autumn 2026 and may move a little. Nothing here needs the server yet; where a later phase uses something from here, it says so.</p>
+  </div>
+  <div class="steps">
+
+    <div class="st">
+      <div class="st-head"><h3>iPad apps and your SSH key</h3><span class="who ui">iPad</span></div>
+      <ul>
+        <li>Install <b>Blink Shell</b>, <b>Tailscale</b>, <b>ntfy</b> and <b>GitHub</b> (for approving waiting QA jobs and reading PRs).</li>
+      </ul>
+      <div class="code"><pre><span class="c"># in Blink Shell</span>
+ssh-keygen -t ed25519 -C "ipad-blink"
+cat ~/.ssh/id_ed25519.pub        <span class="c"># copy this line for Hetzner</span></pre><button class="copy" type="button">Copy</button></div>
+    </div>
+
+    <div class="st">
+      <div class="st-head"><h3>Hetzner</h3><span class="who ui">console.hetzner.com</span></div>
+      <ol>
+        <li>Create an account and add a payment method.</li>
+        <li>Project <b>nightshift</b> → Security → SSH keys → add the Blink public key.</li>
+        <li>Same project → Firewalls → <b>ns-fw</b>: inbound TCP 22 from anywhere (temporary; you delete it at the end of phase 2) and UDP 41641 (Tailscale direct connections).</li>
+        <li>Project <b>nightshift-lab</b> for throwaway test servers → Security → API tokens → a <b>Read &amp; Write</b> token. Keep it for phase 4; it can only see this project.</li>
+        <li>Optional, only if you'll move the QA runner: project <b>privacyfence-qa</b>.</li>
+      </ol>
+    </div>
+
+    <div class="st">
+      <div class="st-head"><h3>Tailscale</h3><span class="who ui">login.tailscale.com</span></div>
+      <ol>
+        <li>Sign up with GitHub or Google. The free Personal plan is enough.</li>
+        <li>Sign in to the Tailscale app on the iPad with the same account, allow the VPN profile and turn on <b>Use Tailscale DNS</b>.</li>
+        <li><b>DNS</b>: keep MagicDNS on; under HTTPS Certificates choose <b>Enable HTTPS</b>. Note the tailnet name (<code>&lt;tailnet&gt;.ts.net</code>).</li>
+        <li><b>Access controls</b>: replace the whole policy with this one and save. Servers get tags, so your devices can reach them but ns-main can't reach other servers, such as a QA runner. Tagged servers also never need key renewal.</li>
+      </ol>
+      <div class="code"><pre>{
+  "tagOwners": {
+    "tag:ns-main": ["autogroup:admin"],
+    "tag:qa":      ["autogroup:admin"]
+  },
+  "grants": [
+    { "src": ["autogroup:member"], "dst": ["tag:ns-main", "tag:qa"], "ip": ["*"] }
+  ],
+  "ssh": [
+    { "action": "accept", "src": ["autogroup:member"], "dst": ["tag:ns-main"], "users": ["ns", "root"] },
+    { "action": "accept", "src": ["autogroup:member"], "dst": ["tag:qa"],      "users": ["root", "runner"] }
+  ]
+}</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+
+    <div class="st">
+      <div class="st-head"><h3>Cloudflare: Zero Trust and who may log in</h3><span class="who ui">dash.cloudflare.com</span></div>
+      <p>In phase 1 you only decide who may get in and protect the addresses. The tunnel that connects ns-main comes in phase 4, so nothing is ever reachable before it's protected. Paths below follow Cloudflare's documentation as of autumn 2026; the dashboard has been reorganized recently, so if a menu isn't where it says, use the search box at the top of the dashboard.</p>
+
+      <h4 class="sub">1 · Create the Zero Trust organization</h4>
+      <ol>
+        <li>Dashboard home → <b>Zero Trust</b> in the left sidebar.</li>
+        <li>Choose a <b>team name</b>. It becomes <code>&lt;team&gt;.cloudflareaccess.com</code>, the address of your login page, and is hard to change later. Something neutral like your initials works.</li>
+        <li>Choose the <b>Zero Trust Free</b> plan. Cloudflare asks for payment details even for the free plan; you won't be charged.</li>
+      </ol>
+
+      <h4 class="sub">2 · Choose the login method: Google</h4>
+      <p class="note">The old "Settings → Authentication → Login methods" no longer exists. Login methods now live under <b>Zero Trust → Integrations → Identity providers</b>. A new organization already has one entry there, <b>Cloudflare</b> (log in with your Cloudflare account); One-time PIN is no longer added automatically.</p>
+      <p><b>No Google API needs enabling.</b> Cloudflare's plain <b>Google</b> provider only uses Google sign-in (OpenID Connect with your email). Only the separate <b>Google Workspace</b> provider needs the <b>Admin SDK API</b>, to read Workspace group memberships, which a one-person setup doesn't use.</p>
+      <p><b>In Google Cloud console</b> (<code>console.cloud.google.com</code>):</p>
+      <ol>
+        <li>Create a <b>new project</b>, for example <code>nightshift-access</code>. Keep it separate from PrivacyFence's connector projects, so their OAuth settings never mix.</li>
+        <li><b>APIs &amp; Services → OAuth consent screen</b> (newer consoles: <b>Google Auth Platform</b>) → <b>Get started</b>: app name <code>Nightshift</code>, your support email, audience <b>External</b>, your contact email, accept the policy, <b>Create</b>.</li>
+        <li><b>Data access / scopes</b>: add nothing. The basic <code>openid</code>, <code>email</code> and <code>profile</code> scopes are enough and need no verification.</li>
+        <li><b>Audience</b>: leave the publishing status at <b>Testing</b> and add your own Google address under <b>Test users</b>. Only listed test users can sign in, which is exactly what you want.</li>
+        <li><b>Clients → Create client</b> (older consoles: Credentials → Create credentials → OAuth client ID): type <b>Web application</b>, name <code>Cloudflare Access</code>.
+          <ul>
+            <li>Authorized JavaScript origins: <code>https://&lt;team&gt;.cloudflareaccess.com</code></li>
+            <li>Authorized redirect URIs: <code>https://&lt;team&gt;.cloudflareaccess.com/cdn-cgi/access/callback</code></li>
+          </ul>
+        </li>
+        <li><b>Create</b>, then copy the <b>Client ID</b> and the <b>Client secret</b>.</li>
+      </ol>
+      <p><b>In Cloudflare</b>:</p>
+      <ol>
+        <li><b>Zero Trust → Integrations → Identity providers → Add new identity provider → Google</b>.</li>
+        <li>Paste the Client ID into <b>App ID</b> and the secret into <b>Client secret</b>. Turn on <b>Proof Key for Code Exchange (PKCE)</b>. <b>Save</b>.</li>
+        <li>Back in the list, choose <b>Test</b> next to Google and sign in. A success page lists your email: that exact address goes into the policy in part 3.</li>
+        <li>Leave the <b>Cloudflare</b> entry in place as a fallback, but don't enable it on the applications.</li>
+      </ol>
+      <p class="note">Two-factor now comes from your Google account, so make sure it's on there. If the test fails with <code>redirect_uri_mismatch</code>, the team name in the two Google URLs differs from your Zero Trust team name. If it fails with "access blocked", the address you're signing in with isn't on the test-user list.</p>
+
+      <h4 class="sub">3 · One reusable policy: "only me"</h4>
+      <ol>
+        <li><b>Zero Trust → Access controls → Policies → Add a policy</b>.</li>
+        <li>Name <code>only me</code>, action <b>Allow</b>, session duration <b>24 hours</b>.</li>
+        <li>Under <b>Include</b>, selector <b>Emails</b>, value: the Google address the test showed. Nothing under Require or Exclude.</li>
+        <li>Save. Every application below uses this one policy, so changing who may log in later is one edit.</li>
+      </ol>
+
+      <h4 class="sub">4 · Protect the two desk addresses</h4>
+      <ol>
+        <li><b>Zero Trust → Access controls → Applications → Create new application → Self-hosted and private</b>.</li>
+        <li><b>Add public hostname</b>: subdomain <code>ns-desk</code>, domain: yours. Use exactly one level under the domain (<code>ns-desk.&lt;domain&gt;</code>, not <code>desk.ns.&lt;domain&gt;</code>): Cloudflare's free certificate only covers <code>*.&lt;domain&gt;</code>.</li>
+        <li>Application name <code>Nightshift desk</code>; session duration <b>24 hours</b>.</li>
+        <li>Policies: <b>Select existing policies → only me</b>.</li>
+        <li>Login methods: only <b>Google</b>. With a single method, turn on <b>Apply instant authentication</b> so you go straight to Google.</li>
+        <li>Save. Repeat for <code>ns-view</code> (name <code>Nightshift reports</code>).</li>
+      </ol>
+      <p class="note">Each application has to match the address of its tunnel route exactly. Access applications are deny-by-default, so an address protected here stays closed even before anything runs behind it.</p>
+
+      <h4 class="sub">5 · A terminal on the work laptop: pick one</h4>
+      <ul>
+        <li><b>A · Tailscale SSH Console (recommended, nothing to set up here).</b> In the browser: <code>login.tailscale.com</code> → Machines → ns-main → ⋯ → <b>SSH</b>. It runs entirely in the browser and needs no install. Try it from the work network once; if it connects, skip option B.</li>
+        <li><b>B · Cloudflare's browser terminal</b>, if the work network blocks Tailscale:
+          <ol>
+            <li>A third application as in part 4: subdomain <code>ns-ssh</code>, name <code>Nightshift terminal</code>, policy <code>only me</code>.</li>
+            <li>Open it → <b>Configure</b> → turn on <b>Allow access through browser-based RDP, SSH, or VNC sessions</b>, choose <b>SSH</b>, save.</li>
+            <li><b>Zero Trust → Access controls → Service credentials → SSH → Add a certificate</b>, select the <code>Nightshift terminal</code> application, and copy the <b>public key</b> it shows. You need it in phase 4.</li>
+          </ol>
+          Cloudflare marks these short-lived SSH certificates as "legacy" (its newer method needs its WARP client on the laptop), but they are still the supported way to log in from the browser terminal.</li>
+      </ul>
+
+      <h4 class="sub">6 · Leave DNS alone</h4>
+      <p>No DNS records yet. The tunnel routes in phase 4 create them. Never add an A record pointing at ns-main's IP address.</p>
+    </div>
+
+
+    <div class="st">
+      <div class="st-head"><h3>GitHub: what goes where</h3><span class="who ui">github.com</span></div>
+      <p>Three places, kept apart on purpose. <b>Your user account</b> holds your identity and all tokens, since tokens are always created by a person. <b>Your personal space</b> owns everything Nightshift. The <b>privacyfence org</b> owns only PrivacyFence and never learns that Nightshift exists, apart from the project's own <code>.claude/</code> files.</p>
+      <div class="tbl-wrap">
+        <table style="min-width:720px">
+          <thead><tr><th>Setting</th><th>Your user account</th><th>Personal space (Nightshift)</th><th>privacyfence org</th></tr></thead>
+          <tbody>
+            <tr><td>Two-factor, private email</td><td>✓</td><td></td><td>require 2FA for members (org setting)</td></tr>
+            <tr><td>Repositories</td><td></td><td><code>nightshift</code>, <code>nightshift-sandbox</code></td><td><code>privacyfence</code> (unchanged)</td></tr>
+            <tr><td>Allow fine-grained tokens</td><td></td><td>nothing to do on a user account</td><td>✓ org setting</td></tr>
+            <tr><td>Agent token</td><td>created here</td><td><b>dev token</b>, owner = you, with Workflows</td><td><b>PrivacyFence agent token</b>, owner = privacyfence, without Workflows</td></tr>
+            <tr><td>Admin token for <code>ns-gh</code> (phase 4, 7 days)</td><td>created here</td><td>one, owner = you</td><td>one, owner = privacyfence</td></tr>
+            <tr><td>Ruleset, labels, Actions and security settings</td><td></td><td>by hand now, <code>ns-gh</code> in phase 4</td><td><code>ns-gh</code> in phase 4</td></tr>
+            <tr><td>Environments <code>live-qa</code>, QA runner, test credentials</td><td></td><td></td><td>✓ only here</td></tr>
+            <tr><td>Nightshift plugins</td><td></td><td>the marketplace lives in <code>nightshift</code></td><td>not referenced; installed at user scope on ns-main</td></tr>
+            <tr><td>Project pack (<code>.claude/project-profile.yaml</code>, <code>pf-*</code> skills, <code>ns-github.env</code>)</td><td></td><td></td><td>✓ in the PrivacyFence repo: these are facts about PrivacyFence</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">One fine-grained token can only cover one owner's repositories. That's why there are two agent tokens and two admin tokens, and why <code>ns</code> picks the token by the project's owner.</p>
+
+      <h4 class="sub">Your user account</h4>
+      <ol>
+        <li><b>Settings → Password and authentication</b>: two-factor on, ideally with a passkey.</li>
+        <li><b>Settings → Emails</b>: <b>Keep my email addresses private</b> and <b>Block command line pushes that expose my email</b>. The server's commits use the noreply address shown there.</li>
+        <li>Install the GitHub app on the iPad. You'll approve waiting QA jobs there later.</li>
+      </ol>
+
+      <h4 class="sub">Personal space: the Nightshift repos</h4>
+      <ol>
+        <li>Create <code>nightshift</code> (with a README) and an empty <code>nightshift-sandbox</code> under your own name.</li>
+        <li><b>Decide public or private.</b> Branch rulesets on private repos are only enforced with GitHub Pro. Nightshift holds no secrets, so the simplest choice is <b>public</b>: rules work for free, and the plugin installs without a token. If you want it private, either take GitHub Pro or accept that <code>main</code> isn't protected from the agents' token.</li>
+        <li><code>nightshift</code> → Settings → Rules → Rulesets → <b>New branch ruleset</b>: target the default branch, enforcement <b>Active</b>, turn on <b>Restrict deletions</b>, <b>Block force pushes</b> and <b>Require a pull request before merging</b> with 0 required approvals. Same for <code>nightshift-sandbox</code>.</li>
+        <li><b>Dev token</b>: your profile → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens → Generate new token</b>.
+          <ul>
+            <li>Name <code>ns-main dev</code>, resource owner <b>you</b>, expiry 90 days (calendar reminder).</li>
+            <li>Repository access: <b>Only select repositories</b>: <code>nightshift</code>, <code>nightshift-sandbox</code>.</li>
+            <li>Permissions: Contents, Issues, Pull requests, Actions and <b>Workflows</b> read and write; Commit statuses read. Needed in phase 2.</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h4 class="sub">privacyfence org</h4>
+      <ol>
+        <li>Org → Settings → <b>Authentication security</b>: require two-factor for members.</li>
+        <li>Org → Settings → <b>Personal access tokens → Settings</b>: under fine-grained tokens, choose <b>Allow access via fine-grained personal access tokens</b>. If you also turn on "Require administrator approval", you'll approve your own requests under <b>Pending requests</b>.</li>
+        <li><b>PrivacyFence agent token</b> (create it in phase 4, from your user account as above): resource owner <b>privacyfence</b>, only <code>privacyfence/privacyfence</code>, Contents, Issues, Pull requests and Actions read and write, Commit statuses read. <b>No</b> Workflows, Administration, Secrets or Environments.</li>
+        <li>Nothing Nightshift-specific goes into the org: no plugin reference, no Nightshift repo, no org-level token for Nightshift.</li>
+      </ol>
+    </div>
+
+  </div>
+</section>
+
+<!-- PHASE 2 -->
+<section id="ph2">
+  <div class="sec-head">
+    <div class="eyebrow">P2 · Install ns-main</div>
+    <h2>Phase 2 · Install ns-main, once</h2>
+    <p>A plain, hardened Ubuntu server: enough to develop Nightshift on, and the base that phase 4 builds on. Nothing Nightshift-specific yet. Replace values in <code>&lt;angle brackets&gt;</code>.</p>
+  </div>
+  <div class="steps">
+    <div class="st">
+      <div class="st-head"><h3>Create ns-main</h3><span class="who ui">Hetzner console</span></div>
+      <ul>
+        <li>Project <b>nightshift</b> → Add server: Falkenstein · Ubuntu 24.04 · <b>CX43</b> (or <b>CX23</b> if that's all that's available; see "Start on a CX23, grow later" under Servers) · IPv4 + IPv6 · your Blink key · firewall <b>ns-fw</b> · Backups on · name <b>ns-main</b>.</li>
+        <li>Sizing and cost: see <a href="#servers">Servers on Hetzner</a>.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Base system and the agent user</h3><span class="who root">root on ns-main</span><span class="lang">python</span></div>
+      <p>Connect from Blink with <code>ssh root@&lt;ns-main-ipv4&gt;</code>, then paste:</p>
+      <div class="code"><pre>apt update &amp;&amp; apt -y full-upgrade
+apt -y install git tmux mosh curl jq ripgrep unzip build-essential \
+  python3 python3-venv python3-pip pipx ufw unattended-upgrades   <span class="c"># python3* and pipx: stack python</span>
+timedatectl set-timezone Europe/Budapest
+
+<span class="c"># 4 GB swap as a safety net</span>
+fallocate -l 4G /swapfile &amp;&amp; chmod 600 /swapfile &amp;&amp; mkswap /swapfile &amp;&amp; swapon /swapfile
+echo '/swapfile none swap sw 0 0' &gt;&gt; /etc/fstab
+
+<span class="c"># agent user: no sudo on purpose</span>
+adduser --disabled-password --gecos "" ns
+install -d -m 700 -o ns -g ns /home/ns/.ssh
+install -m 600 -o ns -g ns /root/.ssh/authorized_keys /home/ns/.ssh/
+loginctl enable-linger ns
+
+<span class="c"># key-only SSH</span>
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl reload ssh</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Tailscale, then close the public door</h3><span class="who root">root on ns-main</span></div>
+      <p class="note">The access policy is already in place from phase 1, so the server gets its tag right away.</p>
+      
+      <div class="code"><pre>curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --ssh --hostname ns-main --advertise-tags=tag:ns-main   <span class="c"># open the printed URL on the iPad</span></pre><button class="copy" type="button">Copy</button></div>
+
+      <p class="note">Disconnect and reconnect over Tailscale with <code>ssh root@ns-main</code> before the next block. Enabling ufw from the public connection would cut you off.</p>
+      <div class="code"><pre><span class="c"># firewall: allow only the tailnet</span>
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow in on tailscale0
+ufw allow 41641/udp
+ufw --force enable</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Test from Blink: <code>mosh ns@ns-main</code>. Then in the Hetzner console delete the TCP 22 rule from ns-fw.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>GitHub CLI</h3><span class="who root">root on ns-main</span></div>
+      <div class="code"><pre>install -d -m 755 /etc/apt/keyrings
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  &gt; /etc/apt/sources.list.d/github-cli.list
+apt update &amp;&amp; apt -y install gh</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Claude Code and GitHub login</h3><span class="who ns">ns on ns-main</span></div>
+      <p>Connect with <code>mosh ns@ns-main</code>. Run each block on its own: two of them are interactive.</p>
+      <div class="code"><pre>curl -fsSL https://claude.ai/install.sh | bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.bashrc &amp;&amp; source ~/.bashrc
+claude --version</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>claude          <span class="c"># interactive: open the URL on the iPad, paste the code back, then /exit</span></pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>gh auth login   <span class="c"># interactive: GitHub.com → HTTPS → paste the dev token (nightshift + sandbox)</span></pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>gh auth setup-git
+git config --global user.name  "Nightshift (ns-main)"
+<span class="c"># your private GitHub address: &lt;numeric user id&gt;+&lt;username&gt;@users.noreply.github.com</span>
+git config --global user.email "$(gh api user --jq '"\(.id)+\(.login)@users.noreply.github.com"')"
+git config --global user.email          <span class="c"># check it</span></pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">The subscription login is valid for a long time but does expire. Claude Code warns three days ahead; renew with <code>/login</code> so overnight runs don't stall.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>tmux and maintenance basics</h3><span class="who root">root</span><span class="who ns">ns</span></div>
+      <div class="code"><pre><span class="c"># as root: security updates on, automatic reboots off, logs capped</span>
+cat &gt; /etc/apt/apt.conf.d/52nightshift &lt;&lt;'EOF'
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=500M\n' &gt; /etc/systemd/journald.conf.d/size.conf
+systemctl restart systemd-journald</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre><span class="c"># as ns</span>
+cat &gt; ~/.tmux.conf &lt;&lt;'EOF'
+set -g mouse on
+set -g history-limit 100000
+set -g default-terminal "tmux-256color"
+set -g status-right "#H  %H:%M"
+EOF
+mkdir -p ~/.claude ~/Coding/worktrees
+[ -f ~/.claude/settings.json ] || echo '{}' &gt; ~/.claude/settings.json
+jq '.cleanupPeriodDays = 30' ~/.claude/settings.json &gt; /tmp/s.json &amp;&amp; mv /tmp/s.json ~/.claude/settings.json</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Check</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>claude doctor
+gh auth status
+tailscale status
+sudo -n true 2&gt;/dev/null &amp;&amp; echo "WARNING: ns has sudo" || echo "ok: ns has no sudo"</pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">Done when these pass, <code>mosh ns@ns-main</code> works from Blink over Tailscale, and TCP 22 is gone from the Hetzner firewall.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PHASE 3 -->
+<section id="ph3">
+  <div class="sec-head">
+    <div class="eyebrow">P3 · Develop Nightshift</div>
+    <h2>Phase 3 · Develop Nightshift</h2>
+    <p>Developing needs only what phase 2 left: SSH, a clone and Claude Code. During development the plugin is loaded straight from the clone with <code>claude --plugin-dir</code>; nothing is installed yet. The end-to-end tests run against <code>nightshift-sandbox</code>.</p>
+  </div>
+  <div class="steps">
+    <div class="st">
+      <div class="st-head"><h3>Spec and seed</h3><span class="who ns">this chat</span><span class="who ui">you</span></div>
+      <ul>
+        <li>This chat writes <code>docs/spec.md</code> (this page as requirements with acceptance criteria), <code>docs/build-plan.md</code> (Build A and Build B with their tests) and an outline of every document listed in <a href="#docs">Documentation</a>.</li>
+        <li>You commit them, and copy PrivacyFence's <code>make-plan.md</code>, <code>implement.md</code>, <code>dod.md</code> and the steward skill into <code>nightshift/.claude/</code>. They are the dev tooling for Build A, and the seed for the plugin's own versions.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Clone and start Build A</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>git clone https://github.com/&lt;you&gt;/nightshift ~/Coding/nightshift
+cd ~/Coding/nightshift &amp;&amp; tmux new -s build
+claude
+
+<span class="c"># inside Claude Code</span>
+/make-plan Build A from docs/build-plan.md, following docs/spec.md
+<span class="c"># read the plan for five minutes, then</span>
+/implement &lt;plan URL&gt;
+<span class="c"># detach with Ctrl-b d; Build A runs on its own</span></pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">A build can take one to two days. It pauses when your Claude usage limit is reached and continues on its own when the limit resets.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Build A · The whole core</h3><span class="who ns">Claude Code on ns-main</span></div>
+      <div class="code"><pre>nightshift/
+  .claude-plugin/marketplace.json      ns, ns-python (Build A); more stacks (Build B)
+  plugins/ns/
+    .claude-plugin/plugin.json
+    agents/   skills/   hooks/
+  plugins/ns-python/
+    .claude-plugin/plugin.json
+    stack.yaml   skills/
+  bin/        ns  ns-notify  ns-gh  bootstrap.sh
+  docs/       spec.md  build-plan.md  profile-schema.json
+  .claude/    commands from PrivacyFence (dev tooling only)
+  tests/      bats/  e2e/   (e2e runs against nightshift-sandbox)</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li><b>Plugins</b>: marketplace, <code>ns</code> and <code>ns-python</code>; all core agents and skills; guard and checkpoint hooks.</li>
+        <li><b>Profile</b>: JSON Schema with stacks, platforms and specialists; <code>ns profile check</code>; a draft PrivacyFence profile.</li>
+        <li><b>Pipeline T0 to T3</b>: triage, <code>/ns:run</code>, <code>/ns:plan</code>, <code>/ns:implement</code>, <code>/ns:dod</code>, ci-dispatch; ledger, conductor, budgets, the review-loop cap, parallel phases.</li>
+        <li><b>Server kit</b>: the <code>ns</code> CLI (including <code>ns doctor</code>), <code>ns-notify</code>, <code>ns-gh</code>, and <code>bootstrap.sh</code>, which does all of phase 4.</li>
+        <li><b>Documentation</b>: every document in <a href="#docs">Documentation</a>, written against the real commands.</li>
+        <li><b>Tests</b>: bats for the CLI, <code>claude plugin validate</code>, shellcheck, schema tests, a docs check (every <code>ns</code> command and profile key documented, no broken links), and end-to-end runs on the sandbox for each tier, including a run killed halfway and resumed.</li>
+      </ul>
+      <p class="note">Done when every check is green and the sandbox has one ready-to-merge PR per tier, each with its handoff report. You don't review here; Review 1 comes at the end of phase 4, on real work.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PHASE 4 -->
+<section id="ph4">
+  <div class="sec-head">
+    <div class="eyebrow">P4 · Set up Nightshift on ns-main</div>
+    <h2>Phase 4 · Set up Nightshift on ns-main</h2>
+    <p>One script installs the runtime. It stops where it needs you: the tunnel token, the SSH CA key, the Hetzner lab token, SilverBullet's first login. <code>docs/setup.md</code> in the repo describes the same steps for doing them by hand; the reference at the end of this phase shows what the script does.</p>
+  </div>
+  <div class="steps">
+    <div class="st">
+      <div class="st-head"><h3>Cloudflare: create the tunnel</h3><span class="who ui">dash.cloudflare.com</span></div>
+      <p>Do this right before <code>bootstrap.sh</code>, which asks for the tunnel token.</p>
+      <ol>
+        <li><b>Networking → Tunnels → Create a tunnel</b> (older layouts: Zero Trust → Networks → Tunnels). If asked for a type, choose <b>Cloudflared</b>.</li>
+        <li>Name <code>ns-main</code> → <b>Create tunnel</b>.</li>
+        <li>Choose <b>Debian</b>, 64-bit. Cloudflare shows install commands. You don't need to run them, because <code>bootstrap.sh</code> installs cloudflared for you. Copy only the <b>token</b>: the long string at the end of the <code>cloudflared service install …</code> line.</li>
+        <li>Leave the page open and run <code>bootstrap.sh</code> (next step). When it has used the token, the page shows the connector as <b>Connected</b>; choose <b>Continue</b>.</li>
+      </ol>
+      <p class="note">The token lets anyone run your tunnel. Paste it only into <code>bootstrap.sh</code>, never into a chat or a file in a repo.</p>
+    </div>
+
+    <div class="st">
+      <div class="st-head"><h3>Run bootstrap.sh</h3><span class="who root">root on ns-main</span></div>
+      <div class="code"><pre><span class="c"># from the phase 3 clone</span>
+~ns/Coding/nightshift/bin/bootstrap.sh</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Installs Caddy with Tailscale certificates, SilverBullet, cloudflared (asks for the tunnel token), the Cloudflare SSH CA if you chose terminal option B (asks for its key), the hcloud CLI (asks for the lab token), ntfy settings, the <code>ns-gc</code> timer and the Remote Control session.</li>
+        <li>Installs <code>ns</code>, <code>ns-gh</code> and the plugins from the marketplace at <b>user scope</b>: <code>ns@nightshift</code> and <code>ns-python@nightshift</code>. Projects never reference them, so the PrivacyFence repo stays free of Nightshift settings.</li>
+        <li>Prints the ntfy topic to subscribe to in the app, and the address of SilverBullet's first-run wizard (create the space <b>nightshift</b> on <code>/srv/ns-space</code>).</li>
+        <li>Safe to run again: it only changes what's missing.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Cloudflare: routes and a test from the work laptop</h3><span class="who ui">dash.cloudflare.com</span><span class="who root">root</span></div>
+      <ol>
+        <li><b>Networking → Tunnels → ns-main → Routes → Add route → Published application</b>:
+          <ul>
+            <li>subdomain <code>ns-desk</code>, your domain, service URL <code>http://127.0.0.1:3000</code> (SilverBullet) → <b>Add route</b></li>
+            <li>subdomain <code>ns-view</code>, your domain, service URL <code>http://127.0.0.1:8080</code> (Caddy's local HTML listener) → <b>Add route</b></li>
+            <li>only for terminal option B: subdomain <code>ns-ssh</code>, service URL <code>ssh://127.0.0.1:22</code></li>
+          </ul>
+        </li>
+        <li>The tunnel's status is <b>Healthy</b>. Your domain → <b>DNS → Records</b> now shows a proxied CNAME per route, pointing at <code>&lt;id&gt;.cfargotunnel.com</code>.</li>
+        <li><b>Test</b> on the work laptop, in a private window: open <code>https://ns-desk.&lt;domain&gt;</code>. You should be sent to Google sign-in first, then SilverBullet's own login.
+          <ul><li>If SilverBullet appears <b>without</b> the Access login, stop: the application's address doesn't match the route exactly. Fix it in Access controls → Applications before going on.</li></ul>
+        </li>
+        <li>In SilverBullet → <b>Space settings</b>, add <code>ns-desk.&lt;domain&gt;</code> as an extra hostname for the nightshift space; <code>bootstrap.sh</code> already set <code>NS_DESK_URL</code> so ntfy messages link there.</li>
+      </ol>
+      <p><b>Only for terminal option B</b>, as root, with the public key from phase 1 part 5:</p>
+      <div class="code"><pre><span class="c"># as root: accept Cloudflare's short-lived certificates for user ns</span>
+echo '&lt;public key of the Cloudflare SSH CA&gt;' &gt; /etc/ssh/cloudflare_ca.pub
+mkdir -p /etc/ssh/principals
+echo '&lt;the part of your email before @&gt;' &gt; /etc/ssh/principals/ns
+cat &gt; /etc/ssh/sshd_config.d/cloudflare.conf &lt;&lt;'EOF'
+TrustedUserCAKeys /etc/ssh/cloudflare_ca.pub
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
+EOF
+sshd -t &amp;&amp; systemctl reload ssh</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Test: open <code>https://ns-ssh.&lt;domain&gt;</code>, sign in with Google; the browser terminal should open a shell as <code>ns</code>.</li>
+        <li>The terminal logs in as the part of your email before the <code>@</code>. The principals file maps that name to the <code>ns</code> user, so the two don't need to match.</li>
+      </ul>
+    </div>
+
+    <div class="st">
+      <div class="st-head"><h3>GitHub settings</h3><span class="who ui">github.com</span><span class="who root">root</span></div>
+      <ol>
+        <li>From your user account, create two fine-grained <b>admin tokens</b>, 7-day expiry, with Administration, Environments and Issues read and write: one with resource owner <b>you</b> (repos <code>nightshift</code>, <code>nightshift-sandbox</code>), one with resource owner <b>privacyfence</b> (repo <code>privacyfence</code>).</li>
+        <li>Run <code>ns-gh</code> as root, one owner at a time. The token only lives in the shell variable; nothing is saved.</li>
+      </ol>
+      <div class="code"><pre><span class="c"># your personal space</span>
+read -rsp "admin token (you): " GH_TOKEN; export GH_TOKEN; echo
+ns-gh audit &lt;you&gt;/nightshift          <span class="c"># read the table first</span>
+ns-gh apply &lt;you&gt;/nightshift
+ns-gh apply &lt;you&gt;/nightshift-sandbox
+
+<span class="c"># the privacyfence org</span>
+read -rsp "admin token (privacyfence): " GH_TOKEN; export GH_TOKEN; echo
+ns-gh audit privacyfence/privacyfence
+ns-gh apply privacyfence/privacyfence
+unset GH_TOKEN</pre><button class="copy" type="button">Copy</button></div>
+      <ul><li>Delete both admin tokens on GitHub afterwards.</li></ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Add PrivacyFence</h3><span class="who ns">ns</span></div>
+      <div class="code"><pre><span class="c"># create the PrivacyFence agent token first (phase 1, privacyfence org, item 3)</span>
+<span class="c"># ns uses it for every project owned by privacyfence</span>
+install -d -m 700 ~/.config/ns/tokens
+(umask 077; cat &gt; ~/.config/ns/tokens/privacyfence)     <span class="c"># paste, then Ctrl-D</span>
+
+ns project add privacyfence/privacyfence --prefix pf
+<span class="c"># review the drafted profile on the desk, then</span>
+ns approve pf-onboard</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Health check</h3><span class="who ns">ns</span></div>
+      <div class="code"><pre>ns doctor          <span class="c"># services, logins, tokens, desk, tunnel, timers, disk</span></pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">Done when <code>ns doctor</code> is green, <code>https://ns-desk.&lt;domain&gt;</code> opens on the work laptop and on the iPad, and a test ntfy message arrives.</p>
+    </div>
+    <div class="st" style="border-color:var(--gate-line);background:var(--gate-soft)">
+      <div class="st-head"><h3 style="color:var(--gate)">Review 1 · First real work</h3><span class="who ui">you · one evening</span></div>
+      <ol>
+        <li>Before you go to bed, start one real T1 issue and one real T2 issue on PrivacyFence: <code>ns new pf-&lt;issue&gt;</code>.</li>
+        <li>Next evening, read both handoff reports on the desk. Also judge the docs as a newcomer would: could you have done this phase from <code>docs/setup.md</code> alone?</li>
+        <li>Write what you want changed into <code>docs/review-1.md</code> on the desk. It is Build B's first input.</li>
+      </ol>
+    </div>
+    <details class="st">
+      <summary style="cursor:pointer;font-weight:600">Reference: what bootstrap.sh does, step by step (the manual way)</summary>
+      <p class="note">These are the manual equivalents, kept as a reference and for fixing things by hand. The account parts were done in phase 1; the base system in phase 2.</p>
+<div class="st">
+      <div class="st-head"><h3>Repository and the plugin</h3><span class="who ns">ns on ns-main</span><span class="lang">python</span></div>
+      <div class="code"><pre>mkdir -p ~/Coding/worktrees
+git clone https://github.com/privacyfence/privacyfence ~/Coding/privacyfence
+cd ~/Coding/privacyfence
+<span class="c"># stack python: later "ns project add" runs this from the stack's setup</span>
+python3 -m venv .venv &amp;&amp; . .venv/bin/activate
+pip install --upgrade pip &amp;&amp; pip install -e .   <span class="c"># plus test extras per CONTRIBUTING.md</span>
+
+<span class="c"># once the nightshift repo exists</span>
+claude plugin marketplace add &lt;you&gt;/nightshift
+claude plugin install ns@nightshift
+claude plugin install ns-python@nightshift
+claude plugin list</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>tmux and phone notifications</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>cat &gt; ~/.tmux.conf &lt;&lt;'EOF'
+set -g mouse on
+set -g history-limit 100000
+set -g default-terminal "tmux-256color"
+set -g status-right "#H  %H:%M"
+EOF
+
+echo "export NS_NTFY_TOPIC=ns-$(openssl rand -hex 8)" &gt;&gt; ~/.bashrc &amp;&amp; source ~/.bashrc
+echo $NS_NTFY_TOPIC                    <span class="c"># subscribe to this topic in the ntfy app</span>
+curl -d "ns-main is alive" ntfy.sh/$NS_NTFY_TOPIC</pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">An ntfy.sh topic is public to anyone who knows the name. Keep messages to "gate reached, run 123", never code or findings.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Optional: reading view in the Claude app</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>cd ~/Coding/privacyfence
+claude remote-control --spawn worktree --name ns-main   <span class="c"># interactive: answer the trust and enable prompts, then Ctrl-C</span></pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre><span class="c"># from then on, keep it running in its own tmux session</span>
+tmux new -d -s rc 'cd ~/Coding/privacyfence &amp;&amp; claude remote-control --spawn worktree --name ns-main'</pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Lab project for throwaway servers</h3><span class="who ui">console</span><span class="who ns">ns on ns-main</span></div>
+      <ul>
+        <li>Hetzner console: new project <b>nightshift-lab</b> → Security → API tokens → Read &amp; Write token. It can only see this project.</li>
+      </ul>
+      <div class="code"><pre>curl -fsSL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz \
+  | tar xz -C ~/.local/bin hcloud</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>hcloud context create nightshift-lab          <span class="c"># interactive: paste the lab token</span></pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "ns-main"
+hcloud ssh-key create --name ns-main --public-key-from-file ~/.ssh/id_ed25519.pub
+hcloud firewall create --name lab-fw
+hcloud firewall add-rule lab-fw --direction in --protocol tcp --port 22 \
+  --source-ips "$(curl -s https://api.ipify.org)/32"
+
+<span class="c"># what the conductor does per lab test</span>
+hcloud server create --name ns-lab-1 --type cx23 --image ubuntu-24.04 \
+  --location fsn1 --ssh-key ns-main --firewall lab-fw
+ssh -o StrictHostKeyChecking=accept-new root@$(hcloud server ip ns-lab-1) 'uname -a'
+hcloud server delete ns-lab-1
+
+<span class="c"># other distributions: same command, different image</span>
+hcloud image list --type system | grep -E 'ubuntu|debian'
+
+<span class="c"># optional upgrade base: install the last release on a lab server, then</span>
+hcloud server create-image --type snapshot --description pf-prev-release ns-lab-1
+<span class="c"># later tests start from it with --image &lt;snapshot id&gt;</span></pre><button class="copy" type="button">Copy</button></div>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Review desk: Caddy with Tailscale certificates</h3><span class="who root">root on ns-main</span></div>
+      <ul>
+        <li>Tailscale admin → DNS: MagicDNS on, <b>HTTPS certificates</b> enabled. Note your tailnet name (<code>&lt;tailnet&gt;.ts.net</code>).</li>
+      </ul>
+      <div class="code"><pre>apt -y install debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  &gt; /etc/apt/sources.list.d/caddy-stable.list
+apt update &amp;&amp; apt -y install caddy
+
+<span class="c"># let Caddy fetch certificates from tailscaled</span>
+echo 'TS_PERMIT_CERT_UID=caddy' &gt;&gt; /etc/default/tailscaled
+systemctl restart tailscaled
+
+<span class="c"># the desk folder: ns writes, caddy reads</span>
+install -d -o ns -g caddy -m 2750 /srv/ns-space</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre>TS=ns-main.&lt;tailnet&gt;.ts.net
+cat &gt; /etc/caddy/Caddyfile &lt;&lt;EOF
+$TS {
+    tls {
+        get_certificate tailscale
+    }
+    reverse_proxy 127.0.0.1:3000
+}
+
+$TS:8443 {
+    tls {
+        get_certificate tailscale
+    }
+    root * /srv/ns-space
+    file_server browse
+    header X-Robots-Tag "noindex"
+}
+EOF
+systemctl reload caddy</pre><button class="copy" type="button">Copy</button></div>
+      <p class="note">The explicit <code>get_certificate tailscale</code> matters: recent Caddy versions otherwise try Let's Encrypt for <code>.ts.net</code> names and fail.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Review desk: SilverBullet</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>mkdir -p ~/opt/silverbullet ~/sb-data &amp;&amp; cd ~/opt/silverbullet
+curl -fsSLO https://github.com/silverbulletmd/silverbullet/releases/latest/download/silverbullet-server-linux-x86_64.zip
+unzip -o silverbullet-server-linux-x86_64.zip &amp;&amp; chmod +x silverbullet
+
+mkdir -p ~/.config/systemd/user
+cat &gt; ~/.config/systemd/user/silverbullet.service &lt;&lt;'EOF'
+[Unit]
+Description=SilverBullet review desk
+[Service]
+ExecStart=%h/opt/silverbullet/silverbullet -L 127.0.0.1 -p 3000 %h/sb-data
+Restart=on-failure
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload &amp;&amp; systemctl --user enable --now silverbullet</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Open <code>https://ns-main.&lt;tailnet&gt;.ts.net</code> on the iPad. The setup wizard asks for an admin account, then your first space: name it <b>nightshift</b> and point its folder at <b>/srv/ns-space</b>.</li>
+        <li>Check the HTML side: <code>https://ns-main.&lt;tailnet&gt;.ts.net:8443</code> shows the folder listing.</li>
+        <li>Upgrades later: <code>~/opt/silverbullet/silverbullet upgrade</code>, then <code>systemctl --user restart silverbullet</code>.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Review desk and terminal through Cloudflare</h3><span class="who ui">Cloudflare dashboard</span><span class="who root">root</span></div>
+      <div class="code"><pre><span class="c"># local-only HTML listener for the tunnel</span>
+cat &gt;&gt; /etc/caddy/Caddyfile &lt;&lt;'EOF'
+
+http://127.0.0.1:8080 {
+    root * /srv/ns-space
+    file_server browse
+}
+EOF
+systemctl reload caddy</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Create the tunnel and copy its token as in phase 4, "Cloudflare: create the tunnel".</li>
+      </ul>
+      <div class="code"><pre>curl -fsSL -o /tmp/cloudflared.deb \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+apt -y install /tmp/cloudflared.deb
+cloudflared service install &lt;tunnel-token&gt;</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Tunnel → Routes → Add route → Published application: <code>ns-desk.&lt;domain&gt;</code> → <code>http://127.0.0.1:3000</code>, <code>ns-view.&lt;domain&gt;</code> → <code>http://127.0.0.1:8080</code>, <code>ns-ssh.&lt;domain&gt;</code> → <code>ssh://127.0.0.1:22</code>. Cloudflare creates the DNS records; don't add any record pointing at ns-main's IP.</li>
+        <li>Use one level under your domain (<code>ns-desk.</code>, not <code>desk.ns.</code>): the free certificate only covers <code>*.&lt;domain&gt;</code>.</li>
+        <li>The Access applications and the "only me" policy were created in phase 1.</li>
+        <li>For <code>ns-ssh.</code>: turn on browser rendering (SSH), then generate a short-lived certificate CA for it under Zero Trust → Access controls → Service credentials → SSH, and trust it on ns-main:</li>
+      </ul>
+      <div class="code"><pre><span class="c"># as root: accept Cloudflare's short-lived certificates for user ns</span>
+echo '&lt;public key of the Cloudflare SSH CA&gt;' &gt; /etc/ssh/cloudflare_ca.pub
+mkdir -p /etc/ssh/principals
+echo '&lt;the part of your email before @&gt;' &gt; /etc/ssh/principals/ns
+cat &gt; /etc/ssh/sshd_config.d/cloudflare.conf &lt;&lt;'EOF'
+TrustedUserCAKeys /etc/ssh/cloudflare_ca.pub
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
+EOF
+sshd -t &amp;&amp; systemctl reload ssh</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>In SilverBullet → Space settings, add <code>ns-desk.&lt;domain&gt;</code> as an extra hostname for the nightshift space.</li>
+        <li>Set <code>NS_DESK_URL=https://ns-desk.&lt;domain&gt;</code> in <code>~ns/.bashrc</code> so ntfy messages link there.</li>
+      </ul>
+      <p class="note">Cloudflare terminates TLS, so it can technically read what passes through the tunnel. For PrivacyFence, a public repo, that's acceptable. For a private project, use the Tailscale URLs instead. A work network that inspects TLS could see the pages too. Check your employer's acceptable-use policy before using personal services from a work laptop.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Maintenance basics</h3><span class="who root">root</span><span class="who ns">ns</span></div>
+      <div class="code"><pre><span class="c"># as root: security updates on, automatic reboots off, logs capped</span>
+cat &gt; /etc/apt/apt.conf.d/52nightshift &lt;&lt;'EOF'
+Unattended-Upgrade::Automatic-Reboot "false";
+EOF
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nSystemMaxUse=500M\n' &gt; /etc/systemd/journald.conf.d/size.conf
+systemctl restart systemd-journald</pre><button class="copy" type="button">Copy</button></div>
+      <div class="code"><pre><span class="c"># as ns: Claude Code keeps transcripts for 30 days</span>
+mkdir -p ~/.claude
+[ -f ~/.claude/settings.json ] || echo '{}' &gt; ~/.claude/settings.json
+jq '.cleanupPeriodDays = 30' ~/.claude/settings.json &gt; /tmp/s.json &amp;&amp; mv /tmp/s.json ~/.claude/settings.json
+
+<span class="c"># the daily ns gc timer (ns itself comes from the nightshift repo)</span>
+cat &gt; ~/.config/systemd/user/ns-gc.service &lt;&lt;'EOF'
+[Unit]
+Description=Nightshift housekeeping
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ns gc
+EOF
+cat &gt; ~/.config/systemd/user/ns-gc.timer &lt;&lt;'EOF'
+[Unit]
+Description=Run ns gc daily
+[Timer]
+OnCalendar=*-*-* 04:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
+systemctl --user daemon-reload &amp;&amp; systemctl --user enable --now ns-gc.timer</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>GitHub → privacyfence → Settings → Actions → General → Artifact and log retention: 14 days.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Gate the live QA jobs</h3><span class="who ui">GitHub</span><span class="who ns">a normal PR</span></div>
+      <ul>
+        <li>Settings → Environments → New environment <b>live-qa</b> → Required reviewers: you.</li>
+        <li>In <code>qa-record-fixture.yml</code> and <code>connector-live-check.yml</code>, give the job on the runner an environment that's gated only for dispatched runs:</li>
+      </ul>
+      <div class="code"><pre>jobs:
+  record:
+    runs-on: [self-hosted, privacyfence-test]
+    environment: ${{ github.event_name == 'schedule' &amp;&amp; 'live-qa-scheduled' || 'live-qa' }}</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Create <b>live-qa-scheduled</b> too, with no reviewers and deployment branches limited to <code>main</code>.</li>
+        <li>Update the steward skill and <code>/qa-record</code>: "the run waits for the maintainer's approval; a waiting run is expected, don't re-dispatch".</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Optional: move the QA runner to Hetzner</h3><span class="who ui">console</span><span class="who root">root on ns-qa</span></div>
+      <ul>
+        <li>Hetzner console: new project <b>privacyfence-qa</b> → server CX23, Ubuntu 24.04, your Blink key, firewall with TCP 22 only until Tailscale is up. Name it <b>ns-qa</b>.</li>
+      </ul>
+      <div class="code"><pre>apt update &amp;&amp; apt -y full-upgrade &amp;&amp; apt -y install git curl jq python3 python3-venv ufw unattended-upgrades
+adduser --disabled-password --gecos "" runner
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --ssh --hostname ns-qa --advertise-tags=tag:qa</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Reconnect with <code>ssh root@ns-qa</code>, run the same ufw block as on ns-main, and remove TCP 22 from the Hetzner firewall.</li>
+        <li>GitHub → Settings → Actions → Runners → New self-hosted runner → Linux x64. Run the commands it shows as <code>runner</code>, adding <code>--labels privacyfence-test</code> to <code>./config.sh</code>, then install it as a service with <code>sudo ./svc.sh install runner &amp;&amp; sudo ./svc.sh start</code> (as root).</li>
+        <li>Put the QA grants and <code>org_config.json</code> in place as <code>docs/connector-qa.md</code> describes, then remove the runner from the old machine.</li>
+      </ul>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Health check</h3><span class="who ns">ns on ns-main</span></div>
+      <div class="code"><pre>claude doctor
+gh auth status
+tailscale status
+sudo -n true 2&gt;/dev/null &amp;&amp; echo "WARNING: ns has sudo" || echo "ok: ns has no sudo"
+hcloud server list            <span class="c"># should be empty between runs</span>
+systemctl --user is-active silverbullet
+systemctl --user list-timers ns-gc.timer
+tailscale ping -c 1 ns-qa 2&gt;&amp;1 | tail -1    <span class="c"># must fail: ns-main can't reach the runner</span>
+curl -sI https://ns-main.&lt;tailnet&gt;.ts.net:8443 | head -1</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>On GitHub: protect <code>main</code> (Settings → Branches → require a PR and passing checks).</li>
+        <li>From the work laptop: open the Tailscale admin console → ns-main → SSH, log in as <code>ns</code>, run <code>tmux ls</code>.</li>
+      </ul>
+    </div>
+    </details>
+  </div>
+</section>
+
+<!-- PHASE 5 -->
+<section id="ph5">
+  <div class="sec-head">
+    <div class="eyebrow">P5 · Grow</div>
+    <h2>Phase 5 · Grow, built by Nightshift</h2>
+    <p>From here Nightshift develops itself, as a T3 run on its own repo. The version from phase 4 stays installed as the known-good one until Review 2.</p>
+  </div>
+  <div class="steps">
+    <div class="st">
+      <div class="st-head"><h3>Build B · Fixes and breadth</h3><span class="who ns">Nightshift</span></div>
+      <div class="code"><pre>ns project add &lt;you&gt;/nightshift --prefix ns
+ns new ns-buildb --tier T3 "Build B from docs/build-plan.md and docs/review-1.md"</pre><button class="copy" type="button">Copy</button></div>
+      <ul>
+        <li>Everything in <code>docs/review-1.md</code>, first.</li>
+        <li>Specialists: database-expert, data-analyst, ui-ux-designer, with their skills.</li>
+        <li>Stacks: <code>ns-node</code>, <code>ns-web</code>, <code>ns-shell</code>, <code>ns-powershell</code>; platform dispatch for macOS and Windows code.</li>
+        <li><code>/ns:init</code>, <code>/ns:onboard</code>, the lab helper, <code>ns gc</code>.</li>
+        <li>Two PrivacyFence PRs that Nightshift doesn't merge: the <code>live-qa</code> environment on the QA workflows (the workflow edit is yours, since agents have no Workflows permission there), and removing the old orchestration commands with a trimmed <code>CLAUDE.md</code>.</li>
+        <li>Documentation updated for everything new, under the same docs check.</li>
+      </ul>
+    </div>
+    <div class="st" style="border-color:var(--gate-line);background:var(--gate-soft)">
+      <div class="st-head"><h3 style="color:var(--gate)">Review 2 · A real long run</h3><span class="who ui">you · start + one evening</span></div>
+      <ol>
+        <li>Install Build B: <code>claude plugin update ns@nightshift</code> and the new stack plugins.</li>
+        <li>Pick a real T3 feature for PrivacyFence and confirm its plan at gate 1.</li>
+        <li>Meanwhile, onboard a second repo with <code>/ns:onboard</code>, following <code>docs/projects.md</code> only.</li>
+        <li>At gate 2, read the handoff report and merge the two PrivacyFence cleanup PRs.</li>
+      </ol>
+      <p class="note">Done when the T3 run finished with its gates, the second repo got a green T0 PR, and PrivacyFence no longer carries its own orchestration commands.</p>
+    </div>
+    <div class="st">
+      <div class="st-head"><h3>Later · Swift</h3><span class="who ns">Nightshift</span></div>
+      <ul><li><code>ns-swift</code> and the macOS CI path when the first native app starts; a Mac build worker if CI minutes or speed become a problem.</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- PHASE 6 -->
+<section id="ph6">
+  <div class="sec-head">
+    <div class="eyebrow">P6 · Operate</div>
+    <h2>Phase 6 · Operate, recurring</h2>
+    <p>The daily commands are in <a href="#s6">Daily use</a>, reboots and cleanup in <a href="#ops">Operations</a>. This is the calendar around them.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table style="min-width:700px">
+      <thead><tr><th>When</th><th>What</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>Daily, automatic</td><td>Cleanup, disk check, "reboot required" check</td><td><code>ns gc</code> timer; one ntfy line</td></tr>
+        <tr><td>When ntfy says so</td><td>Reboot</td><td><code>ns drain</code> → reboot → <code>ns up</code> → <code>ns resume --all</code></td></tr>
+        <tr><td>Weekly</td><td>Glance at the desk index and <code>ns ls</code>; approve waiting QA jobs</td><td>iPad or the GitHub app</td></tr>
+        <tr><td>Monthly</td><td>Old packages; Claude usage, Hetzner bill, Actions minutes; SilverBullet upgrade</td><td><code>apt autoremove --purge</code>; the consoles; <code>silverbullet upgrade</code></td></tr>
+        <tr><td>Every 90 days</td><td>Renew the agent tokens</td><td>GitHub → regenerate → <code>gh auth login</code> or <code>~/.config/ns/tokens/</code></td></tr>
+        <tr><td>When Claude warns</td><td>Renew the Claude login</td><td><code>/login</code> in any session, before an overnight run</td></tr>
+        <tr><td>Each Nightshift update</td><td>Install it, keep a way back</td><td><code>claude plugin update</code>; roll back by pointing the marketplace at the previous tag</td></tr>
+        <tr><td>New project</td><td>Add it</td><td><a href="#newproject">Making a project Nightshift-ready</a> and <code>docs/projects.md</code></td></tr>
+        <tr><td>Twice a year</td><td>Restore drill</td><td>Rebuild a throwaway server from phase 2, <code>bootstrap.sh</code> and a backup (below)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- FORGOTTEN -->
+<section id="forgotten">
+  <div class="sec-head">
+    <div class="eyebrow">P · Easy to forget</div>
+    <h2>Things not covered above</h2>
+  </div>
+  <div class="triage">
+    <div class="panel">
+      <h3>Backup and restore</h3>
+      <ul>
+        <li>In git, safe anywhere: code, plans, ADRs, approved desk documents, run ledgers.</li>
+        <li>Only on ns-main: <code>~/.claude</code> (login, transcripts), <code>~/.config/ns</code> (tokens, project list), <code>~/sb-data</code> and <code>/srv/ns-space</code> (desk drafts not yet approved).</li>
+        <li>Hetzner's daily backups cover those. If the server is lost: new server, phase 2, <code>bootstrap.sh</code>, re-enter the tokens; runs resume from their ledgers in git.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Someone gets a token</h3>
+      <ul>
+        <li><b>GitHub agent token</b>: revoke it under Developer settings; branch protection kept it away from <code>main</code>; check recent pushes.</li>
+        <li><b>Claude login</b>: <code>/logout</code> on ns-main, then sign out other sessions on claude.ai.</li>
+        <li><b>Tailscale</b>: remove the machine in the admin console. <b>Cloudflare</b>: Networking → Tunnels → ns-main → refresh the token (or delete the tunnel and create a new one), then rerun <code>bootstrap.sh</code>.</li>
+        <li><code>docs/security.md</code> keeps this list next to the threat model.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Knowing the server is down</h3>
+      <ul>
+        <li>ntfy messages come from ns-main itself, so a dead server sends nothing.</li>
+        <li>Add a free dead-man's switch such as healthchecks.io: <code>ns gc</code> pings it daily, and a missed ping emails you.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Where your data goes</h3>
+      <ul>
+        <li>Code and conversations go to Anthropic for the model; transcripts are deleted from ns-main after 30 days.</li>
+        <li>Cloudflare decrypts traffic to the desk: fine for PrivacyFence, which is public; use the Tailscale addresses for private projects.</li>
+        <li>No employer or client code on this server; check your employer's policy before using it from the work laptop.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Versions of Nightshift</h3>
+      <ul>
+        <li>Tag releases in the <code>nightshift</code> repo and keep a <code>CHANGELOG.md</code>.</li>
+        <li>The installed plugin follows a tag, not <code>main</code>, so a half-finished Build B never breaks a running run.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Shutting it down</h3>
+      <ul>
+        <li>Delete the servers and lab snapshots, revoke the tokens, delete the tunnel and the Access apps, remove the machines from Tailscale.</li>
+        <li><code>docs/operations.md</code> has the checklist.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- DOCS -->
+<section id="docs">
+  <div class="sec-head">
+    <div class="eyebrow">P · Documentation</div>
+    <h2>What the nightshift repo explains</h2>
+    <p>Documentation is part of Build A's and Build B's definition of done, not an afterthought. It is written for you six months from now, on an iPad: short, task-first, every command copyable. A docs check in CI fails the build when an <code>ns</code> command or a profile key is undocumented, or a link is broken.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table style="min-width:720px">
+      <thead><tr><th>File</th><th>Answers</th><th>Written in</th></tr></thead>
+      <tbody>
+        <tr><td><code>README.md</code></td><td>What Nightshift is, what it needs, a five-minute tour, links to everything below</td><td>Build A</td></tr>
+        <tr><td><code>docs/architecture.md</code></td><td>This page as text: layers, agents, tiers, triage, the review desk, trust boundaries</td><td>Build A</td></tr>
+        <tr><td><code>docs/accounts.md</code></td><td>Phase 1: Hetzner, Tailscale, Cloudflare and GitHub, step by step</td><td>Build A</td></tr>
+        <tr><td><code>docs/server.md</code></td><td>Phase 2: installing and hardening ns-main</td><td>Build A</td></tr>
+        <tr><td><code>docs/setup.md</code></td><td>Phase 4: what <code>bootstrap.sh</code> does, how to do each step by hand, how to rerun it</td><td>Build A</td></tr>
+        <tr><td><code>docs/usage.md</code></td><td>Daily use: <code>ns</code> and <code>/ns:</code> commands, tiers, gates, the desk, approving and resuming</td><td>Build A</td></tr>
+        <tr><td><code>docs/operations.md</code></td><td>Reboots, cleanup, updates, renewals, backup and restore, troubleshooting, shutting down</td><td>Build A</td></tr>
+        <tr><td><code>docs/security.md</code></td><td>Threat model, what lives where, token scopes, what to do when something leaks</td><td>Build A</td></tr>
+        <tr><td><code>docs/projects.md</code></td><td>Adding a project: <code>/ns:init</code>, <code>/ns:onboard</code>, the starter files</td><td>Build A, completed in Build B</td></tr>
+        <tr><td><code>docs/profile-reference.md</code></td><td>Every profile key, generated from the JSON Schema</td><td>Build A</td></tr>
+        <tr><td><code>docs/agents.md</code></td><td>Each agent and skill: what it does, when triage calls it</td><td>Build A, completed in Build B</td></tr>
+        <tr><td><code>docs/stacks.md</code></td><td>Writing a stack plugin, with <code>ns-python</code> as the worked example</td><td>Build B</td></tr>
+        <tr><td><code>docs/development.md</code></td><td>Developing Nightshift itself: <code>--plugin-dir</code>, tests, the sandbox, releasing a tag</td><td>Build A</td></tr>
+        <tr><td><code>CHANGELOG.md</code>, <code>docs/adr/</code></td><td>What changed in each release; why decisions were made</td><td>from Build A on</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+
+
+
+
+
+
+<footer>Nightshift v2.0 · architecture and six-phase plan · built on the repo's existing /make-plan, /implement, /dod and steward conventions.</footer>
+</div>
+<script>
+document.querySelectorAll('.copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.parentElement.querySelector('pre');
+    var text = pre.innerText;
+    var done = function (msg) { btn.textContent = msg; setTimeout(function () { btn.textContent = 'Copy'; }, 1600); };
+    var fallback = function () {
+      var r = document.createRange(); r.selectNodeContents(pre);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      done('Selected');
+    };
+    try {
+      navigator.clipboard.writeText(text).then(function () { done('Copied'); }, fallback);
+    } catch (e) { fallback(); }
+  });
+});
+</script>

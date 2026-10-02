@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# ns-gh: audit or apply Nightshift's GitHub repository settings.
+#
+#   ns-gh audit owner/repo          show wanted vs current, change nothing
+#   ns-gh apply owner/repo [--yes]  audit, ask, then fix only what differs
+#
+# Run it as root on ns-main with an admin token for the repo's owner in GH_TOKEN
+# (fine-grained, 7-day expiry, Administration + Environments + Issues: write;
+# one token per owner, because a fine-grained token covers a single owner).
+# The agents' tokens under the ns user deliberately can't do this.
+#
+# Per-project overrides: .claude/ns-github.env on the repo's default branch,
+# KEY=value lines for the keys listed under "Defaults". Read as data, never executed.
+set -euo pipefail
+
+MODE=${1:-}; REPO=${2:-}; FLAG=${3:-}
+if [[ $MODE != audit && $MODE != apply ]] || [[ $REPO != */* ]]; then
+  echo "usage: ns-gh audit|apply owner/repo [--yes]" >&2; exit 2
+fi
+command -v gh >/dev/null && command -v jq >/dev/null || { echo "needs gh and jq" >&2; exit 2; }
+
+# ---------- Defaults (override per project in .claude/ns-github.env)
+DEFAULT_BRANCH=main
+REQUIRED_CHECKS=""                 # comma-separated status check names, e.g. "pytest,ruff"
+ALLOW_MERGE_COMMIT=true
+ALLOW_SQUASH_MERGE=true
+ALLOW_REBASE_MERGE=false
+DELETE_BRANCH_ON_MERGE=true
+WORKFLOW_PERMISSIONS="read"        # default GITHUB_TOKEN permission: read | write
+ARTIFACT_RETENTION_DAYS=14
+ENVIRONMENTS=""                    # comma-separated name:mode, mode = reviewer | main-only
+LABELS="ns:queued=0e8a16,ns:running=1d76db,ns:needs-you=d93f0b,ns:done=5319e7,tier:T0=c5def5,tier:T1=c5def5,tier:T2=bfd4f2,tier:T3=bfd4f2"
+RULESET_NAME="ns-default-branch"
+
+KNOWN="DEFAULT_BRANCH REQUIRED_CHECKS ALLOW_MERGE_COMMIT ALLOW_SQUASH_MERGE ALLOW_REBASE_MERGE DELETE_BRANCH_ON_MERGE WORKFLOW_PERMISSIONS ARTIFACT_RETENTION_DAYS ENVIRONMENTS LABELS"
+if overrides=$(gh api "repos/$REPO/contents/.claude/ns-github.env" -H "Accept: application/vnd.github.raw" 2>/dev/null); then
+  while IFS= read -r line; do
+    [[ $line =~ ^([A-Z_]+)=(.*)$ ]] || continue
+    key=${BASH_REMATCH[1]}; val=${BASH_REMATCH[2]}
+    val=${val%\"}; val=${val#\"}
+    [[ " $KNOWN " == *" $key "* ]] || { echo "ignoring unknown key $key" >&2; continue; }
+    [[ $val =~ ^[A-Za-z0-9_.,:=/\ -]*$ ]] || { echo "ignoring $key: unexpected characters" >&2; continue; }
+    printf -v "$key" '%s' "$val"
+  done <<<"$overrides"
+  echo "using overrides from .claude/ns-github.env"
+fi
+
+# ---------- Output helpers
+DIFFS=()
+row() {  # row <setting> <want> <have>
+  local status="ok"
+  if [[ $2 != "$3" ]]; then status="DIFF"; DIFFS+=("$1"); fi
+  printf '%-34s %-28s %-28s %s\n' "$1" "$2" "$3" "$status"
+}
+info() { printf '%-34s %s\n' "$1" "$2"; }
+
+api_or() {  # api_or <fallback> <gh api args...>: body on success, fallback on any error
+  local fb=$1 out; shift
+  if out=$(gh api "$@" 2>/dev/null); then printf '%s\n' "$out"; else printf '%s\n' "$fb"; fi
+}
+
+ME=$(gh api user --jq .login)
+ME_ID=$(gh api user --jq .id)
+R=$(gh api "repos/$REPO")
+VISIBILITY=$(jq -r .visibility <<<"$R")
+
+echo
+echo "Repository $REPO ($VISIBILITY) · admin: $ME · mode: $MODE"
+printf '%-34s %-28s %-28s %s\n' SETTING WANT HAVE STATUS
+printf '%.0s-' {1..100}; echo
+
+# ---------- 1. Repository settings
+row default_branch          "$DEFAULT_BRANCH"         "$(jq -r .default_branch <<<"$R")"
+row allow_merge_commit      "$ALLOW_MERGE_COMMIT"     "$(jq -r .allow_merge_commit <<<"$R")"
+row allow_squash_merge      "$ALLOW_SQUASH_MERGE"     "$(jq -r .allow_squash_merge <<<"$R")"
+row allow_rebase_merge      "$ALLOW_REBASE_MERGE"     "$(jq -r .allow_rebase_merge <<<"$R")"
+row delete_branch_on_merge  "$DELETE_BRANCH_ON_MERGE" "$(jq -r .delete_branch_on_merge <<<"$R")"
+
+# ---------- 2. Security
+if [[ $VISIBILITY == public ]]; then
+  row secret_scanning                 enabled "$(jq -r '.security_and_analysis.secret_scanning.status // "unknown"' <<<"$R")"
+  row secret_scanning_push_protection enabled "$(jq -r '.security_and_analysis.secret_scanning_push_protection.status // "unknown"' <<<"$R")"
+  row private_vulnerability_reporting true "$(api_or '{"enabled":"unknown"}' "repos/$REPO/private-vulnerability-reporting" | jq -r .enabled)"
+else
+  info secret_scanning "n/a on private repos without GitHub Secret Protection"
+fi
+if gh api "repos/$REPO/vulnerability-alerts" >/dev/null 2>&1; then VA=true; else VA=false; fi
+row dependabot_alerts            true "$VA"
+row dependabot_security_updates  true "$(api_or '{"enabled":false}' "repos/$REPO/automated-security-fixes" | jq -r .enabled)"
+
+# ---------- 3. Actions
+WP=$(api_or '{}' "repos/$REPO/actions/permissions/workflow")
+row workflow_token_permissions   "$WORKFLOW_PERMISSIONS" "$(jq -r '.default_workflow_permissions // "unknown"' <<<"$WP")"
+row workflows_can_approve_prs    false                   "$(jq -r '.can_approve_pull_request_reviews // "unknown"' <<<"$WP")"
+AR=$(api_or '{}' "repos/$REPO/actions/permissions/artifact-and-log-retention")
+if [[ $(jq -r '.days // empty' <<<"$AR") ]]; then
+  row artifact_retention_days "$ARTIFACT_RETENTION_DAYS" "$(jq -r .days <<<"$AR")"
+else
+  info artifact_retention_days "not readable via API here; check Settings → Actions → General"
+fi
+
+# ---------- 4. Ruleset on the default branch
+RS_ID=$(api_or '[]' "repos/$REPO/rulesets" | jq -r --arg n "$RULESET_NAME" '.[] | select(.name==$n) | .id' | head -1)
+WANT_RULES="deletion,non_fast_forward,pull_request"
+[[ -n $REQUIRED_CHECKS ]] && WANT_RULES+=",required_status_checks"
+if [[ -n $RS_ID ]]; then
+  RS=$(gh api "repos/$REPO/rulesets/$RS_ID")
+  HAVE_RULES=$(jq -r '[.rules[].type] | sort | join(",")' <<<"$RS")
+  HAVE_CHECKS=$(jq -r '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort | join(",")' <<<"$RS")
+  row ruleset_enforcement "active" "$(jq -r .enforcement <<<"$RS")"
+else
+  HAVE_RULES="(no ruleset)"; HAVE_CHECKS=""
+fi
+row ruleset_rules    "$(tr ',' '\n' <<<"$WANT_RULES" | sort | paste -sd, -)" "$HAVE_RULES"
+row required_checks  "$(tr ',' '\n' <<<"$REQUIRED_CHECKS" | sed '/^$/d' | sort | paste -sd, -)" "$HAVE_CHECKS"
+
+# ---------- 5. Labels
+HAVE_LABELS=$(gh label list -R "$REPO" --limit 200 --json name,color --jq '.[] | "\(.name)=\(.color)"' | sort)
+IFS=',' read -ra WANT_LABEL_LIST <<<"$LABELS"
+for l in "${WANT_LABEL_LIST[@]}"; do
+  name=${l%%=*}
+  have=$(grep -E "^${name//./\\.}=" <<<"$HAVE_LABELS" | head -1 || true)
+  row "label $name" "$l" "${have:-(missing)}"
+done
+
+# ---------- 6. Environments
+IFS=',' read -ra ENV_LIST <<<"$ENVIRONMENTS"
+for e in "${ENV_LIST[@]}"; do
+  [[ -z $e ]] && continue
+  name=${e%%:*}; mode=${e#*:}
+  EJ=$(api_or '' "repos/$REPO/environments/$name")
+  if [[ -z $EJ ]]; then row "environment $name" "$mode" "(missing)"; continue; fi
+  case $mode in
+    reviewer)  have=$(jq -r --argjson me "$ME_ID" 'if ([.protection_rules[]? | select(.type=="required_reviewers") | .reviewers[]?.reviewer.id] | index($me)) then "reviewer" else "no reviewer" end' <<<"$EJ");;
+    main-only) have=$(jq -r 'if .deployment_branch_policy.custom_branch_policies == true then "main-only" else "any branch" end' <<<"$EJ");;
+    *) have="unknown mode";;
+  esac
+  row "environment $name" "$mode" "$have"
+done
+
+echo
+if [[ ${#DIFFS[@]} -eq 0 ]]; then echo "All settings match."; exit 0; fi
+echo "${#DIFFS[@]} setting(s) differ."
+[[ $MODE == audit ]] && exit 1
+
+if [[ $FLAG != --yes ]]; then
+  read -r -p "Apply these changes to $REPO? [y/N] " ans
+  [[ $ans == y || $ans == Y ]] || { echo "Nothing changed."; exit 1; }
+fi
+
+has() { local d; for d in "${DIFFS[@]}"; do [[ $d == "$1"* ]] && return 0; done; return 1; }
+step() { echo "→ $*"; }
+
+# ---------- Apply
+if has default_branch || has allow_ || has delete_branch; then
+  step "repository merge settings"
+  gh api -X PATCH "repos/$REPO" \
+    -f default_branch="$DEFAULT_BRANCH" \
+    -F allow_merge_commit="$ALLOW_MERGE_COMMIT" -F allow_squash_merge="$ALLOW_SQUASH_MERGE" \
+    -F allow_rebase_merge="$ALLOW_REBASE_MERGE" -F delete_branch_on_merge="$DELETE_BRANCH_ON_MERGE" >/dev/null
+fi
+if has secret_scanning; then
+  step "secret scanning and push protection"
+  jq -n '{security_and_analysis:{secret_scanning:{status:"enabled"},secret_scanning_push_protection:{status:"enabled"}}}' \
+    | gh api -X PATCH "repos/$REPO" --input - >/dev/null
+fi
+if has private_vulnerability_reporting; then step "private vulnerability reporting"; gh api -X PUT "repos/$REPO/private-vulnerability-reporting" >/dev/null; fi
+if has dependabot_alerts;  then step "Dependabot alerts";           gh api -X PUT "repos/$REPO/vulnerability-alerts" >/dev/null; fi
+if has dependabot_security; then step "Dependabot security updates"; gh api -X PUT "repos/$REPO/automated-security-fixes" >/dev/null; fi
+if has workflow_token || has workflows_can_approve; then
+  step "Actions token permissions"
+  gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
+    -f default_workflow_permissions="$WORKFLOW_PERMISSIONS" -F can_approve_pull_request_reviews=false >/dev/null
+fi
+if has artifact_retention; then
+  step "artifact retention"
+  gh api -X PUT "repos/$REPO/actions/permissions/artifact-and-log-retention" -F days="$ARTIFACT_RETENTION_DAYS" >/dev/null \
+    || echo "   could not set; change it in Settings → Actions → General"
+fi
+if has ruleset || has required_checks; then
+  step "ruleset $RULESET_NAME on the default branch"
+  BODY=$(jq -n --arg name "$RULESET_NAME" --arg checks "$REQUIRED_CHECKS" '
+    {name:$name, target:"branch", enforcement:"active",
+     conditions:{ref_name:{include:["~DEFAULT_BRANCH"], exclude:[]}},
+     rules: ([{type:"deletion"},{type:"non_fast_forward"},
+              {type:"pull_request", parameters:{required_approving_review_count:0,
+                 dismiss_stale_reviews_on_push:false, require_code_owner_review:false,
+                 require_last_push_approval:false, required_review_thread_resolution:false}}]
+             + (if $checks == "" then [] else
+                 [{type:"required_status_checks", parameters:{strict_required_status_checks_policy:false,
+                   required_status_checks: ($checks | split(",") | map({context:.}))}}] end))}')
+  if [[ -n $RS_ID ]]; then
+    gh api -X PUT "repos/$REPO/rulesets/$RS_ID" --input - <<<"$BODY" >/dev/null
+  else
+    gh api -X POST "repos/$REPO/rulesets" --input - <<<"$BODY" >/dev/null
+  fi
+fi
+for l in "${WANT_LABEL_LIST[@]}"; do
+  name=${l%%=*}; color=${l#*=}
+  if has "label $name"; then step "label $name"; gh label create "$name" --color "$color" --force -R "$REPO" >/dev/null; fi
+done
+for e in "${ENV_LIST[@]}"; do
+  [[ -z $e ]] && continue
+  name=${e%%:*}; mode=${e#*:}
+  has "environment $name" || continue
+  step "environment $name ($mode)"
+  case $mode in
+    reviewer)
+      jq -n --argjson id "$ME_ID" '{reviewers:[{type:"User", id:$id}], deployment_branch_policy:null}' \
+        | gh api -X PUT "repos/$REPO/environments/$name" --input - >/dev/null;;
+    main-only)
+      jq -n '{deployment_branch_policy:{protected_branches:false, custom_branch_policies:true}}' \
+        | gh api -X PUT "repos/$REPO/environments/$name" --input - >/dev/null
+      gh api -X POST "repos/$REPO/environments/$name/deployment-branch-policies" -f name="$DEFAULT_BRANCH" -f type=branch >/dev/null 2>&1 || true;;
+  esac
+done
+
+echo; echo "Done. Re-run 'ns-gh audit $REPO' to confirm."
