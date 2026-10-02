@@ -24,13 +24,15 @@ setup() {
   [ "$NS_A" = keep ]
 }
 
-@test "ns_load_env ignores PATH and export lines" {
-  printf 'PATH=/x\nexport NS_C=1\n' >"$NS_CONFIG_DIR/env"
-  unset NS_C
+@test "ns_load_env accepts export NS_ lines, unquotes, ignores PATH" {
+  printf "PATH=/x\nexport PATH=/y\nexport NS_C=1\nexport  NS_E='q one'\nNS_F=\"q two\"\n" >"$NS_CONFIG_DIR/env"
+  unset NS_C NS_E NS_F
   local before="$PATH"
   ns_load_env
   [ "$PATH" = "$before" ]
-  [ -z "${NS_C+x}" ]
+  [ "$NS_C" = 1 ]
+  [ "$NS_E" = "q one" ]
+  [ "$NS_F" = "q two" ]
 }
 
 @test "ns_load_env never executes command substitution" {

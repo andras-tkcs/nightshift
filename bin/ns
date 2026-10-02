@@ -5,6 +5,7 @@ NS_HOME="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
 export NS_HOME
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/common.sh"
+ns_load_env
 
 cmd=${1:-help}
 case "$cmd" in

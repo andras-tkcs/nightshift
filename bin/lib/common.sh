@@ -38,9 +38,9 @@ ns_load_env() {
   file="$(ns_config_dir)/env"
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
-    if [[ $line =~ ^(NS_[A-Z_]+)=(.*)$ ]]; then
-      name="${BASH_REMATCH[1]}"
-      value="${BASH_REMATCH[2]}"
+    if [[ $line =~ ^(export[[:space:]]+)?(NS_[A-Z_]+)=(.*)$ ]]; then
+      name="${BASH_REMATCH[2]}"
+      value="${BASH_REMATCH[3]}"
       if [[ $value =~ ^\"(.*)\"$ ]] || [[ $value =~ ^\'(.*)\'$ ]]; then
         value="${BASH_REMATCH[1]}"
       fi
