@@ -14,8 +14,8 @@
 | p09-run-new | merged | feature/build-a--p09-run-new | 1 | |
 | p10-run-inspect | merged | feature/build-a--p10-run-inspect | 1 | |
 | p11-conductor-workers | merged | feature/build-a--p11-conductor-workers | 1 | |
-| p12-resume | running | feature/build-a--p12-resume | 1 | |
-| p13-desk | pending | feature/build-a--p13-desk | 0 | |
+| p12-resume | merged | feature/build-a--p12-resume | 1 | |
+| p13-desk | running | feature/build-a--p13-desk | 1 | |
 | p14-approve | pending | feature/build-a--p14-approve | 0 | |
 | p15-hooks | merged | feature/build-a--p15-hooks | 1 | |
 | p16-conductor-loop | pending | feature/build-a--p16-conductor-loop | 0 | |
