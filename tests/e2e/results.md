@@ -4,3 +4,4 @@
 | 2026-10-02 | t1 | PASS | https://github.com/andras-tkcs/nightshift-sandbox/pull/3 | sbx-2 | 4 |
 | 2026-10-02 | t2 | FAIL | - | sbx-x1 | 9 |
 | 2026-10-02 | t2 | PASS | https://github.com/andras-tkcs/nightshift-sandbox/pull/4 | sbx-x2 | 13 |
+| 2026-10-02 | t3 | PASS | https://github.com/andras-tkcs/nightshift-sandbox/pull/5 | sbx-x3 | 21 |
