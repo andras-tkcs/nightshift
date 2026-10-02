@@ -9,11 +9,8 @@ scenario_main() {
   e2e_wait "$E2E_ID" '.gate == "1"' "$E2E_TIMEOUT" || return 1
   e2e_approve "$E2E_ID" || return 1
   e2e_wait "$E2E_ID" 'any(.phases[]; .state == "running")' "$E2E_TIMEOUT" || return 1
-  pid=$(e2e_pane_pid "$E2E_ID")
-  [ -n "$pid" ] || {
-    e2e_log "no tmux pane pid for $E2E_ID"
-    return 1
-  }
+  # only the pid of this run's own conductor, never a pattern kill (other sessions run here)
+  pid=$(e2e_conductor_pid "$E2E_ID") || return 1
   e2e_log "kill -9 $pid (the conductor)"
   kill -9 "$pid"
   for i in $(seq 1 60); do

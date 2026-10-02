@@ -72,6 +72,45 @@ setup() {
   grep -q -- '-X DELETE repos/owner/sandbox/git/refs/heads/fix/sbx-x2$' "$BATS_TEST_TMPDIR/gh.calls"
 }
 
+@test "e2e_conductor_pid gives the pane pid only when it is this run's conductor (e2e resume)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  export NS_CONFIG_DIR="$BATS_TEST_TMPDIR/config"
+  env NS_CONFIG_DIR="$NS_CONFIG_DIR" NS_RUN_ID=sbx-1 sleep 60 &
+  ours=$!
+  env NS_CONFIG_DIR="$BATS_TEST_TMPDIR/other" NS_RUN_ID=sbx-1 sleep 60 &
+  other_cfg=$!
+  env NS_CONFIG_DIR="$NS_CONFIG_DIR" NS_RUN_ID=sbx-2 sleep 60 &
+  other_run=$!
+  sleep 0.3
+  tmux() { printf '%s\n' "$PANE"; }
+  PANE=$ours
+  run e2e_conductor_pid sbx-1
+  [ "$status" -eq 0 ]
+  [ "$output" = "$ours" ]
+  PANE=$other_cfg
+  run e2e_conductor_pid sbx-1
+  [ "$status" -ne 0 ]
+  [[ "$output" != "$other_cfg" ]]
+  PANE=$other_run
+  run e2e_conductor_pid sbx-1
+  [ "$status" -ne 0 ]
+  PANE=""
+  run e2e_conductor_pid sbx-1
+  [ "$status" -ne 0 ]
+  PANE=abc
+  run e2e_conductor_pid sbx-1
+  [ "$status" -ne 0 ]
+  kill "$ours" "$other_cfg" "$other_run"
+}
+
+@test "the resume scenario kills only the pid e2e_conductor_pid vouches for (e2e resume)" {
+  run grep -nE 'pkill|killall|kill -9 -|kill -KILL -' "$E2E/scenarios/resume.sh" "$E2E/lib.sh"
+  [ "$status" -eq 1 ]
+  grep -q 'pid=$(e2e_conductor_pid "$E2E_ID")' "$E2E/scenarios/resume.sh"
+}
+
 @test "the fixture README has the typo exactly once" {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }

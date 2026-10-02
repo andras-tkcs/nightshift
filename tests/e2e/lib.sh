@@ -220,6 +220,25 @@ e2e_new_run() {
 # e2e_pane_pid <id>: pid of the tmux pane (the conductor's claude, D9)
 e2e_pane_pid() { tmux list-panes -t "=$1" -F '#{pane_pid}' | head -1; }
 
+# e2e_conductor_pid <id>: the pane pid of tmux session <id>, printed only when that process
+# is this run's conductor (its environment has our NS_CONFIG_DIR and NS_RUN_ID=<id>). Other
+# Claude Code sessions run on this machine: the resume scenario kills nothing else.
+e2e_conductor_pid() {
+  local id="$1" pid
+  pid=$(e2e_pane_pid "$id" 2>/dev/null) || pid=""
+  [[ $pid =~ ^[0-9]+$ ]] || {
+    e2e_log "no numeric tmux pane pid for $id"
+    return 1
+  }
+  if tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qxF "NS_CONFIG_DIR=$NS_CONFIG_DIR" &&
+    tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qxF "NS_RUN_ID=$id"; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  e2e_log "pid $pid is not the conductor of $id under $NS_CONFIG_DIR; not using it"
+  return 1
+}
+
 e2e_session_gone() { ! tmux has-session -t "=$1" 2>/dev/null; }
 
 # e2e_gh_delete_branch <branch>: only branches this harness could have created
