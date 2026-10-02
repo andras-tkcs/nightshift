@@ -100,6 +100,46 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   assert_output_contains "nothing to approve"
 }
 
+@test "state done at gate 2: message, exit 0, nothing changes" {
+  gate_setup
+  ns-ledger set "$LEDGER" '.gate="2" | .state="done" | .step="done"'
+  ledger_before=$(cat "$LEDGER")
+  before=$(git -C "$WT" rev-parse HEAD)
+  run ns approve sbx-12 --yes
+  assert_success
+  assert_output_contains "sbx-12 is at gate 2, the pull request review: read the handoff, then merge the PR on GitHub (/ns:review sbx-12); nothing to approve"
+  [ "$(cat "$LEDGER")" = "$ledger_before" ]
+  [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ]
+  [ ! -f "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a token-shaped string on the desk is refused and nothing changes" {
+  gate_setup
+  printf '# Plan\n\nghp_%s\n' "$(printf 'a%.0s' $(seq 36))" >"$DESK/plan.md"
+  ledger_before=$(cat "$LEDGER")
+  before=$(git -C "$WT" rev-parse HEAD)
+  run ns approve sbx-12 --yes
+  assert_failure 1
+  assert_output_contains "token"
+  [ "$(cat "$LEDGER")" = "$ledger_before" ]
+  [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ]
+  grep -q 'Do the thing' "$RUNDIR/plan.md"
+  [ ! -f "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a .published source that escapes the worktree is refused" {
+  gate_setup
+  printf '# Plan\n\nchanged\n' >"$DESK/plan.md"
+  printf 'plan.md\t../../escape.md\n' >"$DESK/.published"
+  ledger_before=$(cat "$LEDGER")
+  run ns approve sbx-12 --yes
+  assert_failure 1
+  assert_output_contains "outside the worktree"
+  [ "$(cat "$LEDGER")" = "$ledger_before" ]
+  [ ! -e "$NS_CODING_DIR/worktrees/escape.md" ]
+  [ ! -f "$TMUX_STUB_DIR/sbx-12" ]
+}
+
 # onboarding variant
 
 onboard_setup() {
@@ -148,5 +188,16 @@ onboard_setup() {
   [ "$(ns-ledger get "$LEDGER" .state)" = done ]
   [ "$(ns-ledger get "$LEDGER" .pr)" = "https://github.com/andras-tkcs/nightshift-sandbox/pull/7" ]
   [ "$(ns-ledger get "$LEDGER" '.gate // "none"')" = none ]
+  [ ! -f "$TMUX_STUB_DIR/sbx-onboard" ]
+}
+
+@test "onboarding: a second approve prints nothing to approve and restarts nothing" {
+  onboard_setup
+  ns approve sbx-onboard --yes >/dev/null
+  ledger_before=$(cat "$LEDGER")
+  run ns approve sbx-onboard --yes
+  assert_success
+  assert_output_contains "nothing to approve"
+  [ "$(cat "$LEDGER")" = "$ledger_before" ]
   [ ! -f "$TMUX_STUB_DIR/sbx-onboard" ]
 }

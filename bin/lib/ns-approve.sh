@@ -121,6 +121,12 @@ ns_approve_main() {
     printf '%s is not waiting at a gate; nothing to approve\n' "$id"
     return 0
   fi
+  local lstate
+  lstate=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.state // ""')
+  if [ "$lstate" = "done" ] || [ "$gate" = 2 ]; then
+    printf '%s is at gate 2, the pull request review: read the handoff, then merge the PR on GitHub (/ns:review %s); nothing to approve\n' "$id" "$id"
+    return 0
+  fi
   project=$(ns_project_by_name "$pname") || ns_die "project $pname is not registered"
   if [ "$yes" = true ] && [ "$(jq -r '.sandbox // false' <<<"$project")" != true ]; then
     printf '%s\n' "--yes is only allowed for projects added with --sandbox" >&2
@@ -131,7 +137,25 @@ ns_approve_main() {
   [ -f "$rdir/.published" ] || ns_die "$id: nothing is published on the desk; run ns publish first"
   [ -d "$wt" ] || ns_die "run worktree $wt is missing: ns resume $id rebuilds it"
 
-  # 3. diffs
+  # 3. checks, then diffs
+  local wt_real src_real
+  wt_real=$(realpath -m "$wt")
+  while IFS=$'\t' read -r name src _; do
+    [ -n "$name" ] || continue
+    case "$name" in
+      *.md | *.yaml) ;;
+      *.env) [ "$onboard" = true ] || continue ;;
+      *) continue ;;
+    esac
+    src_real=$(realpath -m "$wt/$src")
+    case "$src_real" in
+      "$wt_real"/*) ;;
+      *) ns_die "$id: $name maps to $src, which is outside the worktree; nothing changed" ;;
+    esac
+    if [ -f "$rdir/$name" ] && ns_has_token "$(cat "$rdir/$name")"; then
+      ns_die "$id: desk file $name contains a token-shaped string; remove it and run ns approve again; nothing changed"
+    fi
+  done <"$rdir/.published"
   while IFS=$'\t' read -r name src _; do
     [ -n "$name" ] || continue
     case "$name" in
