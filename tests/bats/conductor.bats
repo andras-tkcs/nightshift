@@ -1,0 +1,250 @@
+#!/usr/bin/env bats
+
+load helpers
+
+setup() {
+  ns_test_setup
+  FIX="$BATS_TEST_TMPDIR/fixture"
+  mkdir -p "$FIX/.claude"
+  cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
+project: nightshift-sandbox
+prefix: sbx
+commands:
+  setup: "true"
+  test: "true"
+git: {}
+stacks: [python]
+EOF
+  printf '# sandbox\n' >"$FIX/README.md"
+  make_remote andras-tkcs/nightshift-sandbox "$FIX"
+  "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
+  "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T2 --yes >/dev/null
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+  mkdir -p "$WT/docs"
+  cp "$NS_REPO_ROOT/tests/fixtures/plans/two-phase-plan.md" "$WT/docs/sbx-12-plan.md"
+  git -C "$WT" add docs/sbx-12-plan.md
+  git -C "$WT" commit -q -m "plan"
+  git -C "$WT" branch feature/12 origin/main
+  git -C "$WT" push -q origin feature/12
+  ns-ledger set "$LEDGER" '.feature_branch = "feature/12"'
+  export NS_WORKER_MODE=bypassPermissions
+  cat >"$BATS_TEST_TMPDIR/worker.sh" <<'EOF'
+phase=${NS_PHASE:?}
+echo "$phase" >"$phase.txt"
+git add "$phase.txt"
+git commit -q -m "add $phase"
+git push -q -u origin HEAD
+EOF
+  cat >"$BATS_TEST_TMPDIR/sleeper.sh" <<'EOF'
+sleep 60
+EOF
+  export CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/worker.sh"
+  export CLAUDE_STUB_RESULT="PHASE-REPORT p1-alpha status=done head=abc"
+}
+
+teardown() {
+  local f pid
+  for f in "$NS_CONFIG_DIR"/workers/*.pid; do
+    [ -f "$f" ] || continue
+    pid=$(sed -n 's/^pid=//p' "$f")
+    [ -z "$pid" ] || kill -KILL -- "-$pid" 2>/dev/null || true
+  done
+  return 0
+}
+
+lget() { ns-ledger get "$LEDGER" "$1"; }
+pstate() { lget "(.phases[] | select(.id == \"$1\") | .$2)"; }
+
+@test "manifest.py lists both phases and phase of a missing id exits 1" {
+  run python3 "$NS_REPO_ROOT/bin/lib/manifest.py" phases "$NS_REPO_ROOT/tests/fixtures/plans/two-phase-plan.md"
+  assert_success
+  [ "$(jq -r '[.[].id] | join(",")' <<<"$output")" = "p1-alpha,p2-beta" ]
+  run python3 "$NS_REPO_ROOT/bin/lib/manifest.py" phase "$NS_REPO_ROOT/tests/fixtures/plans/two-phase-plan.md" p2-beta
+  assert_success
+  [ "$(jq -r .title <<<"$output")" = "Add beta" ]
+  run python3 "$NS_REPO_ROOT/bin/lib/manifest.py" phase "$NS_REPO_ROOT/tests/fixtures/plans/two-phase-plan.md" nope
+  assert_failure 1
+}
+
+@test "--help lists the subcommands and an unknown one exits 2" {
+  run ns-conductor --help
+  assert_success
+  assert_output_contains "  start  "
+  assert_output_contains "  park  "
+  run ns-conductor frobnicate
+  assert_failure 2
+  run ns-conductor start nosuch-1 p1-alpha
+  assert_failure 1
+  assert_output_contains "unknown run nosuch-1"
+}
+
+@test "start writes pid file and prompt, sets the phase running" {
+  run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  assert_output_contains "started p1-alpha pid "
+  pidf="$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid"
+  [ -f "$pidf" ]
+  grep -q '^run=sbx-12$' "$pidf"
+  grep -q '^phase=p1-alpha$' "$pidf"
+  prompt="$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.prompt.md"
+  grep -q 'id: p1-alpha' "$prompt"
+  grep -q 'Add alpha' "$prompt"
+  grep -q 'feature/12--p1-alpha' "$prompt"
+  ! grep -q 'Review feedback' "$prompt"
+  [ "$(pstate p1-alpha state)" = running ]
+  [ "$(pstate p1-alpha attempts)" = 1 ]
+  [ "$(pstate p1-alpha branch)" = feature/12--p1-alpha ]
+  [ "$(lget '.events[-1].type')" = phase-start ]
+}
+
+@test "start --feedback puts the feedback in the prompt and rewrites RUN/" {
+  printf 'blocking: rename the thing\n' >"$WT/.nightshift/runs/sbx-12/fb.md"
+  run ns-conductor start sbx-12 p1-alpha --feedback RUN/fb.md
+  assert_success
+  grep -q 'Review feedback from round 1' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.prompt.md"
+  grep -q 'blocking: rename the thing' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.prompt.md"
+}
+
+@test "start fix-1 works without a manifest entry" {
+  printf 'blocking: x\n' >"$BATS_TEST_TMPDIR/fb.md"
+  run ns-conductor start sbx-12 fix-1 --feedback "$BATS_TEST_TMPDIR/fb.md"
+  assert_success
+  grep -q 'Fix review findings' "$NS_CONFIG_DIR/logs/sbx-12/fix-1.prompt.md"
+  [ "$(pstate fix-1 state)" = running ]
+  run ns-conductor start sbx-12 p9-missing
+  assert_failure 1
+}
+
+@test "start with the pool full exits 3 and queues the phase" {
+  printf 'max_workers: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor start sbx-12 p2-beta
+  assert_failure 3
+  assert_output_contains "queued p2-beta: pool full (1/1)"
+  [ "$(pstate p2-beta state)" = queued ]
+  run ns-conductor status sbx-12
+  assert_success
+  assert_output_contains "p1-alpha pid "
+}
+
+@test "start with the budget exceeded exits 4" {
+  ns-ledger set "$LEDGER" '.budget.limit = 1 | .budget.used = 2'
+  run ns-conductor start sbx-12 p1-alpha
+  assert_failure 4
+  assert_output_contains "budget exceeded"
+}
+
+@test "start without auto-mode.ok and a failing claude exits 5 with the hint" {
+  unset NS_WORKER_MODE
+  CLAUDE_STUB_MODE=fail run ns-conductor start sbx-12 p1-alpha
+  assert_failure 5
+  assert_output_contains "auto permission mode does not work in headless calls on this machine"
+  assert_output_contains "NS_WORKER_MODE=bypassPermissions"
+  [ ! -e "$NS_CONFIG_DIR/auto-mode.ok" ]
+}
+
+@test "start with a fresh auto-mode.ok skips the check" {
+  unset NS_WORKER_MODE
+  touch "$NS_CONFIG_DIR/auto-mode.ok"
+  run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  grep -q -- '--permission-mode auto' "$NS_STUB_LOG"
+}
+
+@test "check-auto ok creates auto-mode.ok; a denial fails" {
+  CLAUDE_STUB_MODE=ok run ns-conductor check-auto
+  assert_success
+  assert_output_contains "auto mode: ok"
+  [ -f "$NS_CONFIG_DIR/auto-mode.ok" ]
+  mkdir -p "$BATS_TEST_TMPDIR/fakebin"
+  cat >"$BATS_TEST_TMPDIR/fakebin/claude" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+echo '{"type":"result","is_error":false,"result":"ok","permission_denials":[{"tool_name":"Bash"}]}'
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/fakebin/claude"
+  PATH="$BATS_TEST_TMPDIR/fakebin:$PATH" run ns-conductor check-auto
+  assert_failure 1
+  assert_output_contains "auto mode: not available"
+  [ ! -e "$NS_CONFIG_DIR/auto-mode.ok" ]
+}
+
+@test "wait reports a finished worker and sets the phase to review" {
+  ns-conductor start sbx-12 p1-alpha >/dev/null
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  [ "$output" = "finished p1-alpha exit 0" ]
+  [ "$(pstate p1-alpha state)" = review ]
+  [ ! -e "$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid" ]
+  [ -f "$NS_CONFIG_DIR/logs/sbx-12/done/sbx-12--p1-alpha.pid" ]
+  [ "$(cat "$NS_CONFIG_DIR/logs/sbx-12/done/sbx-12--p1-alpha.exit")" = 0 ]
+  git -C "$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git" rev-parse --verify -q feature/12--p1-alpha
+  grep -q 'PHASE-REPORT p1-alpha' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl"
+}
+
+@test "wait on a usage limit pauses the budget and resets the phase" {
+  CLAUDE_STUB_RESULT="You hit your usage limit" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  [ "$output" = "finished p1-alpha usage-limit" ]
+  [ "$(lget .budget.paused)" = true ]
+  [ "$(pstate p1-alpha state)" = pending ]
+  [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" = 1 ]
+}
+
+@test "wait with a sleeping worker times out with 124" {
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 2
+  assert_failure 124
+  assert_output_contains "still running: p1-alpha"
+}
+
+@test "wait returns 6 when a stop is requested" {
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  ns-ledger set "$LEDGER" '.stop_requested = "stopped"'
+  run ns-conductor wait sbx-12 --timeout 2
+  assert_failure 6
+  assert_output_contains "stop requested"
+}
+
+@test "stop kills the process group and resets the phase to pending" {
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  pid=$(sed -n 's/^pid=//p' "$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid")
+  kill -0 "$pid"
+  run ns-conductor stop sbx-12
+  assert_success
+  ! kill -0 "$pid" 2>/dev/null || [ "$(ps -o stat= -p "$pid" | tr -d ' ' | cut -c1)" = Z ]
+  [ ! -e "$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid" ]
+  [ "$(pstate p1-alpha state)" = pending ]
+  run ns-conductor status sbx-12
+  [ "$output" = "no workers" ]
+}
+
+@test "should-stop follows stop_requested" {
+  run ns-conductor should-stop sbx-12
+  assert_failure 1
+  ns-ledger set "$LEDGER" '.stop_requested = "stopped"'
+  run ns-conductor should-stop sbx-12
+  assert_success
+}
+
+@test "park sets the requested state, clears the flag and pushes" {
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  ns-ledger set "$LEDGER" '.stop_requested = "parked"'
+  run ns-conductor park sbx-12
+  assert_success
+  assert_output_contains "parked sbx-12: end this session now"
+  [ "$(lget .state)" = parked ]
+  [ "$(lget '.stop_requested')" = null ]
+  [ "$(pstate p1-alpha state)" = pending ]
+  run ns-conductor status sbx-12
+  [ "$output" = "no workers" ]
+  remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  [ "$(git -C "$remote" rev-parse plan/sbx-12)" = "$(git -C "$WT" rev-parse HEAD)" ]
+}
