@@ -11,7 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck bats jq python3-yaml python3-jsonschema
+        run: sudo apt-get update -q && sudo apt-get install -y -q bats jq python3-yaml python3-jsonschema
+      - name: Install shellcheck 0.11.0
+        run: |
+          set -euo pipefail
+          url=https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          curl -fsSL -o /tmp/shellcheck.tar.xz "$url"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  /tmp/shellcheck.tar.xz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+          install -m 0755 /tmp/shellcheck-v0.11.0/shellcheck "$HOME/.local/bin/shellcheck"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install Claude Code
         run: curl -fsSL https://claude.ai/install.sh | bash && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: shellcheck
