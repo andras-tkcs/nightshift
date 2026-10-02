@@ -24,4 +24,4 @@ jobs:
           claude plugin validate --strict plugins/ns
           claude plugin validate --strict plugins/ns-python
       - name: docs-check
-        run: tests/docs-check
+        run: tests/docs-check --final
