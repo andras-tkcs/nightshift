@@ -34,7 +34,7 @@
 | p29-bootstrap | merged | feature/build-a--p29-bootstrap | 1 | open: apply_3 lacks loginctl enable-linger (check in Review 1); stat stub missing from fixtures/bin/README.md |
 | p29b-bootstrap-release | merged | feature/build-a--p29b-bootstrap-release | 1 | open: tests/fixtures/bin/README.md lacks stat, loginctl stubs and RUNUSER_STUB_EXEC |
 | p30-e2e-harness | merged | feature/build-a--p30-e2e-harness | 1 | |
-| p31-e2e-t0 | pending | feature/build-a--p31-e2e-t0 | 0 | |
+| p31-e2e-t0 | running | feature/build-a--p31-e2e-t0 | 1 | |
 | p32-e2e-t1 | pending | feature/build-a--p32-e2e-t1 | 0 | |
 | p33-e2e-t2 | pending | feature/build-a--p33-e2e-t2 | 0 | |
 | p34-e2e-t3 | pending | feature/build-a--p34-e2e-t3 | 0 | |
