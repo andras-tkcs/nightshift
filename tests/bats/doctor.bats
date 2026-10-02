@@ -116,3 +116,11 @@ EOF
   assert_success
   assert_output_contains "warn runs: run sbx-12 has no session: ns resume sbx-12"
 }
+
+@test "ns doctor reads export lines from the env file" {
+  unset NS_NTFY_TOPIC
+  printf "export NS_NTFY_TOPIC='ns-from-file'\n" >"$NS_CONFIG_DIR/env"
+  run ns doctor
+  assert_output_not_contains "NS_NTFY_TOPIC: not set"
+  assert_output_contains "ok   NS_NTFY_TOPIC"
+}
