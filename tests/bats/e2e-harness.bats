@@ -25,7 +25,8 @@ setup() {
   run grep -c 'andras-tkcs/nightshift-sandbox' "$E2E/run.sh" "$E2E/lib.sh"
   [[ "$output" == *"run.sh:1"* ]]
   [[ "$output" == *"lib.sh:0"* ]]
-  run grep -rEn 'andras-tkcs/|privacyfence/|[A-Za-z0-9-]+/nightshift[A-Za-z0-9._-]*' "$E2E"
+  # results.md holds PR URLs of the sandbox (D20), it is data, not harness code
+  run grep -rEn --exclude=results.md 'andras-tkcs/|privacyfence/|[A-Za-z0-9-]+/nightshift[A-Za-z0-9._-]*' "$E2E"
   [ "$(wc -l <<<"$output")" -eq 1 ]
   [[ "$output" == *"readonly E2E_REPO=andras-tkcs/nightshift-sandbox"* ]]
 }
