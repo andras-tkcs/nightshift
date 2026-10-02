@@ -125,6 +125,16 @@ ns up
 
 Run `ns up` after a reboot. It runs `ns doctor` and keeps its exit code, starts the tmux session `rc` with `claude remote-control --spawn worktree` in `remote_control_dir` (from the config, else the first registered project's path) unless it already exists, then lists parked runs and the hint `ns resume --all`. `ns up` exits with the exit code of `ns doctor`.
 
+### ns gc
+
+```
+ns gc [--dry-run] [--monthly]
+```
+
+`ns gc` is housekeeping; a systemd timer runs it daily at 04:00. For every non-archived run that is `done` and whose PR is merged or closed it removes the run's worktrees, its local branches (`git branch -d`, so unmerged ones are kept), its remote `plan/` and phase branches (never the base branch) and its tmux session, moves its desk folder to `archive/<yyyy-mm>/<id>`, regenerates the desk index and marks the run archived. Desk archive folders older than 90 days are deleted. A worktree with uncommitted or unpushed work is never touched: it is reported as `needs you: <path>: <reason>` and its run is kept whole, as are runs that are not `done` or whose PR is still open. Project `.claude/worktrees/*` holding work are reported too. On the 1st of the month, or with `--monthly`, the stacks' `gc.monthly` targets (for Python `~/.cache/pip`) are removed.
+
+Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed.
+
 ### ns publish
 
 ```
