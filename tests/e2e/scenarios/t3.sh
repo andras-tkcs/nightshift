@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# t3: two independent phases run in parallel, tier T3 (docs/build-a-plan.md, D20)
+# t3: two independent phases run in parallel, tier T3 (see docs/development.md, "End-to-end runs")
 
 E2E_TIMEOUT=14400
 

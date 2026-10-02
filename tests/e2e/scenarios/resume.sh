@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# resume: kill the conductor mid-run and resume it (docs/build-a-plan.md, D20)
+# resume: kill the conductor mid-run and resume it (see docs/development.md, "End-to-end runs")
 
 E2E_TIMEOUT=10800
 

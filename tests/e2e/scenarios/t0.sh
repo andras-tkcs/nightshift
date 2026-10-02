@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# t0: a typo fix in README.md, tier T0 (docs/build-a-plan.md, D20)
+# t0: a typo fix in README.md, tier T0 (see docs/development.md, "End-to-end runs")
 
 E2E_TIMEOUT=2700
 
