@@ -27,9 +27,11 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 ## Commands
 
 ```bash
-shellcheck bin/* bin/lib/*.sh plugins/*/hooks/*.sh
+tests/lint
 bats tests/bats
-claude plugin validate .
+claude plugin validate --strict .
+claude plugin validate --strict plugins/ns
+claude plugin validate --strict plugins/ns-python
 tests/docs-check
 tests/e2e/run.sh <scenario>      # on ns-main only, against nightshift-sandbox
 ```

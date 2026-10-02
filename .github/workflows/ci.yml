@@ -1,0 +1,25 @@
+name: ci
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck bats jq python3-yaml python3-jsonschema
+      - name: Install Claude Code
+        run: curl -fsSL https://claude.ai/install.sh | bash && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: shellcheck
+        run: tests/lint
+      - name: bats
+        run: bats tests/bats
+      - name: plugin validate
+        run: |
+          claude plugin validate --strict .
+          claude plugin validate --strict plugins/ns
+          claude plugin validate --strict plugins/ns-python
