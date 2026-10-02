@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'tailscale %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = status ]; then
+  printf '{"Self":{"DNSName":"ns-main.example.ts.net."}}\n'
+fi
+exit 0

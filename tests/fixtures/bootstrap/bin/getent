@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'getent %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = passwd ] && [ -n "${2:-}" ]; then
+  printf '%s:x:1001:1001::/home/%s:/bin/bash\n' "$2" "$2"
+  exit 0
+fi
+exit 2

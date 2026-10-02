@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+set -euo pipefail
+printf 'openssl %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = rand ]; then printf 'deadbeefdeadbeef\n'; fi
+exit 0
