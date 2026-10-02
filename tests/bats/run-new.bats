@@ -40,6 +40,16 @@ run_field() { # <id> <jq filter on the ledger>
   [ "$(run_field sbx-x1 .request.text)" = "fix the thing" ]
 }
 
+@test "text runs skip x numbers whose plan branch is already on origin (e2e t2)" {
+  remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  git -C "$remote" branch plan/sbx-x1 main
+  git -C "$remote" branch plan/sbx-x2 main
+  run ns new sbx "fresh config, old branches" --tier T1 --yes
+  assert_success
+  assert_output_contains "started sbx-x3 in tmux session sbx-x3"
+  [ "$(run_field sbx-x3 .request.text)" = "fresh config, old branches" ]
+}
+
 @test "worktree, ledger, remote branch and tmux session" {
   run ns new sbx-12 --tier T1 --yes
   assert_success
