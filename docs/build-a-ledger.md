@@ -42,4 +42,4 @@
 | p36-docs-guides | merged | feature/build-a--p36-docs-guides | 1 | |
 | p37-docs-reference | merged | feature/build-a--p37-docs-reference | 1 | |
 | p38-docs-final | merged | feature/build-a--p38-docs-final | 1 | |
-| p39-release-retire | running | feature/build-a--p39-release-retire | 1 | |
+| p39-release-retire | pending | feature/build-a--p39-release-retire | 0 | held until fix-3 clears build-a-plan/seed refs outside its touches |
