@@ -35,8 +35,8 @@
 | p29b-bootstrap-release | merged | feature/build-a--p29b-bootstrap-release | 1 | open: tests/fixtures/bin/README.md lacks stat, loginctl stubs and RUNUSER_STUB_EXEC |
 | p30-e2e-harness | merged | feature/build-a--p30-e2e-harness | 1 | |
 | p31-e2e-t0 | merged | feature/build-a--p31-e2e-t0 | 1 | sandbox PR #1 open, 3 min |
-| p32-e2e-t1 | running | feature/build-a--p32-e2e-t1 | 1 | |
-| p33-e2e-t2 | pending | feature/build-a--p33-e2e-t2 | 0 | |
+| p32-e2e-t1 | merged | feature/build-a--p32-e2e-t1 | 1 | sandbox PR #3 open, 4 min |
+| p33-e2e-t2 | running | feature/build-a--p33-e2e-t2 | 1 | |
 | p34-e2e-t3 | pending | feature/build-a--p34-e2e-t3 | 0 | |
 | p35-e2e-resume | pending | feature/build-a--p35-e2e-resume | 0 | |
 | p36-docs-guides | merged | feature/build-a--p36-docs-guides | 1 | |
