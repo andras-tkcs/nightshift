@@ -3,6 +3,23 @@
 set -euo pipefail
 
 printf 'curl %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+# Record what curl would read from stdin or from a config/header file, on
+# separate lines so tests can tell argv apart from other input channels.
+prev=""
+for a in "$@"; do
+  case "$prev:$a" in
+    -K:- | --config:- | -H:@- | --header:@-)
+      sed 's/^/curl-stdin /' >>"${NS_STUB_LOG:-/dev/null}" || true
+      ;;
+    -K:* | --config:*)
+      [ ! -f "$a" ] || sed 's/^/curl-file /' "$a" >>"${NS_STUB_LOG:-/dev/null}"
+      ;;
+    -H:@* | --header:@*)
+      [ ! -f "${a#@}" ] || sed 's/^/curl-file /' "${a#@}" >>"${NS_STUB_LOG:-/dev/null}"
+      ;;
+  esac
+  prev="$a"
+done
 for a in "$@"; do
   if [ "$a" = -w ]; then
     printf '%s' "${CURL_STUB_HTTP_CODE:-200}"
