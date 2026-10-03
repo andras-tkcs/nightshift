@@ -149,7 +149,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 - **R-CLI-1** All state is in `~/.config/ns/` (config, projects, tokens), the desk, and git. No hidden state elsewhere.
 - **R-CLI-2** Commands that change state are idempotent: running twice equals running once.
 - **R-CLI-3** No command prints a token. Tokens are passed via the environment only and never written to logs, the desk or git.
-- **R-CLI-4** The main checkout of a project is never used as a run's working tree: runs always work in worktrees. That is what lets the Nightshift repo be both the dev clone of phase 3 and a registered project in phase 5.
+- **R-CLI-4** The main checkout of a project is never used as a run's working tree: runs always work in worktrees. That is what lets the Nightshift repo be both the dev clone of phase 3 and a registered project from Review 1 on.
 
 ### Onboarding run (R-ONB)
 
@@ -224,6 +224,13 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 - **R-DSK-4** On merge, `ns gc` moves `runs/<id>` to `archive/<yyyy-mm>/<id>` and deletes archives older than 90 days.
 - **R-NOT-1** `ns-notify "<text>" [url]` posts to `ntfy.sh/$NS_NTFY_TOPIC`. Messages contain the run id, the gate and a desk link, never code, findings or tokens.
 - **R-NOT-2** If `NS_HEALTHCHECK_URL` is set, `ns gc` pings it on success.
+
+Self-hosted ntfy (R-NOT-3 at Review 1, the rest in Build B):
+
+- **R-NOT-3** `ns-notify` posts to `$NS_NTFY_URL/$NS_NTFY_TOPIC`, with `NS_NTFY_URL` from `~/.config/ns/env` (default `https://ntfy.sh`, so R-NOT-1 still holds when unset). If `~/.config/ns/tokens/ntfy` exists, it sends `Authorization: Bearer <token>`, passing the header to curl from a file or stdin so the token never appears in argv, logs or error output. A failed post (any non-2xx) is logged and returns non-zero, but never stops a run.
+- **R-NOT-4** `bootstrap.sh` installs ntfy from `archive.ntfy.sh` and writes `/etc/ntfy/server.yml`: `listen-http: 127.0.0.1:2586`, `base-url` = the Caddy address below, `behind-proxy: true`, `auth-default-access: deny-all`, `upstream-base-url: https://ntfy.sh` (iOS wake-ups carry only a message ID and a topic hash), `web-root: disable`, no attachments. Caddy serves it on `ns-main.<tailnet>.ts.net:8444` with the Tailscale certificate. Users: `ns-notify` (write-only on the topic, with a token stored in `~/.config/ns/tokens/ntfy`) and `phone` (read-only). Safe to rerun; it never replaces existing users or tokens.
+- **R-NOT-5** `ns doctor` checks the ntfy server: the service is running, an anonymous publish is refused (403), and a test publish with the token succeeds. It warns when `NS_NTFY_URL` still points at `ntfy.sh`.
+- **R-NOT-6** With a self-hosted ntfy, `NS_HEALTHCHECK_URL` is required: `ns doctor` fails without it, because a dead ns-main can no longer report itself.
 
 ## 11. Hooks and guard rails
 
@@ -302,6 +309,20 @@ End-to-end scenarios (R-E2E), each on a fresh base branch `e2e/<date>-<n>` creat
 
 After each scenario the harness deletes its branches, worktrees and desk folders.
 
+## 16a. Usage monitoring (Build B)
+
+Tokens and an estimated cost per run, phase, agent and model. On a Claude subscription the dollar figure is Claude Code's estimate at API list price, not a bill; it is the common unit for comparing runs and setting budgets. The real constraint is the plan's 5-hour and weekly limits, which `ns` records as events rather than predicting.
+
+- **R-USE-1** Headless workers run with `--output-format json` (or `stream-json`); the conductor stores the final result's token usage and cost estimate in the ledger under the phase (`usage{input, output, cache_read, cache_write, cost_usd, model}`).
+- **R-USE-2** Interactive sessions (the run's main session): the session-start hook records the session id in the ledger; `ns usage` sums the per-message `usage` fields from that session's transcript in `~/.claude/projects/`, including its subagents, and attributes them to the run.
+- **R-USE-3** Budgets gain an optional token or cost cap per tier (`budgets.T3.cost_usd`). The conductor passes the phase's share as `--max-budget-usd` to each worker; hitting it is a budget overrun (R-BUD-1, gate 1.5).
+- **R-USE-4** Usage-limit hits and their waiting time are ledger events (`type: usage_limit`) and don't count against wall-clock budgets (R-BUD-2).
+- **R-USE-5** `ns usage [--run <id>] [--days N] [--by run|phase|agent|model]` prints a table; `--json` for scripts.
+- **R-USE-6** The handoff report has a usage section: per phase and per agent, Opus/Sonnet split, review rounds, usage-limit waits.
+- **R-USE-7** `ns gc`'s daily ntfy line adds yesterday's totals ("4.1 M tokens, ≈ $38 at list price, 1 limit wait"). An optional `usage.daily_alert_usd` in `~/.config/ns/config.yaml` sends a separate alert when exceeded.
+- **R-USE-8** A weekly `usage.html` on the desk (`/srv/ns-space/usage/`) shows the trend per project and per model. Self-contained HTML, R-DSK-2.
+- **R-USE-9** OpenTelemetry export (`CLAUDE_CODE_ENABLE_TELEMETRY`, `claude_code.token.usage`, `claude_code.cost.usage`) is out of scope; it would need a collector service. Revisit only if transcript parsing proves unreliable.
+
 ## 17. Build A and Build B
 
-`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and the PrivacyFence cleanup PRs. Those are Build B.
+`docs/build-plan.md` lists the work. Build A covers sections 3–16 except: specialists, stacks other than Python, `/ns:init`, `/ns:onboard` beyond the onboarding draft in `ns project add`, the lab helper, and usage monitoring (§16a) and self-hosted ntfy (R-NOT-3 to R-NOT-6). Those are Build B, except R-NOT-3, which is a T1 run at Review 1. PrivacyFence is added only after Build B is installed; its cleanup (removing its own orchestration commands, the `live-qa` patch) is ordinary runs at Review 2, not part of either build.
