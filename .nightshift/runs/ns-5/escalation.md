@@ -16,3 +16,5 @@ How should the gate treat this? Options:
 
 ## Owner's answer
 
+Create an issue for it and continue, merge the phase
+
