@@ -5,17 +5,21 @@ request:
   issue: 5
 tier: T2
 tier_source: owner
-tier_recommended: null
-tags: []
-state: queued
+tier_recommended: T2
+tags:
+- shell
+- caddy
+- security
+- bats
+state: running
 gate: null
-step: intake
+step: discovery
 stop_requested: null
 branch: plan/ns-5
 feature_branch: null
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T15:24:02Z'
+updated: '2026-10-03T15:24:46Z'
 budget:
   used: 0
   limit: 8
@@ -29,3 +33,6 @@ events:
 - time: '2026-10-03T15:24:01Z'
   type: tier
   note: T2 (owner, 8 h)
+- time: '2026-10-03T15:24:12Z'
+  type: state
+  note: running
