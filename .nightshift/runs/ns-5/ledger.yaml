@@ -16,15 +16,15 @@ gate: null
 step: gate1
 stop_requested: null
 branch: plan/ns-5
-feature_branch: null
+feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T18:00:45Z'
+updated: '2026-10-03T18:00:59Z'
 budget:
   used: 0.97
   limit: 8
   paused: false
-  since: '2026-10-03T18:00:45Z'
+  since: '2026-10-03T18:00:59Z'
 phases: []
 events:
 - time: '2026-10-03T15:24:01Z'
@@ -54,3 +54,6 @@ events:
 - time: '2026-10-03T18:00:44Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-03T18:00:55Z'
+  type: state
+  note: running
