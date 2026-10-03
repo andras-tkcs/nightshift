@@ -248,9 +248,11 @@ EOF
   sed "s/@TS_HOST@/$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')/g" \
     "$NS_REPO_ROOT/templates/caddy/Caddyfile.tmpl" >"$out"
   grep -q 'ns-main.example.ts.net:8443' "$out"
+  grep -q 'ns-main.example.ts.net:8444' "$out"
+  grep -q 'reverse_proxy 127.0.0.1:2586' "$out"
   grep -q 'http://127.0.0.1:8080' "$out"
   grep -q 'reverse_proxy 127.0.0.1:3000' "$out"
-  [ "$(grep -c 'get_certificate tailscale' "$out")" -eq 2 ]
+  [ "$(grep -c 'get_certificate tailscale' "$out")" -eq 3 ]
   ! grep -q '@TS_HOST@' "$out"
 }
 

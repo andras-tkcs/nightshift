@@ -176,7 +176,7 @@ tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
   run ns-notify "@/some/file"
   assert_success
   grep -qF -- '--data-raw @/some/file' "$NS_STUB_LOG"
-  ! grep -qE -- '(^| )-d ' "$NS_STUB_LOG"
+  ! grep '^curl ' "$NS_STUB_LOG" | grep -qE -- '(^| )-d '
 }
 
 @test "ns-notify passes the ntfy token via stdin or a file, never argv" {

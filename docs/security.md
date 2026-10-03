@@ -73,7 +73,7 @@ When you read a plan or a diff and something looks like an instruction from a we
 
 ## Notifications
 
-Notifications go to ntfy.sh under the topic `NS_NTFY_TOPIC` (R-NOT-1). A topic on ntfy.sh is public to anyone who knows its name, so messages contain only the run id, the gate and a desk link, never code, findings or tokens. `ns-notify` cuts the text to 200 characters and refuses text that looks like a token. The topic name is random (`ns-` and 16 hex digits); keep it out of chats and repositories. The desk link only opens after the Cloudflare Access login.
+Notifications go to ntfy.sh under the topic `NS_NTFY_TOPIC` (R-NOT-1). A topic on ntfy.sh is public to anyone who knows its name, so messages contain only the run id, the gate and a desk link, never code, findings or tokens. With a self-hosted ntfy (`NS_NTFY_URL`), `ns-notify` authenticates with a bearer token that goes to curl on stdin, never in argv, logs or error output. `ns-notify` cuts the text to 200 characters and refuses text that looks like a token. The topic name is random (`ns-` and 16 hex digits); keep it out of chats and repositories. The desk link only opens after the Cloudflare Access login.
 
 ## Worker permission mode
 

@@ -65,7 +65,7 @@ Skip this unless you want a terminal in the browser. In Cloudflare, turn on brow
 
 ### 1. Caddy and desk certificates
 
-Caddy from its apt repository, `TS_PERMIT_CERT_UID=caddy`, and `/etc/caddy/Caddyfile` rendered from `templates/caddy/Caddyfile.tmpl`: the desk on `:443` to `127.0.0.1:3000`, the HTML view on `:8443`, and `http://127.0.0.1:8080` for the tunnel. Needs Tailscale connected (otherwise `needs you: tailscale is not connected`). The manual way:
+Caddy from its apt repository, `TS_PERMIT_CERT_UID=caddy`, and `/etc/caddy/Caddyfile` rendered from `templates/caddy/Caddyfile.tmpl`: the desk on `:443` to `127.0.0.1:3000`, the HTML view on `:8443`, ntfy on `:8444` to `127.0.0.1:2586`, and `http://127.0.0.1:8080` for the tunnel. Needs Tailscale connected (otherwise `needs you: tailscale is not connected`). The manual way:
 
 ```bash
 apt -y install debian-keyring debian-archive-keyring apt-transport-https
