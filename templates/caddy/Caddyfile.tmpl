@@ -1,0 +1,20 @@
+@TS_HOST@ {
+    tls {
+        get_certificate tailscale
+    }
+    reverse_proxy 127.0.0.1:3000
+}
+
+@TS_HOST@:8443 {
+    tls {
+        get_certificate tailscale
+    }
+    root * /srv/ns-space
+    file_server browse
+    header X-Robots-Tag "noindex"
+}
+
+http://127.0.0.1:8080 {
+    root * /srv/ns-space
+    file_server browse
+}

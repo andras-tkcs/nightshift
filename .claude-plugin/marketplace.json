@@ -1,0 +1,9 @@
+{
+  "name": "nightshift",
+  "owner": { "name": "andras-tkcs" },
+  "metadata": { "description": "Nightshift: an adaptive multi-agent coding framework for Claude Code" },
+  "plugins": [
+    { "name": "ns", "source": "./plugins/ns", "description": "Nightshift core: tiers T0-T3, agents, ledger, review desk" },
+    { "name": "ns-python", "source": "./plugins/ns-python", "description": "Python stack for Nightshift" }
+  ]
+}

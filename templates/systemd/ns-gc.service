@@ -1,0 +1,6 @@
+[Unit]
+Description=Nightshift housekeeping
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ns gc

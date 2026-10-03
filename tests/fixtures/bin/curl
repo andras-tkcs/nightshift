@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# curl stub for tests (see README.md).
+set -euo pipefail
+
+printf 'curl %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+for a in "$@"; do
+  if [ "$a" = -w ]; then
+    printf '%s' "${CURL_STUB_HTTP_CODE:-200}"
+    break
+  fi
+done
+exit "${CURL_STUB_EXIT:-0}"

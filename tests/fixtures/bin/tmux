@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# tmux stub for tests (see README.md): sessions are files in $TMUX_STUB_DIR.
+set -euo pipefail
+
+printf 'tmux %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+dir="${TMUX_STUB_DIR:?tmux-stub: TMUX_STUB_DIR not set}"
+mkdir -p "$dir"
+sub="${1:-}"
+[ $# -gt 0 ] && shift
+
+target=""
+name=""
+cwd=""
+envs=()
+rest=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -t) target="${2:-}"; shift 2 ;;
+    -s) name="${2:-}"; shift 2 ;;
+    -c) cwd="${2:-}"; shift 2 ;;
+    -e) envs+=("${2:-}"); shift 2 ;;
+    -F) shift 2 ;;
+    -d) shift ;;
+    *) rest+=("$1"); shift ;;
+  esac
+done
+target="${target#=}"
+
+case "$sub" in
+  new-session)
+    [ -n "$name" ] || { echo "tmux-stub: new-session needs -s" >&2; exit 1; }
+    if [ -e "$dir/$name" ]; then
+      echo "duplicate session: $name" >&2
+      exit 1
+    fi
+    {
+      printf 'DIR %s\n' "$cwd"
+      for e in "${envs[@]+"${envs[@]}"}"; do printf 'ENV %s\n' "$e"; done
+      printf 'CMD %s\n' "${rest[*]:-}"
+    } >"$dir/$name"
+    ;;
+  has-session)
+    [ -n "$target" ] && [ -f "$dir/$target" ] || exit 1
+    ;;
+  kill-session)
+    [ -n "$target" ] && [ -f "$dir/$target" ] || { echo "can't find session: $target" >&2; exit 1; }
+    rm -f "$dir/$target"
+    ;;
+  list-panes)
+    [ -n "$target" ] && [ -f "$dir/$target" ] || { echo "can't find session: $target" >&2; exit 1; }
+    printf '%s\n' "${TMUX_STUB_PANE_PID:-999999}"
+    ;;
+  attach-session)
+    [ -n "$target" ] && [ -f "$dir/$target" ] || { echo "can't find session: $target" >&2; exit 1; }
+    printf 'attached %s\n' "$target"
+    ;;
+  ls)
+    for f in "$dir"/*; do
+      [ -f "$f" ] || continue
+      printf '%s: 1 windows\n' "$(basename "$f")"
+    done
+    ;;
+  *) ;;
+esac

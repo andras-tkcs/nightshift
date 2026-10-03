@@ -1,0 +1,329 @@
+# shellcheck shell=bash
+# summary: housekeeping (daily timer)
+
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/config.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/runs.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/desk.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/stacks.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/profile.sh"
+
+ns_gc_help() {
+  printf 'usage: ns gc [--dry-run] [--monthly]\n\n'
+  printf 'Housekeeping, run daily by a systemd timer. Removes worktrees, local and remote\n'
+  printf 'plan/phase branches and tmux sessions of done runs whose PR is merged (for a closed PR\n'
+  printf 'only the local work; the remote branches stay),\n'
+  printf 'archives their desk folders, drops desk archives older than 90 days, and reports\n'
+  printf 'work that needs you. --monthly (or day 01) also clears the stacks gc targets.\n'
+  printf '--dry-run prints "would remove" lines and changes nothing.\n'
+}
+
+GC_DRY=0
+GC_FREED=0
+GC_NEEDS=0
+GC_ERRORS=0
+
+# gc_size <path>: bytes used, 0 when unreadable
+gc_size() {
+  local n
+  n=$(du -sb "$1" 2>/dev/null | cut -f1) || n=0
+  printf '%s\n' "${n:-0}"
+}
+
+# gc_say <kind> <target>
+gc_say() {
+  if [ "$GC_DRY" = 1 ]; then
+    printf 'would remove %s %s\n' "$1" "$2"
+  else
+    printf 'remove %s %s\n' "$1" "$2"
+  fi
+}
+
+# gc_needs <target> <reason>
+gc_needs() {
+  printf 'needs you: %s: %s\n' "$1" "$2"
+  GC_NEEDS=$((GC_NEEDS + 1))
+}
+
+# gc_work_state <dir>: prints the reason when the worktree has uncommitted or unpushed work
+gc_work_state() {
+  if [ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]; then
+    printf 'uncommitted changes\n'
+  elif [ -n "$(git -C "$1" log --oneline HEAD --not --remotes 2>/dev/null)" ]; then
+    printf 'unpushed commits\n'
+  fi
+}
+
+# gc_human <bytes>
+gc_human() {
+  if [ "$1" -lt 1024 ]; then
+    printf '%sB\n' "$1"
+  else
+    numfmt --to=iec --suffix=B "$1"
+  fi
+}
+
+# gc_run_inner <run-json>: step 1 for one run (the owner token is already exported)
+gc_run_inner() {
+  local run="$1" id pname base proj path ledger state pr prstate
+  id=$(jq -r .id <<<"$run")
+  pname=$(jq -r .project <<<"$run")
+  base=$(jq -r '.worktree // ""' <<<"$run")
+  proj=$(ns_project_by_name "$pname") || return 0
+  path=$(jq -r .path <<<"$proj")
+  [ -n "$base" ] || return 0
+  ledger="$base/.nightshift/runs/$id/ledger.yaml"
+  [ -f "$ledger" ] || return 0
+  state=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.state // ""' 2>/dev/null) || return 0
+  [ "$state" = "done" ] || return 0
+  pr=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.pr // ""' 2>/dev/null) || return 0
+  [ -n "$pr" ] || return 0
+  prstate=$(gh pr view "$pr" --json state -q .state 2>/dev/null) || {
+    gc_needs "$id" "cannot read PR state"
+    return 0
+  }
+  case "$prstate" in MERGED | CLOSED) ;; *) return 0 ;; esac
+
+  local -a wts=() locals=() remotes=()
+  local plan feature b wpath line why dest month src sz basebranch keep=0
+  plan=$(jq -r '.branch // ""' <<<"$run")
+  feature=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.feature_branch // ""')
+  if [ -n "$plan" ]; then
+    locals+=("$plan")
+    remotes+=("$plan")
+  fi
+  if [ -n "$feature" ]; then locals+=("$feature"); fi
+  while IFS= read -r b; do
+    [ -n "$b" ] || continue
+    locals+=("$b")
+    remotes+=("$b")
+  done < <("$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[]?.branch // empty')
+
+  # (a) worktrees: the run's own path or <path>--<suffix>, never a bare prefix
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        wpath=${line#worktree }
+        if [ "$wpath" != "$path" ] && { [ "$wpath" = "$base" ] || [[ $wpath == "$base"--* ]]; }; then
+          wts+=("$wpath")
+        fi
+        ;;
+    esac
+  done < <(git -C "$path" worktree list --porcelain 2>/dev/null)
+
+  for wpath in "${wts[@]}"; do
+    why=$(gc_work_state "$wpath")
+    if [ -n "$why" ]; then
+      gc_needs "$wpath" "$why"
+      keep=1
+    fi
+  done
+  [ "$keep" = 0 ] || return 0
+
+  for wpath in "${wts[@]}"; do
+    sz=$(gc_size "$wpath")
+    GC_FREED=$((GC_FREED + sz))
+    gc_say worktree "$wpath"
+    if [ "$GC_DRY" = 0 ] && ! git -C "$path" worktree remove "$wpath" 2>/dev/null; then
+      ns_warn "could not remove worktree $wpath"
+      GC_ERRORS=$((GC_ERRORS + 1))
+    fi
+  done
+
+  # the base branch is never deleted
+  basebranch=$(jq -r '.branch // ""' <<<"$proj")
+  if [ -z "$basebranch" ]; then
+    basebranch=$(git -C "$path" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || basebranch=""
+    basebranch=${basebranch#origin/}
+  fi
+
+  # (b) local branches
+  for b in "${locals[@]}"; do
+    [ "$b" != "$basebranch" ] || continue
+    git -C "$path" show-ref -q --verify "refs/heads/$b" || continue
+    gc_say branch "$b"
+    if [ "$GC_DRY" = 0 ] && ! git -C "$path" branch -d "$b" >/dev/null 2>&1; then
+      # plan and phase branches are never merged into the base; they count as safe when
+      # everything on them is also on origin (their remote copy is deleted below)
+      if git -C "$path" merge-base --is-ancestor "$b" "origin/$b" 2>/dev/null; then
+        git -C "$path" branch -D "$b" >/dev/null 2>&1 || gc_needs "$b" "could not delete local branch"
+      else
+        gc_needs "$b" "local branch is not fully merged"
+      fi
+    fi
+  done
+
+  # (c) remote branches: only after a merge; a closed PR keeps them (plan/<id> is the ledger)
+  if [ "$prstate" != MERGED ]; then
+    remotes=()
+    printf 'kept remote branches of %s (PR closed, not merged)\n' "$id"
+  fi
+  for b in "${remotes[@]}"; do
+    [ "$b" != "$basebranch" ] || continue
+    git -C "$path" ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 || continue
+    gc_say remote-branch "origin/$b"
+    if [ "$GC_DRY" = 0 ] && ! git -C "$path" push -q origin --delete "$b" 2>/dev/null; then
+      ns_warn "could not delete origin/$b"
+      GC_ERRORS=$((GC_ERRORS + 1))
+    fi
+  done
+
+  # (d) tmux session
+  if ns_tmux_has "$id"; then
+    gc_say tmux "$id"
+    if [ "$GC_DRY" = 0 ] && ! ns_tmux_kill "$id"; then
+      GC_ERRORS=$((GC_ERRORS + 1))
+    fi
+  fi
+
+  # (e) desk folder moves to the archive (moved, so not counted as freed)
+  src=$(ns_desk_run_dir "$pname" "$id")
+  month=$(ns_now | cut -c1-7)
+  dest="$(ns_desk_dir)/$pname/archive/$month/$id"
+  if [ -d "$src" ]; then
+    gc_say desk "$src"
+    if [ "$GC_DRY" = 0 ]; then
+      mkdir -p "$(dirname "$dest")"
+      if mv "$src" "$dest"; then
+        touch "$dest"
+      else
+        GC_ERRORS=$((GC_ERRORS + 1))
+      fi
+    fi
+  fi
+
+  # (f) runs index, then the desk index
+  if [ "$GC_DRY" = 0 ]; then
+    ns_run_set "$id" '.archived = true'
+    ns_desk_index "$pname"
+  fi
+}
+
+# gc_run <run-json>: runs gc_run_inner with the project owner's token exported, then
+# restores GH_TOKEN. The token never appears on a command line or in output.
+gc_run() {
+  local run="$1" repo owner id had=0 saved="" rc=0
+  id=$(jq -r .id <<<"$run")
+  repo=$(ns_project_by_name "$(jq -r .project <<<"$run")" 2>/dev/null | jq -r '.repo // ""') || repo=""
+  owner=${repo%%/*}
+  if [ -n "${GH_TOKEN+x}" ]; then
+    had=1
+    saved=$GH_TOKEN
+  fi
+  if [ -n "$owner" ]; then
+    # ns_token_export dies on a wrong file mode, so probe it in a subshell first
+    if ! (ns_token_export "$owner") >/dev/null 2>&1; then
+      gc_needs "$id" "token file for $owner is unusable (must be mode 600)"
+      return 0
+    fi
+    ns_token_export "$owner" >/dev/null 2>&1 || true
+  fi
+  gc_run_inner "$run" || rc=$?
+  if [ "$had" = 1 ]; then export GH_TOKEN="$saved"; else unset GH_TOKEN; fi
+  return "$rc"
+}
+
+ns_gc_main() {
+  local u="ns gc [--dry-run] [--monthly]" monthly=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) GC_DRY=1 ;;
+      --monthly) monthly=1 ;;
+      *) ns_usage "$u" ;;
+    esac
+    shift
+  done
+  ns_load_env
+
+  # 1. finished runs
+  local run
+  while IFS= read -r run; do
+    [ -n "$run" ] || continue
+    gc_run "$run"
+  done < <(ns_runs_json | jq -c '.[] | select(.archived | not)')
+
+  # 2. desk archives older than 90 days
+  local d sz
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    sz=$(gc_size "$d")
+    GC_FREED=$((GC_FREED + sz))
+    gc_say archive "$d"
+    if [ "$GC_DRY" = 0 ] && ! rm -rf "$d"; then
+      GC_ERRORS=$((GC_ERRORS + 1))
+    fi
+  done < <(find "$(ns_desk_dir)" -mindepth 4 -maxdepth 4 -type d -path '*/archive/*/*' -mtime +90 2>/dev/null | sort)
+
+  # 3. project worktrees holding work (report only)
+  local proj ppath w why
+  while IFS= read -r proj; do
+    [ -n "$proj" ] || continue
+    ppath=$(jq -r .path <<<"$proj")
+    for w in "$ppath"/.claude/worktrees/*; do
+      [ -d "$w" ] || continue
+      why=$(gc_work_state "$w")
+      if [ -n "$why" ]; then gc_needs "$w" "$why"; fi
+    done
+  done < <(ns_projects_json | jq -c '.[]')
+
+  # 4. monthly stack targets
+  local now t sf prof stk seen=" "
+  now=$(ns_now)
+  if [ "$monthly" = 1 ] || [ "${now:8:2}" = 01 ]; then
+    while IFS= read -r proj; do
+      [ -n "$proj" ] || continue
+      prof=$(ns_profile_json "$(jq -r .path <<<"$proj")" "$(jq -r .prefix <<<"$proj")" "$(jq -r '.branch // ""' <<<"$proj")" 2>/dev/null) || true
+      jq -e . >/dev/null 2>&1 <<<"$prof" || continue
+      while IFS= read -r stk; do
+        [ -n "$stk" ] || continue
+        sf=$(ns_stack_file "$stk")
+        [ -f "$sf" ] || continue
+        while IFS= read -r t; do
+          [ -n "$t" ] || continue
+          t=$(ns_expand_path "$t")
+          case "$t" in "" | / | "$HOME") continue ;; esac
+          [ -e "$t" ] || continue
+          case "$seen" in *" $t "*) continue ;; esac
+          seen="$seen$t "
+          sz=$(gc_size "$t")
+          GC_FREED=$((GC_FREED + sz))
+          gc_say cache "$t"
+          if [ "$GC_DRY" = 0 ] && ! rm -rf "$t"; then
+            GC_ERRORS=$((GC_ERRORS + 1))
+          fi
+        done < <(ns_yaml_json "$sf" | jq -r '.gc.monthly // [] | .[]')
+      done < <(jq -r '.stacks[]? | if type == "object" then .name else . end' <<<"$prof")
+    done < <(ns_projects_json | jq -c '.[]')
+  fi
+
+  # 6. disk and reboot
+  local disk parts=""
+  disk=$(df -P "$HOME" 2>/dev/null | awk 'NR==2 {gsub("%", "", $5); print $5}') || disk=""
+  if [ "$GC_NEEDS" -gt 0 ]; then parts+=" · $GC_NEEDS item(s) need you"; fi
+  if [ -e "${NS_REBOOT_FILE:-/var/run/reboot-required}" ]; then parts+=" · reboot required"; fi
+  if [[ ${disk:-} =~ ^[0-9]+$ ]] && [ "$disk" -gt 80 ]; then
+    printf 'disk %s%% full\n' "$disk"
+    parts+=" · disk ${disk}%"
+  fi
+
+  # 7. summary
+  local summary
+  if [ "$GC_DRY" = 1 ]; then
+    summary="ns gc (dry run): would free $(gc_human "$GC_FREED")$parts"
+    printf '%s\n' "$summary"
+  else
+    summary="ns gc: freed $(gc_human "$GC_FREED")$parts"
+    printf '%s\n' "$summary"
+    "$NS_HOME/bin/ns-notify" "$summary" || ns_warn "could not send the notification"
+  fi
+
+  # 8. healthcheck
+  if [ "$GC_DRY" = 0 ] && [ "$GC_ERRORS" = 0 ] && [ -n "${NS_HEALTHCHECK_URL:-}" ]; then
+    curl -fsS -m 10 "$NS_HEALTHCHECK_URL" >/dev/null || ns_warn "healthcheck ping failed"
+  fi
+  [ "$GC_ERRORS" = 0 ]
+}

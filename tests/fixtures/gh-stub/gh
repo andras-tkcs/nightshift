@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# gh stub for tests (see README.md). Never logs the token value.
+set -euo pipefail
+
+log="${GH_STUB_LOG:-/dev/null}"
+line="gh $*"
+[ -z "${GH_TOKEN:-}" ] || line="$line [token]"
+printf '%s\n' "$line" >>"$log"
+
+args=("$@")
+
+if [ "${args[0]:-}" = auth ] && [ "${args[1]:-}" = status ]; then
+  exit "${GH_STUB_AUTH_EXIT:-0}"
+fi
+
+if [ "${args[0]:-}" = repo ] && [ "${args[1]:-}" = clone ]; then
+  slug="${args[2]:?gh-stub: repo clone needs a repo}"
+  dest="${args[3]:-}"
+  if [ -z "$dest" ] || [ "$dest" = "--" ]; then dest="${slug#*/}"; fi
+  git clone -q "$GH_STUB_REMOTES/$slug.git" "$dest"
+  exit 0
+fi
+
+# split off --jq/-q <expr>
+jqexpr=""
+rest=()
+i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+  case "${args[$i]}" in
+    --jq | -q)
+      i=$((i + 1))
+      jqexpr="${args[$i]:-}"
+      ;;
+    *) rest+=("${args[$i]}") ;;
+  esac
+  i=$((i + 1))
+done
+joined="${rest[*]:-}"
+
+map="${GH_STUB_RESPONSES:-}/map"
+if [ -n "${GH_STUB_RESPONSES:-}" ] && [ -f "$map" ]; then
+  while IFS=$'\t' read -r code file re || [ -n "${code:-}" ]; do
+    [ -n "${code:-}" ] || continue
+    if [[ $joined =~ $re ]]; then
+      if [ "$file" != "-" ]; then
+        if [ -n "$jqexpr" ]; then
+          jq -r "$jqexpr" <"$GH_STUB_RESPONSES/$file"
+        else
+          cat "$GH_STUB_RESPONSES/$file"
+        fi
+      fi
+      exit "$code"
+    fi
+  done <"$map"
+fi
+
+echo "gh-stub: no response for: $joined" >&2
+exit 99

@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""docs-check: fail when an ns subcommand is undocumented or a relative link is broken."""
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+SPEC15 = [
+    "README.md", "docs/architecture.md", "docs/accounts.md", "docs/server.md",
+    "docs/setup.md", "docs/usage.md", "docs/operations.md", "docs/security.md",
+    "docs/projects.md", "docs/profile-reference.md", "docs/agents.md",
+    "docs/development.md", "CHANGELOG.md", "docs/adr",
+]
+SKIP_PREFIXES = ("tests/fixtures/", ".claude/")
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+
+
+def md_files(root):
+    top = git(root, "rev-parse", "--show-toplevel")
+    if top.returncode == 0 and Path(top.stdout.strip()).resolve() == root.resolve():
+        names = [n for n in git(root, "ls-files", "*.md").stdout.splitlines() if n]
+    else:
+        names = [str(p.relative_to(root)) for p in root.rglob("*.md")]
+    return sorted(n for n in names if not n.startswith(SKIP_PREFIXES))
+
+
+def read(path):
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def user_invocable(skill_md):
+    m = re.match(r"---\n(.*?)\n---", read(skill_md), re.S)
+    return not (m and re.search(r"^user-invocable:\s*false\s*$", m.group(1), re.M))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="docs-check")
+    ap.add_argument("--final", action="store_true")
+    ap.add_argument("--root", default=None)
+    args = ap.parse_args()
+    root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
+    root = root.resolve()
+    problems = []
+
+    usage = read(root / "docs/usage.md")
+    # 1. every ns subcommand is documented
+    for f in sorted((root / "bin/lib").glob("ns-*.sh")):
+        name = f.name[3:-3]
+        if not re.search(r"`ns " + re.escape(name) + r"[ `]", usage):
+            problems.append(f"docs/usage.md: ns {name} is not documented")
+
+    # 2. generated profile doc is current
+    gen = root / "bin/lib/gen-profile-doc"
+    if gen.exists():
+        r = subprocess.run([str(gen), "--check"], capture_output=True, text=True, cwd=root)
+        if r.returncode != 0:
+            problems.append("docs/profile-reference.md: gen-profile-doc --check failed")
+
+    # 3. relative links resolve
+    link = re.compile(r"\]\(([^)\s]+)")
+    for name in md_files(root):
+        fence = False
+        for n, line in enumerate(read(root / name).splitlines(), 1):
+            if line.lstrip().startswith(("```", "~~~")):
+                fence = not fence
+                continue
+            if fence:
+                continue
+            for target in link.findall(line):
+                if target.startswith(("http:", "https:", "mailto:", "#")):
+                    continue
+                path = target.split("#", 1)[0]
+                if path and not (root / name).parent.joinpath(path).exists():
+                    problems.append(f"{name}:{n}: broken link {target}")
+
+    # 4. final checks
+    if args.final:
+        skills_dir = root / "plugins/ns/skills"
+        skills = sorted(p.name for p in skills_dir.iterdir() if p.is_dir()) if skills_dir.is_dir() else []
+        for s in skills:
+            if user_invocable(skills_dir / s / "SKILL.md") and f"`/ns:{s}" not in usage:
+                problems.append(f"docs/usage.md: /ns:{s} is not documented")
+        agents_doc = read(root / "docs/agents.md")
+        agents_dir = root / "plugins/ns/agents"
+        agents = [p.stem for p in sorted(agents_dir.glob("*.md"))] if agents_dir.is_dir() else []
+        for n in agents + skills:
+            if n not in agents_doc:
+                problems.append(f"docs/agents.md: {n} is not named")
+        for rel in SPEC15:
+            if not (root / rel).exists():
+                problems.append(f"{rel}: required by spec 15 but missing")
+
+    for p in problems:
+        print(p)
+    if problems:
+        print(f"docs-check: {len(problems)} problem(s)")
+        return 1
+    print("docs-check: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+NS_HOME="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export NS_HOME
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/common.sh"
+ns_load_env
+
+cmd=${1:-help}
+case "$cmd" in
+  -h | --help) cmd=help ;;
+esac
+[ $# -gt 0 ] && shift
+
+if [[ ! "$cmd" =~ ^[a-z][a-z0-9-]*$ ]] || [ ! -f "$NS_HOME/bin/lib/ns-$cmd.sh" ]; then
+  ns_usage "unknown command: $cmd (see ns help)"
+fi
+
+export NS_CMD="ns $cmd"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/ns-$cmd.sh"
+fn=${cmd//-/_}
+case "${1:-}" in
+  --help | -h) "ns_${fn}_help" ;;
+  *) "ns_${fn}_main" "$@" ;;
+esac

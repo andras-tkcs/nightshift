@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md). Arguments are logged, so a
+# token passed to "service install" would show up in NS_STUB_LOG (tests check it does not).
+set -euo pipefail
+printf 'cloudflared %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+exit 0

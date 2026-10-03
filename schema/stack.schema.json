@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andras-tkcs/nightshift/schema/stack.schema.json",
+  "title": "Nightshift stack descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "detect", "paths", "commands", "setup"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "description": "Short stack name, for example python."},
+    "description": {"type": "string", "description": "One line describing the projects this stack serves."},
+    "detect": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "File names whose presence at the repo root marks a project as this stack."},
+    "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "Glob patterns of files that belong to this stack, used to decide which skills and checks apply."},
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Shell commands run from the project root inside the worktree.",
+      "properties": {
+        "test": {"type": "string", "description": "Run the test suite."},
+        "lint": {"type": "string", "description": "Run the linter."},
+        "typecheck": {"type": "string", "description": "Run the type checker."},
+        "audit": {"type": "string", "description": "Run the dependency vulnerability audit."}
+      }
+    },
+    "setup": {"type": "array", "items": {"type": "string"}, "description": "Shell commands run in order to prepare a fresh worktree."},
+    "gc": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Cleanup settings for caches this stack leaves behind.",
+      "properties": {
+        "monthly": {"type": "array", "items": {"type": "string"}, "description": "Paths cleaned once a month."}
+      }
+    },
+    "apt": {"type": "array", "items": {"type": "string"}, "description": "Ubuntu packages the stack needs on the host."},
+    "ci_template": {"type": "string", "description": "Repo-relative path of a CI workflow template for projects without CI."},
+    "skills": {"type": "array", "items": {"type": "string"}, "description": "Names of the skill directories in the stack plugin that apply to this stack."}
+  }
+}

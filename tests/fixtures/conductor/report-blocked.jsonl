@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"The brief is impossible.\n\nPHASE-REPORT p1-alpha status=blocked head=HEAD_PLACEHOLDER\nreason: the brief names a file that does not exist"}

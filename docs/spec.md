@@ -202,7 +202,7 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 
 ## 8. Ledger and resume
 
-- **R-LED-1** Each run has `.nightshift/runs/<id>/ledger.yaml` committed on the run's working branch (`plan/<slug>` for T2/T3, the fix branch for T0/T1).
+- **R-LED-1** Each run has `.nightshift/runs/<id>/ledger.yaml` committed on the run's working branch (`plan/<slug>` for T2/T3, the fix branch for T0/T1). For every tier the ledger lives on plan/<id>; see docs/adr/0002-run-ledger-on-plan-branch.md.
 - **R-LED-2** Fields: `id, project, tier, state (queued|running|waiting|parked|stopped|done|failed), gate, created, updated, budget{used, limit}, phases[{id, state, branch, worktree, attempts, review_rounds}], events[{time, type, note}]`.
 - **R-LED-3** The Stop hook (`checkpoint`) and the conductor write the ledger after every step and commit it with `ns-ledger: <id> <state>`.
 - **R-LED-4** `ns resume <id>` rebuilds everything (tmux session, worktrees, the conductor's position) from the ledger and the branches alone. Kill tests in R-E2E-5 prove this.

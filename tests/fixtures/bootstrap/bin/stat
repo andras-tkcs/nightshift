@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+# Owner and group cannot be set without root, so "stat -c '%U:%G %a' <path>" reports
+# "<NS_USER>:caddy 2750" for an existing path; everything else goes to the real stat.
+set -euo pipefail
+if [ "${1:-}" = -c ] && [ "${2:-}" = '%U:%G %a' ]; then
+  [ -e "${3:-}" ] || exit 1
+  printf '%s:caddy 2750\n' "${NS_USER:-ns}"
+  exit 0
+fi
+exec /usr/bin/stat "$@"

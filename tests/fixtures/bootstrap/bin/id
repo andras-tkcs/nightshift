@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# bootstrap test stub (see tests/fixtures/bin/README.md)
+# "id -u" is the caller (non-root unless ID_STUB_UID is set); "id -u <user>" is 1001.
+set -euo pipefail
+printf 'id %s\n' "$*" >>"${NS_STUB_LOG:-/dev/null}"
+if [ "${1:-}" = -u ] && [ -n "${2:-}" ]; then echo 1001; exit 0; fi
+if [ "${1:-}" = -u ]; then echo "${ID_STUB_UID:-1000}"; exit 0; fi
+exit 0

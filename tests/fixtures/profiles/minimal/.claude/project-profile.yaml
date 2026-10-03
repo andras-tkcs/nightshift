@@ -1,0 +1,5 @@
+project: minimal
+prefix: mn
+commands: {}
+git: {}
+stacks: [python]
