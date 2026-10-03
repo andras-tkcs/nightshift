@@ -24,7 +24,23 @@ if ns_has_token "$text" || ns_has_token "$url"; then
 fi
 text="${text:0:200}"
 
-args=(-fsS -m 10 -H "Title: Nightshift")
+args=(-sS -m 10 -o /dev/null -w '%{http_code}' -H "Title: Nightshift")
 [ -z "$url" ] || args+=(-H "Click: $url")
-args+=(-d "$text" "${NS_NTFY_URL:-https://ntfy.sh}/$NS_NTFY_TOPIC")
-curl "${args[@]}" >/dev/null || ns_die "could not reach ntfy"
+args+=(--data-raw "$text")
+endpoint="${NS_NTFY_URL:-https://ntfy.sh}/$NS_NTFY_TOPIC"
+token_file="$(ns_config_dir)/tokens/ntfy"
+token=""
+[ ! -r "$token_file" ] || token="$(tr -d '[:space:]' <"$token_file")"
+# The token goes to curl as a config on stdin, never in argv.
+if [ -n "$token" ]; then
+  args+=(-K - "$endpoint")
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$token" | curl "${args[@]}" 2>/dev/null)" ||
+    ns_die "could not reach ntfy"
+else
+  args+=("$endpoint")
+  code="$(curl "${args[@]}" 2>/dev/null </dev/null)" || ns_die "could not reach ntfy"
+fi
+case "$code" in
+  2??) ;;
+  *) ns_die "ntfy answered HTTP $code; not sent" ;;
+esac

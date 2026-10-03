@@ -160,7 +160,7 @@ tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
   long=$(printf 'a%.0s' $(seq 1 300))
   run ns-notify "$long"
   assert_success
-  grep -qE -- "-d a{200} " "$NS_STUB_LOG"
+  grep -qE -- "(-d|--data-raw) a{200} " "$NS_STUB_LOG"
   ! grep -qE -- "a{201}" "$NS_STUB_LOG"
 }
 
@@ -169,4 +169,47 @@ tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
   run ns-notify "hello"
   assert_failure 1
   assert_output_contains "ns-notify: could not reach ntfy"
+}
+
+@test "ns-notify sends text starting with @ literally (issue 7)" {
+  export NS_NTFY_TOPIC=topic1
+  run ns-notify "@/some/file"
+  assert_success
+  grep -qF -- '--data-raw @/some/file' "$NS_STUB_LOG"
+  ! grep '^curl ' "$NS_STUB_LOG" | grep -qE -- '(^| )-d '
+}
+
+@test "ns-notify passes the ntfy token via stdin or a file, never argv" {
+  export NS_NTFY_TOPIC=topic1
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  run ns-notify "hello"
+  assert_success
+  grep -qE '^curl-(stdin|file) .*Authorization: Bearer tk_secrettoken123' "$NS_STUB_LOG"
+  ! grep '^curl ' "$NS_STUB_LOG" | grep -q tk_secrettoken123
+  ! grep -q tk_secrettoken123 <<<"$output"
+}
+
+@test "ns-notify without a token file sends no Authorization header" {
+  export NS_NTFY_TOPIC=topic1
+  run ns-notify "hello"
+  assert_success
+  ! grep -qi 'Authorization' "$NS_STUB_LOG"
+}
+
+@test "ns-notify uses NS_NTFY_URL" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  run ns-notify "hello"
+  assert_success
+  grep -qF 'https://ntfy.example:8444/topic1' "$NS_STUB_LOG"
+}
+
+@test "ns-notify fails on a non-2xx answer and keeps the token out of the output" {
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify:"
+  ! grep -q tk_secrettoken123 <<<"$output"
 }

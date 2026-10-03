@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ns-notify` sends the ntfy bearer token (via curl stdin) and fails on a non-2xx answer; the Caddyfile template serves ntfy on `:8444`.
+
+### Fixed
+
+- `ns-notify` sends text literally with `--data-raw`, so text starting with `@` is no longer read as a file (issue #7).
+
 ## [0.1.0] - 2026-10-02
 
 ### Added
