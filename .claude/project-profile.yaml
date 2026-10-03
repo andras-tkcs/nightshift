@@ -16,3 +16,4 @@ risk_zones:
   credentials:
     paths: ["bin/lib/config.sh", "bin/ns-launch"]
     require: [sec-compliance]
+protected_paths: [".github/workflows/**"]
