@@ -11,20 +11,20 @@ tags:
 - caddy
 - security
 - bats
-state: waiting
-gate: '1'
+state: queued
+gate: null
 step: gate1
 stop_requested: null
 branch: plan/ns-5
 feature_branch: null
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T16:23:14Z'
+updated: '2026-10-03T18:00:40Z'
 budget:
   used: 0.97
   limit: 8
   paused: false
-  since: '2026-10-03T16:23:14Z'
+  since: '2026-10-03T18:00:40Z'
 phases: []
 events:
 - time: '2026-10-03T15:24:01Z'
@@ -48,3 +48,6 @@ events:
 - time: '2026-10-03T16:23:00Z'
   type: gate
   note: 'gate 1: waiting for the owner'
+- time: '2026-10-03T18:00:40Z'
+  type: approved
+  note: gate 1
