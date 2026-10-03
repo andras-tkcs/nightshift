@@ -13,18 +13,18 @@ tags:
 - bats
 state: running
 gate: null
-step: discovery
+step: gate1
 stop_requested: null
 branch: plan/ns-5
 feature_branch: null
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T15:48:51Z'
+updated: '2026-10-03T16:22:34Z'
 budget:
-  used: 0.41
+  used: 0.97
   limit: 8
   paused: false
-  since: '2026-10-03T15:48:51Z'
+  since: '2026-10-03T16:22:34Z'
 phases: []
 events:
 - time: '2026-10-03T15:24:01Z'
