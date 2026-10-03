@@ -55,7 +55,7 @@ ns_publish_main() {
     [ -n "$name" ] || name=$(basename "$abs")
     [[ $name =~ ^[A-Za-z0-9._-]+\.(md|html|yaml|env)$ ]] || ns_die "$name: name must match [A-Za-z0-9._-]+.(md|html|yaml|env)"
     if [[ $name == *.html ]] && ! ns_desk_check_html "$abs"; then
-      ns_die "$name: HTML must be self-contained (no external scripts or styles)"
+      ns_die "$name: HTML must be self-contained (no scripts, no external resources)"
     fi
     if ns_has_token "$(cat "$abs")"; then
       ns_die "$name: looks like it contains a token; not published"
