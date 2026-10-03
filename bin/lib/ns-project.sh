@@ -68,7 +68,7 @@ ns_project_add() {
   if [ -e "$path" ]; then
     url=$(git -C "$path" remote get-url origin 2>/dev/null) || url=""
     case "$url" in
-      *"$repo" | *"$repo.git") ;;
+      *[:/]"$repo" | *[:/]"$repo.git") ;;
       *) ns_die "$path exists and is not a clone of $repo" ;;
     esac
     git -C "$path" fetch -q origin || ns_die "could not fetch origin in $path"

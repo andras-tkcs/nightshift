@@ -67,6 +67,15 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
   assert_output_contains "exists and is not a clone of acme/widget"
 }
 
+@test "an existing clone whose origin only ends with the repo name fails" {
+  make_remote evilacme/widget "$FIX"
+  git clone -q "$GH_STUB_REMOTES/evilacme/widget.git" "$NS_CODING_DIR/widget"
+  run ns project add acme/widget --prefix wd
+  assert_failure 1
+  assert_output_contains "exists and is not a clone of acme/widget"
+  [ ! -e "$NS_CONFIG_DIR/setup-ran" ]
+}
+
 @test "same repo with another prefix fails" {
   ns project add acme/widget --prefix wd
   run ns project add acme/widget --prefix zz
