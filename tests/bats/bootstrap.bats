@@ -254,6 +254,46 @@ EOF
   ! grep -q '@TS_HOST@' "$out"
 }
 
+# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
+# The command runs in a background subshell so errexit stays on inside it. Passes when the
+# command fails; fails with XPASS when it succeeds. The phase that implements the criterion
+# deletes the `ns_xfail "ns:ns-5 acceptance"` prefix from its test.
+ns_xfail() {
+  local reason="$1" rc=0
+  shift
+  "$@" &
+  wait "$!" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
+    return 1
+  fi
+}
+
+# csp_on_html_listeners_only: the body of the AC-6 case (docs/ns-5-plan.md D-tests).
+csp_on_html_listeners_only() {
+  out="$BATS_TEST_TMPDIR/Caddyfile"
+  sed 's/@TS_HOST@/ns-main.example.ts.net/g' "$NS_REPO_ROOT/templates/caddy/Caddyfile.tmpl" >"$out"
+  csp='    header Content-Security-Policy "default-src '\''none'\''; style-src '\''unsafe-inline'\''; img-src data:"'
+  block() { awk -v h="$1" '$0 == h {f=1} f {print} f && /^}/ {exit}' "$out"; }
+  [ "$(block 'ns-main.example.ts.net:8443 {' | grep -cxF "$csp")" -eq 1 ]
+  [ "$(block 'http://127.0.0.1:8080 {' | grep -cxF "$csp")" -eq 1 ]
+  [ "$(block 'ns-main.example.ts.net {' | grep -c 'reverse_proxy 127.0.0.1:3000')" -eq 1 ]
+  [ "$(block 'ns-main.example.ts.net {' | grep -c 'Content-Security-Policy')" -eq 0 ]
+  [ "$(grep -c 'Content-Security-Policy' "$out")" -eq 2 ]
+  # setup() puts a caddy stub (tests/fixtures/bootstrap/bin/caddy) first on PATH; find a real one
+  real=""
+  while IFS= read -r c; do
+    case "$c" in "$NS_REPO_ROOT"/*) ;; *) real="$c"; break ;; esac
+  done < <(type -ap caddy)
+  [ -n "$real" ] || skip "caddy not installed; caddy adapt not run"
+  run "$real" adapt --config "$out" --adapter caddyfile
+  assert_success
+}
+
+@test "the rendered Caddyfile sends the CSP on the HTML listeners only" {
+  ns_xfail "ns:ns-5 acceptance" csp_on_html_listeners_only
+}
+
 # A git wrapper whose clone fails, as on a network or disk-full error.
 git_clone_fails() {
   mkdir -p "$BATS_TEST_TMPDIR/gitfail"
