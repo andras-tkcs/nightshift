@@ -1,0 +1,18 @@
+# Escalation: ns-5, phase p1-publish-check
+
+## What is stuck
+Phase `p1-publish-check` is approved by the reviewer (`review-p1-publish-check-1.md`, verdict approve) and `ns-conductor report` is OK (head 673c13f). `ns-conductor checks ns-5 p1-publish-check` exits 1 for one reason only: `FAIL python test`. `PASS python lint` and the whole bats suite (339 cases) are `ok`, with no `not ok`.
+
+## Cause
+The `python test` check runs `pytest` from the repo root. It collects `tests/fixtures/sandbox-base/tests/test_numbers.py` and `test_text.py`, which import `sandbox_pkg`. That package is not installed, so collection fails with ModuleNotFoundError. The same failure happens on `origin/feature/5` without the phase. The phase touches only `bin/lib/desk.sh`, `bin/lib/ns-publish.sh` and `tests/bats/desk.bats`.
+
+## What was tried
+Re-ran the checks once with full output to confirm. I did not skip, edit or override the check, and I did not merge.
+
+## Question
+How should the gate treat this? Options:
+1. Accept the python check as a pre-existing, unrelated failure and tell me to merge the phase.
+2. Have the profile or stack scoped so pytest ignores `tests/fixtures` (a separate change, outside this plan).
+
+## Owner's answer
+
