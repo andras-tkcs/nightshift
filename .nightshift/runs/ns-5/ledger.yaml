@@ -1,0 +1,31 @@
+version: 1
+id: ns-5
+project: nightshift
+request:
+  issue: 5
+tier: T2
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-5
+feature_branch: null
+pr: null
+created: '2026-10-03T15:24:01Z'
+updated: '2026-10-03T15:24:02Z'
+budget:
+  used: 0
+  limit: 8
+  paused: false
+  since: '2026-10-03T15:24:02Z'
+phases: []
+events:
+- time: '2026-10-03T15:24:01Z'
+  type: created
+  note: run ns-5 created
+- time: '2026-10-03T15:24:01Z'
+  type: tier
+  note: T2 (owner, 8 h)
