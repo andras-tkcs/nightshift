@@ -19,12 +19,12 @@ branch: plan/ns-5
 feature_branch: null
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T15:24:47Z'
+updated: '2026-10-03T15:28:17Z'
 budget:
-  used: 0.01
+  used: 0.07
   limit: 8
   paused: false
-  since: '2026-10-03T15:24:47Z'
+  since: '2026-10-03T15:28:17Z'
 phases: []
 events:
 - time: '2026-10-03T15:24:01Z'
