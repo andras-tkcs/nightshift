@@ -19,12 +19,12 @@ branch: plan/ns-5
 feature_branch: null
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-03T16:22:41Z'
+updated: '2026-10-03T16:23:01Z'
 budget:
   used: 0.97
   limit: 8
   paused: false
-  since: '2026-10-03T16:22:41Z'
+  since: '2026-10-03T16:23:01Z'
 phases: []
 events:
 - time: '2026-10-03T15:24:01Z'
@@ -40,5 +40,11 @@ events:
   type: state
   note: waiting gate 1
 - time: '2026-10-03T16:22:40Z'
+  type: gate
+  note: 'gate 1: waiting for the owner'
+- time: '2026-10-03T16:23:00Z'
+  type: state
+  note: waiting gate 1
+- time: '2026-10-03T16:23:00Z'
   type: gate
   note: 'gate 1: waiting for the owner'
