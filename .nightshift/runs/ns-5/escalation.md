@@ -18,3 +18,16 @@ How should the gate treat this? Options:
 
 Create an issue for it and continue, merge the phase
 
+
+---
+# Escalation 2: merge refused
+
+Owner answer was: file an issue, continue, merge the phase.
+- The issue was NOT created: the auto-mode classifier denied `gh issue create` (external write). Please file it yourself. Suggested title: "pytest at repo root collects tests/fixtures/sandbox-base and fails (sandbox_pkg not installed)".
+- `ns-conductor merge ns-5 p1-publish-check` re-runs the checks and exits 1 on the same pre-existing `FAIL python test` (bats 339 ok). The phase stays in `review`. I will not merge by hand around the conductor.
+
+## Question
+Pick one: (a) merge `feature/5--p1-publish-check` into `feature/5` yourself (or tell me to do it with plain git), or (b) scope pytest to ignore `tests/fixtures` first, then I re-run merge.
+
+## Owner's answer
+
