@@ -202,7 +202,7 @@ And this case, which calls the function directly:
 
 ### D-adr: ADR 0010
 
-`docs/adr/0010-desk-html-deny-list-and-csp.md`, in the format of `docs/adr/0006-guard-hook-fails-open.md` (Status, Context, Decision with "Rejected alternatives:", Consequences):
+`docs/adr/0010-html-deny-list-and-csp.md`, in the format of `docs/adr/0006-guard-hook-fails-open.md` (Status, Context, Decision with "Rejected alternatives:", Consequences):
 
 - Title: `# 0010. Desk HTML is checked by a deny-list and a CSP header`
 - Status: `Accepted`
@@ -210,7 +210,7 @@ And this case, which calls the function directly:
 - Decision: `ns publish` refuses HTML with a case-insensitive, whole-file (`grep -z`) deny-list in `ns_desk_check_html`, failing closed; the desk's HTML listeners send `default-src 'none'; style-src 'unsafe-inline'; img-src data:`. Navigation links (`<a href>`) stay allowed. Rejected alternatives: a Python `html.parser` check (better parsing, but moves a shell check into Python and still needs URL normalising; revisit if evasions show up); an allowlist of `data:`/`#` values (refuses relative paths, which nothing asks for); flattening newlines with `tr` before a line-based grep (same effect as `-z` with an extra pipe, same NUL issue); sanitising or rewriting the HTML (refusing is simpler and visible to the author).
 - Consequences: the check is not a parser; the evasions named in R-DSK-2 are left to the CSP, so the header must stay in the template. Some harmless pages are refused (prose containing `javascript:`, `<link rel=canonical>`); authors escape the text (`javascript&#58;`) or drop the tag. Caddy's browse listing loses its inline-script features under the CSP, and relative images on desk pages do not load.
 
-Add the row `| [0010](0010-desk-html-deny-list-and-csp.md) | Desk HTML is checked by a deny-list and a CSP header | Accepted |` to the table in `docs/adr/README.md`.
+Add the row `| [0010](0010-html-deny-list-and-csp.md) | Desk HTML is checked by a deny-list and a CSP header | Accepted |` to the table in `docs/adr/README.md`.
 
 ## ADRs
 
@@ -252,7 +252,7 @@ verify_after_merge:
   - "env -u NS_NTFY_URL -u NS_CMD -u NS_PROJECT bats tests/bats/desk.bats tests/bats/bootstrap.bats"
 final_checks:
   - "docs/ns-5-plan.md is deleted"
-  - "docs/adr/0010-desk-html-deny-list-and-csp.md exists and docs/adr/README.md lists it"
+  - "docs/adr/0010-html-deny-list-and-csp.md exists and docs/adr/README.md lists it"
   - "CHANGELOG.md has a ### Security entry under [Unreleased] naming #5"
   - "tests/lint, env -u NS_NTFY_URL -u NS_CMD -u NS_PROJECT bats tests/bats and tests/docs-check --final exit 0"
 phases:
@@ -313,15 +313,15 @@ phases:
       - docs/architecture.html
       - plugins/ns/skills/review-desk/SKILL.md
       - plugins/ns/skills/handoff-report/SKILL.md
-      - docs/adr/0010-desk-html-deny-list-and-csp.md
+      - docs/adr/0010-html-deny-list-and-csp.md
       - docs/adr/README.md
       - CHANGELOG.md
       - docs/ns-5-plan.md
     brief: |
       Read docs/ns-5-plan.md sections "Design / D-docs" and "Design / D-adr" first; they hold every text you write. Copy those texts before step 6 deletes the plan.
-      1. Run `ls docs/adr/0010-* 2>/dev/null`. If a file other than docs/adr/0010-desk-html-deny-list-and-csp.md exists, stop with status=blocked and name it.
+      1. Run `ls docs/adr/0010-* 2>/dev/null`. If a file other than docs/adr/0010-html-deny-list-and-csp.md exists, stop with status=blocked and name it.
       2. Apply each D-docs replacement: docs/spec.md line 222 (R-DSK-2), docs/usage.md line 171 (the one sentence only), plugins/ns/skills/review-desk/SKILL.md line 29, plugins/ns/skills/handoff-report/SKILL.md line 9, docs/setup.md line 68, docs/architecture.html lines 1861 and 1869. Locate each by its current text, not only its line number; if a quoted current text is not found, stop with status=blocked and name the file.
-      3. Write docs/adr/0010-desk-html-deny-list-and-csp.md from D-adr, in the section layout of docs/adr/0006-guard-hook-fails-open.md (headings "## Status", "## Context", "## Decision", "## Consequences"; rejected alternatives as a list under Decision). Add the D-adr row to the table in docs/adr/README.md after the 0009 row.
+      3. Write docs/adr/0010-html-deny-list-and-csp.md from D-adr, in the section layout of docs/adr/0006-guard-hook-fails-open.md (headings "## Status", "## Context", "## Decision", "## Consequences"; rejected alternatives as a list under Decision). Add the D-adr row to the table in docs/adr/README.md after the 0009 row.
       4. Add the D-docs CHANGELOG.md block under "## [Unreleased]" (a "### Security" heading and the two bullets).
       5. Run `tests/docs-check`, `tests/docs-check --final`, `tests/lint` and `env -u NS_NTFY_URL -u NS_CMD -u NS_PROJECT bats tests/bats`; all must exit 0.
       6. Delete docs/ns-5-plan.md (`git rm docs/ns-5-plan.md`), rerun `tests/docs-check`, and commit (message "ns-5 p3: R-DSK-2 docs, ADR 0010, changelog; retire the plan").
@@ -329,7 +329,7 @@ phases:
       - "grep -n 'Content-Security-Policy' docs/spec.md finds the R-DSK-2 line"
       - "grep -c 'no scripts, no external resources' docs/usage.md prints 1 and grep -c '<link href=\"http...\">' docs/usage.md prints 0"
       - "grep -c 'Content-Security-Policy' docs/setup.md prints at least 1"
-      - "test -f docs/adr/0010-desk-html-deny-list-and-csp.md and grep -c '0010-desk-html-deny-list-and-csp.md' docs/adr/README.md prints 1"
+      - "test -f docs/adr/0010-html-deny-list-and-csp.md and grep -c '0010-html-deny-list-and-csp.md' docs/adr/README.md prints 1"
       - "grep -n '### Security' CHANGELOG.md finds a line between '## [Unreleased]' and '## [0.1.0]'"
       - "test ! -e docs/ns-5-plan.md"
       - "tests/docs-check --final, tests/lint and env -u NS_NTFY_URL -u NS_CMD -u NS_PROJECT bats tests/bats exit 0"
