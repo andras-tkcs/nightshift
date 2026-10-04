@@ -89,7 +89,7 @@ alive() {
   [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
   [ "$(lget .state)" = stopped ]
   [ "$(lget '[.phases[] | select(.state == "running")] | length')" = 0 ]
-  [ "$(lget '[.events[].message] | map(select(test("killed by owner"))) | length > 0')" = true ]
+  [ "$(lget '[.events[].note] | map(select(test("killed by owner"))) | length > 0')" = true ]
   [ "$(grep -c 'ntfy.sh/topic1' "$NS_STUB_LOG")" = 1 ]
   [ -d "$WT" ]
   git -C "$WT" rev-parse --verify -q feature/12

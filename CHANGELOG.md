@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ns kill <id>` ends a run's session, conductor and worker process groups at once and marks it `stopped`; the guard blocks agents from running it (ns-42).
 - `ns-notify` sends the ntfy bearer token (via curl stdin) and fails on a non-2xx answer; the Caddyfile template serves ntfy on `:8444`.
 
 ### Fixed
 
+- `ns stop` on a run with no live conductor (at a gate, or dead) now stops it at once instead of waiting for a checkpoint that never comes (ns-42).
 - `ns-conductor checks` writes `logs/<id>/<target>.checks.rc` with its exit code on every path, and the conductor prompts forbid `pgrep` wait loops that matched themselves and never ended (ns-x2).
 - `ns-notify` sends text literally with `--data-raw`, so text starting with `@` is no longer read as a file (issue #7).
 

@@ -98,7 +98,15 @@ ns attach <id>
 ns stop <id>
 ```
 
-`ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
+`ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run with no live conductor (no tmux session, for example one waiting at a gate or one that died) is stopped at once: workers are reset, the state becomes `stopped` and `stop_requested` stays empty. A run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
+
+### ns kill
+
+```
+ns kill <id>
+```
+
+`ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL), resets `running` phases to `pending`, sets the state to `stopped`, records a `killed` event (`killed by owner`), commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
 
 ### ns resume
 

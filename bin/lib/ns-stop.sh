@@ -1,14 +1,16 @@
 # shellcheck shell=bash
-# summary: stop a run at its next checkpoint
+# summary: stop a run at its next checkpoint (at once if idle)
 
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/config.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/runs.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/ns-kill.sh"
 
 ns_stop_help() {
   printf 'usage: ns stop <id>\n\n'
-  printf 'Ask the run to stop at its next checkpoint (sets stop_requested in the ledger).\n'
+  printf 'Ask the run to stop at its next checkpoint (sets stop_requested in the ledger).\nA run with no live conductor session (at a gate, or dead) is stopped at once.\n'
 }
 
 ns_stop_main() {
@@ -25,6 +27,11 @@ ns_stop_main() {
       return 0
       ;;
   esac
+  if ! ns_tmux_has "$id"; then
+    ns_kill_teardown "$id" "$ledger" "stopped by the owner (no live conductor)" stopped
+    printf '%s stopped (it had no live conductor)\n' "$id"
+    return 0
+  fi
   "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested="stopped"'
   "$NS_HOME/bin/ns-ledger" event "$ledger" stop-requested "stop requested by the owner"
   "$NS_HOME/bin/ns-ledger" checkpoint "$ledger"
