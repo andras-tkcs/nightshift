@@ -296,3 +296,12 @@ make_ledger() {
   bash_guard "cat .claude/project-profile.yaml"
   assert_success
 }
+
+@test "ns kill is blocked for agents" {
+  for c in "ns kill sbx-12" "NS_X=1 ns kill sbx-12" "cd /tmp && ns kill sbx-12"; do
+    bash_guard "$c"
+    blocked "ns kill is the owner's command"
+  done
+  bash_guard "ns stop sbx-12"
+  [ -z "$output" ]
+}

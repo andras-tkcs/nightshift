@@ -136,7 +136,8 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns attach <id>` | Attach to the run's tmux session. |
 | `ns log <id> [-f] [--phase <p>] [--raw]` | Show the run's session logs as readable, wrapped text. |
 | `ns status <id>` | Print the ledger summary without attaching. |
-| `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`. |
+| `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`; a run with no live conductor stops at once. |
+| `ns kill <id>` | Kill the session, conductor and workers now and mark the run `stopped` (owner only). |
 | `ns drain` | Ask every run to stop at its next checkpoint; return when all are `parked`. |
 | `ns up` | After a reboot: run `ns doctor`, then restart the Remote Control tmux session. |
 | `ns resume <id>` / `--all` | Restart parked/stopped runs from their ledgers. |
