@@ -87,3 +87,17 @@ Pick one: (a) allow `ns-conductor report` to accept an abbreviated sha that pref
 
 a
 
+
+
+---
+# Escalation 6: abbreviated-sha fix is a conductor change I cannot apply
+
+Owner answer 5 was (a): let `ns-conductor report` accept an abbreviated sha.
+- Re-ran `ns-conductor report ns-5 p1-publish-check`: still `head mismatch: report says 8821a7c, origin/... is 8821a7c359...`.
+- The running conductor is the installed release `/opt/nightshift/v0.1.1/bin/ns-conductor`. Changing the repo's `bin/` would not change it, and I do not write product code; the change is also outside this plan's phase. I did not hand-edit the report or merge.
+
+## Question
+Pick one: (a) fix and install the conductor change yourself (or in a separate run), then `ns approve` so I re-run report/checks/review/merge; (b) tell me to hand-write the report line with the full sha (re-review needed, since the reviewer approved 673c13f, not 8821a7c); (c) merge `feature/5--p1-publish-check` yourself with plain git.
+
+## Owner's answer
+

@@ -19,12 +19,12 @@ branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T11:17:56Z'
+updated: '2026-10-04T11:18:15Z'
 budget:
-  used: 6.69
+  used: 6.7
   limit: 8
   paused: false
-  since: '2026-10-04T11:17:56Z'
+  since: '2026-10-04T11:18:15Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
