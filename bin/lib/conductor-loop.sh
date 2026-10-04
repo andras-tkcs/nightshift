@@ -144,7 +144,7 @@ loop_checks_body() {
       TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
     if [ "$crc" -eq 0 ]; then
       printf 'PASS %s %s\n' "$stack" "$name"
-    elif [ "$crc" -eq 5 ] && { [ "$stack" = python ] || [[ $cmd == *pytest* ]]; }; then
+    elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
       printf 'SKIP %s %s\n' "$stack" "$name"
     else
       printf 'FAIL %s %s\n' "$stack" "$name"
@@ -233,7 +233,7 @@ conductor_merge() {
   pbranch=$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$phase")
   feature=$(lg get "$ledger" '.feature_branch // empty')
   [ -n "$feature" ] || ns_die "no feature branch yet"
-  mlog=$(git -C "$fw" log --format=%B) || mlog=""
+  mlog=$(git -C "$fw" log --format=%B) || ns_die "git log failed in $fw"
   if grep -qxF "$trailer: $phase" <<<"$mlog"; then
     printf 'already merged\n'
     phase_update "$phase" '.state = "merged"'
