@@ -155,6 +155,28 @@ mkphase() {
   [ "$(cat "$rc")" = 1 ]
 }
 
+@test "checks removes a stale marker at start and writes 0 when no checks are configured" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  rc="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc"
+  mkdir -p "$(dirname "$rc")"
+  echo 9 >"$rc"
+  set_test_cmd "false"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  [ "$(cat "$rc")" = 1 ]
+  c="$BATS_TEST_TMPDIR/nochecks-clone"
+  git clone -q "$BARE" "$c"
+  sed -i 's/^stacks: .*/stacks: []/' "$c/.claude/project-profile.yaml"
+  git -C "$c" commit -q -am "profile: no stacks"
+  git -C "$c" push -q origin main
+  echo 9 >"$rc"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_contains "no checks configured"
+  [ "$(cat "$rc")" = 0 ]
+}
+
 @test "report exits 0 for a matching done report, 1 for a head mismatch and for blocked" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null

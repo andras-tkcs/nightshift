@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ns-conductor checks` writes `logs/<id>/<target>.checks.rc` with its exit code on every path, and the conductor prompts forbid `pgrep` wait loops that matched themselves and never ended (ns-x2).
 - `ns-notify` sends text literally with `--data-raw`, so text starting with `@` is no longer read as a file (issue #7).
 
 ## [0.1.0] - 2026-10-02

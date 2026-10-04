@@ -16,7 +16,8 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 1. Read the ledger: `ns-ledger get "$NS_LEDGER"`. Note `tier`, `tier_source`, `state`, `gate`, `step`, `feature_branch`, `phases`.
 2. Continue at `step`; never repeat a finished step. Map: `intake` or `triage` to Triage; `discovery` and `gate1` to T2 or T3; `implement` to T0 or T1; `phases` to the T2 phases loop; `board` to Review board; `integrate` to Integrate; `onboard` to Onboarding; `done` means print a one-line summary and end.
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
-4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`.
+4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
+   Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end.
 5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 

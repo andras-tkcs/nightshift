@@ -105,8 +105,22 @@ loop_phase_wt() {
   fi
 }
 
-# loop_checks <phase|feature>: run the profile's checks, with the run context loaded
+# loop_checks <phase|feature>: run the profile's checks, with the run context loaded.
+# Removes <target>.checks.rc at the start and writes the exit code there last
+# (tmp + mv), on every return path, so callers can wait for the file.
 loop_checks() {
+  local target="$1" rc=0 rcf tmp
+  rcf="$logdir/$target.checks.rc"
+  mkdir -p "$logdir"
+  rm -f "$rcf"
+  loop_checks_body "$target" || rc=$?
+  tmp="$rcf.tmp.$$"
+  printf '%s\n' "$rc" >"$tmp"
+  mv -f "$tmp" "$rcf"
+  return "$rc"
+}
+
+loop_checks_body() {
   local target="$1" dir log n stack name cmd failed=0 total
   dir=$(loop_phase_wt "$target")
   [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
