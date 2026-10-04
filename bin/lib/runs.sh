@@ -97,3 +97,64 @@ ns_tmux_start() {
 ns_tmux_has() { tmux has-session -t "=$1" 2>/dev/null; }
 ns_tmux_kill() { tmux kill-session -t "=$1"; }
 ns_tmux_pane_pid() { tmux list-panes -t "=$1" -F '#{pane_pid}' | head -1; }
+
+# ns_run_log_mtime <id>: epoch seconds of the newest conductor or phase log, empty when none
+ns_run_log_mtime() {
+  local dir f m best=""
+  dir="$(ns_config_dir)/logs/$1"
+  for f in "$dir"/*.jsonl; do
+    [ -f "$f" ] || continue
+    m=$(stat -c %Y "$f" 2>/dev/null) || continue
+    if [ -z "$best" ] || [ "$m" -gt "$best" ]; then best=$m; fi
+  done
+  printf '%s\n' "$best"
+}
+
+# ns_run_idle_s <id>: seconds since the newest log was written, empty when there is no log
+ns_run_idle_s() {
+  local m now
+  m=$(ns_run_log_mtime "$1")
+  [ -n "$m" ] || return 0
+  now=$(date -u -d "$(ns_now)" +%s) || return 0
+  [ "$now" -ge "$m" ] || now=$m
+  printf '%s\n' $((now - m))
+}
+
+# ns_run_health <id> <state> <gate>: prints ok, dead or "silent <N>m".
+# Only a running run with no open gate can be unhealthy: dead when its tmux session or the
+# session's pane process is gone, silent when its log has not grown for NS_SILENT_SECS (1200).
+ns_run_health() {
+  local id="$1" state="$2" gate="${3:-}" pid idle limit
+  if [ "$state" != running ] || { [ -n "$gate" ] && [ "$gate" != null ]; }; then
+    printf 'ok\n'
+    return 0
+  fi
+  if ! ns_tmux_has "$id"; then
+    printf 'dead\n'
+    return 0
+  fi
+  pid=$(ns_tmux_pane_pid "$id" 2>/dev/null) || pid=""
+  if [[ $pid =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+    printf 'dead\n'
+    return 0
+  fi
+  limit=${NS_SILENT_SECS:-1200}
+  idle=$(ns_run_idle_s "$id")
+  if [ -n "$idle" ] && [ "$idle" -ge "$limit" ]; then
+    printf 'silent %sm\n' $((idle / 60))
+    return 0
+  fi
+  printf 'ok\n'
+}
+
+# ns_secs_fmt <seconds>: 5m, 2h, 3d
+ns_secs_fmt() {
+  local s=$1
+  if [ "$s" -ge 86400 ]; then
+    printf '%sd\n' $((s / 86400))
+  elif [ "$s" -ge 3600 ]; then
+    printf '%sh\n' $((s / 3600))
+  else
+    printf '%sm\n' $((s / 60))
+  fi
+}
