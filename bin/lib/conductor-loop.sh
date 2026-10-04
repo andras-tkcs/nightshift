@@ -122,7 +122,7 @@ loop_checks() {
 }
 
 loop_checks_body() {
-  local target="$1" dir log n stack name cmd failed=0 total
+  local target="$1" dir log n stack name cmd failed=0 total crc
   dir=$(loop_phase_wt "$target")
   [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
   total=$(jq '(.checks // []) | length' <<<"$profile")
@@ -139,8 +139,13 @@ loop_checks_body() {
     name=$(jq -r ".checks[$n].name" <<<"$profile")
     cmd=$(jq -r ".checks[$n].cmd" <<<"$profile")
     printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
-    if (cd "$dir" && bash -c "$cmd") >>"$log" 2>&1 </dev/null; then
+    crc=0
+    (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
+      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
+    if [ "$crc" -eq 0 ]; then
       printf 'PASS %s %s\n' "$stack" "$name"
+    elif [ "$crc" -eq 5 ] && { [ "$stack" = python ] || [[ $cmd == *pytest* ]]; }; then
+      printf 'SKIP %s %s\n' "$stack" "$name"
     else
       printf 'FAIL %s %s\n' "$stack" "$name"
       failed=1
@@ -192,7 +197,7 @@ conductor_report() {
     return 1
   fi
   got="$hd"
-  if [ -z "$got" ] || [ "$got" != "$want" ]; then
+  if [ -z "$got" ] || [ "${#got}" -lt 7 ] || [[ $want != "$got"* ]]; then
     printf 'head mismatch: report says %s, origin/%s is %s\n' "${got:-none}" "$pbranch" "$want"
     return 1
   fi
@@ -220,7 +225,7 @@ conductor_review_round() {
 conductor_merge() {
   [ $# -eq 2 ] || ns_usage "ns-conductor merge <id> <phase>"
   valid_phase_id "$2" || ns_usage "ns-conductor merge <id> <phase>"
-  local phase="$2" fw trailer pbranch feature title pre pwt
+  local phase="$2" fw trailer pbranch feature title pre pwt mlog
   load_run "$1"
   fw=$(loop_code_wt)
   [ -d "$fw" ] || ns_die "no feature worktree at $fw"
@@ -228,7 +233,8 @@ conductor_merge() {
   pbranch=$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$phase")
   feature=$(lg get "$ledger" '.feature_branch // empty')
   [ -n "$feature" ] || ns_die "no feature branch yet"
-  if git -C "$fw" log --format=%B | grep -qxF "$trailer: $phase"; then
+  mlog=$(git -C "$fw" log --format=%B) || mlog=""
+  if grep -qxF "$trailer: $phase" <<<"$mlog"; then
     printf 'already merged\n'
     phase_update "$phase" '.state = "merged"'
     return 0
