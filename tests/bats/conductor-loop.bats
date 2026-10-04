@@ -24,7 +24,7 @@ project: nightshift-sandbox
 prefix: sbx
 commands:
   setup: "true"
-  lint: "true"
+  lint: '${3:-true}'
   test: '$2'
 git: {}
 stacks: [python]
@@ -36,7 +36,7 @@ set_test_cmd() {
   local c="$BATS_TEST_TMPDIR/profile-clone"
   rm -rf "$c"
   git clone -q "$BARE" "$c"
-  write_profile_to "$c/.claude/project-profile.yaml" "$1"
+  write_profile_to "$c/.claude/project-profile.yaml" "$1" "${2:-true}"
   git -C "$c" commit -q -am "profile: test command"
   git -C "$c" push -q origin main
 }
@@ -205,6 +205,16 @@ mkphase() {
   assert_output_contains "SKIP python test"
   assert_output_not_contains "FAIL"
   [ "$(cat "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc")" = 0 ]
+}
+
+@test "checks: a python lint command exiting 5 is FAIL, not SKIP (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd "true" "exit 5"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  assert_output_contains "FAIL python lint"
+  assert_output_not_contains "SKIP"
 }
 
 @test "checks: a die in the body and a failing check both leave a non-zero marker (ns-45)" {
