@@ -87,6 +87,26 @@ gc_run_inner() {
     return 0
   }
   case "$prstate" in MERGED | CLOSED) ;; *) return 0 ;; esac
+  # remote branches go only after a merge; a closed PR keeps them (plan/<id> is the ledger)
+  local remote=0
+  if [ "$prstate" = MERGED ]; then
+    remote=1
+  else
+    printf 'kept remote branches of %s (PR closed, not merged)\n' "$id"
+  fi
+  gc_cleanup_run "$run" "$proj" "$remote" 0 || return 0
+}
+
+# gc_cleanup_run <run-json> <proj-json> <remote:0|1|2> <force:0|1>: removes the run's worktrees,
+# local branches, (with remote=1) remote branches, tmux session and desk folder, and marks it
+# archived. Unsaved work in a worktree keeps the run whole (return 2) unless force=1.
+gc_cleanup_run() {
+  local run="$1" proj="$2" remote="$3" force="$4" id pname base path ledger
+  id=$(jq -r .id <<<"$run")
+  pname=$(jq -r .project <<<"$run")
+  base=$(jq -r '.worktree // ""' <<<"$run")
+  path=$(jq -r .path <<<"$proj")
+  ledger="$base/.nightshift/runs/$id/ledger.yaml"
 
   local -a wts=() locals=() remotes=()
   local plan feature b wpath line why dest month src sz basebranch keep=0
@@ -96,7 +116,11 @@ gc_run_inner() {
     locals+=("$plan")
     remotes+=("$plan")
   fi
-  if [ -n "$feature" ]; then locals+=("$feature"); fi
+  if [ -n "$feature" ]; then
+    locals+=("$feature")
+    # ns rm (remote=2) also deletes the feature branch on origin; gc leaves it to the merge
+    if [ "$remote" = 2 ]; then remotes+=("$feature"); fi
+  fi
   while IFS= read -r b; do
     [ -n "$b" ] || continue
     locals+=("$b")
@@ -115,20 +139,24 @@ gc_run_inner() {
     esac
   done < <(git -C "$path" worktree list --porcelain 2>/dev/null)
 
-  for wpath in "${wts[@]}"; do
-    why=$(gc_work_state "$wpath")
-    if [ -n "$why" ]; then
-      gc_needs "$wpath" "$why"
-      keep=1
-    fi
-  done
-  [ "$keep" = 0 ] || return 0
+  if [ "$force" != 1 ]; then
+    for wpath in "${wts[@]}"; do
+      why=$(gc_work_state "$wpath")
+      if [ -n "$why" ]; then
+        gc_needs "$wpath" "$why"
+        keep=1
+      fi
+    done
+  fi
+  [ "$keep" = 0 ] || return 2
 
+  local -a wtflag=()
+  if [ "$force" = 1 ]; then wtflag=(--force); fi
   for wpath in "${wts[@]}"; do
     sz=$(gc_size "$wpath")
     GC_FREED=$((GC_FREED + sz))
     gc_say worktree "$wpath"
-    if [ "$GC_DRY" = 0 ] && ! git -C "$path" worktree remove "$wpath" 2>/dev/null; then
+    if [ "$GC_DRY" = 0 ] && ! git -C "$path" worktree remove "${wtflag[@]}" "$wpath" 2>/dev/null; then
       ns_warn "could not remove worktree $wpath"
       GC_ERRORS=$((GC_ERRORS + 1))
     fi
@@ -149,7 +177,7 @@ gc_run_inner() {
     if [ "$GC_DRY" = 0 ] && ! git -C "$path" branch -d "$b" >/dev/null 2>&1; then
       # plan and phase branches are never merged into the base; they count as safe when
       # everything on them is also on origin (their remote copy is deleted below)
-      if git -C "$path" merge-base --is-ancestor "$b" "origin/$b" 2>/dev/null; then
+      if [ "$force" = 1 ] || git -C "$path" merge-base --is-ancestor "$b" "origin/$b" 2>/dev/null; then
         git -C "$path" branch -D "$b" >/dev/null 2>&1 || gc_needs "$b" "could not delete local branch"
       else
         gc_needs "$b" "local branch is not fully merged"
@@ -157,11 +185,8 @@ gc_run_inner() {
     fi
   done
 
-  # (c) remote branches: only after a merge; a closed PR keeps them (plan/<id> is the ledger)
-  if [ "$prstate" != MERGED ]; then
-    remotes=()
-    printf 'kept remote branches of %s (PR closed, not merged)\n' "$id"
-  fi
+  # (c) remote branches: only when asked for (gc: after a merge)
+  if [ "$remote" = 0 ]; then remotes=(); fi
   for b in "${remotes[@]}"; do
     [ "$b" != "$basebranch" ] || continue
     git -C "$path" ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 || continue
@@ -222,7 +247,7 @@ gc_run() {
     fi
     ns_token_export "$owner" >/dev/null 2>&1 || true
   fi
-  gc_run_inner "$run" || rc=$?
+  "${GC_INNER:-gc_run_inner}" "$run" || rc=$?
   if [ "$had" = 1 ]; then export GH_TOKEN="$saved"; else unset GH_TOKEN; fi
   return "$rc"
 }

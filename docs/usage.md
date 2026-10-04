@@ -154,6 +154,15 @@ ns doctor [--no-claude]
 11. Auto permission mode works in a headless call (`ns-conductor check-auto`). On failure the `FAIL` line carries the hint to set `NS_WORKER_MODE=bypassPermissions` (R-CON-4). `--no-claude` skips this call and prints a `warn`.
 12. A run in state `running` without a tmux session is a `warn`: `run <id> has no session: ns resume <id>`.
 
+### ns rm
+
+```
+ns rm <id> [--force] [--remote] [--dry-run] [--yes]
+ns rm --all-stopped [--force] [--remote] [--dry-run] [--yes]
+```
+
+`ns rm` (alias `ns purge`) removes a run that `ns gc` would not touch: one that is `stopped`, `failed`, `parked` or `done`. A `running` or `queued` run is refused with a pointer to `ns stop` / `ns kill`. It removes the run's worktrees, local branches, tmux session and desk folder (moved to `archive/` on the desk) and marks the run archived, so it only shows in `ns ls --all`. It lists what will go and asks for confirmation unless `--yes` is given; `--dry-run` only prints `would remove ...` lines. A worktree with uncommitted or unpushed work is refused (`needs you: <path>: uncommitted changes`) unless `--force`. Remote branches are deleted only with `--remote`, which also closes an open PR with a comment. `--all-stopped` does this for every non-archived stopped, failed or parked run. GitHub calls use the project owner's token, as `ns gc` does. Exit 0, or 1 when a run was refused or an action failed.
+
 ### ns gc
 
 ```

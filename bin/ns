@@ -12,6 +12,7 @@ case "$cmd" in
   -h | --help) cmd=help ;;
 esac
 [ $# -gt 0 ] && shift
+[ "$cmd" != purge ] || cmd='rm'
 
 if [[ ! "$cmd" =~ ^[a-z][a-z0-9-]*$ ]] || [ ! -f "$NS_HOME/bin/lib/ns-$cmd.sh" ]; then
   ns_usage "unknown command: $cmd (see ns help)"

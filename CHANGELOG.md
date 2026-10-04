@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ns rm <id>` (alias `ns purge`) removes a stopped, failed, parked or done run: worktrees, branches, tmux session and desk folder, with `--remote`, `--force`, `--dry-run`, `--yes` and `--all-stopped` (issue #60).
 - `ns log <id> [-f] [--phase <p>] [--raw]` shows a run's session logs as readable, wrapped text.
 - `ns-notify` sends the ntfy bearer token (via curl stdin) and fails on a non-2xx answer; the Caddyfile template serves ntfy on `:8444`.
 
