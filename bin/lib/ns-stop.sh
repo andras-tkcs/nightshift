@@ -28,7 +28,7 @@ ns_stop_main() {
       ;;
   esac
   if ! ns_tmux_has "$id"; then
-    ns_kill_teardown "$id" "$ledger" "stopped by the owner (no live conductor)" stopped
+    ns_kill_teardown "$id" "$ledger" "stopped by the owner (no live conductor)"
     printf '%s stopped (it had no live conductor)\n' "$id"
     return 0
   fi

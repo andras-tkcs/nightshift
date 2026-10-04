@@ -53,9 +53,6 @@ teardown() {
   return 0
 }
 
-lget() { ns-ledger get "$LEDGER" "$1"; }
-pstate() { lget "(.phases[] | select(.id == \"$1\") | .$2)"; }
-
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 lget() { ns-ledger get "$LEDGER" "$1"; }
 
@@ -71,6 +68,7 @@ alive() {
   assert_success
   [ "$(lget .state)" = stopped ]
   [ "$(lget '.stop_requested // "none"')" = none ]
+  [ "$(lget '[.events[].note] | map(select(test("no live conductor"))) | length > 0')" = true ]
   [[ "$output" != *"next checkpoint"* ]]
 }
 
@@ -102,4 +100,26 @@ alive() {
   run ns kill sbx-12
   assert_success
   [ "$(lget .state)" = stopped ]
+}
+
+@test "ns kill on a done run with a leftover session kills it but keeps state done" {
+  : >"$TMUX_STUB_DIR/sbx-12"
+  ns-ledger set "$LEDGER" '.state="done"'
+  run ns kill sbx-12
+  assert_success
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget .state)" = done ]
+}
+
+@test "ns kill on a running run with a live worker and no session resets the phase" {
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  pid=$(sed -n 's/^pid=//p' "$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid")
+  alive "$pid"
+  ns-ledger set "$LEDGER" '.state="running"'
+  run ns kill sbx-12
+  assert_success
+  ! alive "$pid"
+  [ "$(lget .state)" = stopped ]
+  [ "$(lget '[.phases[] | select(.state == "running")] | length')" = 0 ]
 }

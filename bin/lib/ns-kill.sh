@@ -31,10 +31,11 @@ ns_kill_group() {
   kill -KILL -- "-$pid" 2>/dev/null || true
 }
 
-# ns_kill_teardown <id> <ledger> <note> <event> [kill-session]
+# ns_kill_teardown <id> <ledger> <note> [kill-session] [keep-state]
 # Kills workers (and the session when asked), resets running phases, marks the run stopped.
+# With keep-state (done/failed runs) only the processes are killed; the ledger is untouched.
 ns_kill_teardown() {
-  local id="$1" ledger="$2" note="$3" event="$4" session="${5:-}" pane="" r phase f
+  local id="$1" ledger="$2" note="$3" session="${4:-}" keep="${5:-}" pane="" r phase f
   if [ -n "$session" ] && ns_tmux_has "$id"; then
     pane=$(ns_tmux_pane_pid "$id" 2>/dev/null) || pane=""
     ns_tmux_kill "$id" || true
@@ -46,9 +47,9 @@ ns_kill_teardown() {
     ns_kill_group "$(ns_pool_field "$f" pid)"
     rm -f "$f" "$(ns_pool_dir)/$r--$phase.exit"
   done < <(ns_pool_live "$id")
+  [ -z "$keep" ] || return 0
   "$NS_HOME/bin/ns-ledger" set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end) | .stop_requested = null'
   "$NS_HOME/bin/ns-ledger" state "$ledger" stopped --note "$note"
-  "$NS_HOME/bin/ns-ledger" event "$ledger" "$event" "$note"
   "$NS_HOME/bin/ns-ledger" checkpoint "$ledger"
 }
 
@@ -66,9 +67,14 @@ ns_kill_main() {
         printf '%s is already %s\n' "$id" "$state"
         return 0
       fi
+      if [ "$state" != stopped ]; then
+        ns_kill_teardown "$id" "$ledger" "killed by owner" session keep
+        printf 'killed leftover processes of %s (state stays %s)\n' "$id" "$state"
+        return 0
+      fi
       ;;
   esac
-  ns_kill_teardown "$id" "$ledger" "killed by owner" killed session
+  ns_kill_teardown "$id" "$ledger" "killed by owner" session
   "$NS_HOME/bin/ns-notify" "ns: $id killed by owner" || ns_warn "notification failed"
   printf 'killed %s; ns resume %s restarts it\n' "$id" "$id"
 }
