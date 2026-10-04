@@ -6,6 +6,7 @@ Reboots, cleanup, updates, renewals, backup and restore, troubleshooting, and sh
 
 | When | What | How |
 |---|---|---|
+| Every 5 minutes, automatic | Dead or silent run check | the `ns health-check` timer; one ntfy line per incident |
 | Daily, automatic | Cleanup, disk check, "reboot required" check | the `ns gc` timer; one ntfy line |
 | When ntfy says so | Reboot | `ns drain`, reboot, `ns up`, `ns resume --all` (below) |
 | Weekly | Glance at the desk index and `ns ls`; approve waiting QA jobs | iPad or the GitHub app |
@@ -43,6 +44,10 @@ ns resume --all
 ```
 
 `ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked, stopped or crashed run; use `ns resume <id>` for one. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` timer come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
+
+## A run that stopped without telling you
+
+`ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to the log for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
 
 ## Cleanup: what `ns gc` drops
 
