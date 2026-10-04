@@ -197,7 +197,7 @@ Everything for a run is under `~/.config/ns/logs/<id>/`:
 
 | File | Content |
 |---|---|
-| `conductor.jsonl` | the conductor session's stream (`ns-launch`) |
+| `conductor.jsonl` | the conductor session's stream (`ns-launch`); read it with `ns log <id>` |
 | `<phase>.prompt.md` | the prompt given to the worker |
 | `<phase>.jsonl` | the worker's stream, including its final `result` with the `PHASE-REPORT` line |
 | `done/` | pid and exit files of finished workers |

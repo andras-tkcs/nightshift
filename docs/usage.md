@@ -92,6 +92,14 @@ ns attach <id>
 
 `ns attach` attaches your terminal to the run's tmux session (detach with `Ctrl-b d`; the run keeps going). If the session does not exist it exits 1 with `no tmux session <id>: start it with ns resume <id>`.
 
+### ns log
+
+```
+ns log <id> [-f] [--phase <p>] [--raw]
+```
+
+`ns log` prints a run's session logs (`~/.config/ns/logs/<id>/*.jsonl`, the conductor and every phase worker) as readable text: one event per entry, never truncated, wrapped to the terminal width (`COLUMNS`, default 80) with a hanging indent under the text. Tool calls show their command or file path (else the compact JSON input); tool results show one short line, `result: ok` or `result: error, exit N: <first error line>`. `--phase <p>` shows only `logs/<id>/<p>.jsonl`, `--raw` prints the JSONL unchanged, `-f` follows new output (`tail -f`). It exits 1 with a message if the run has no logs or the phase has no log.
+
 ### ns stop
 
 ```
