@@ -49,7 +49,7 @@ def tool_input(inp):
         for key in PRIMARY:
             if isinstance(inp.get(key), str) and inp[key].strip():
                 return inp[key]
-    return json.dumps(inp, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(inp, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def result_text(content):
@@ -77,40 +77,63 @@ def result_line(item):
 def render(ev):
     out = []
     t = ev.get("type")
-    msg = ev.get("message") or {}
-    content = msg.get("content") or []
+    msg = ev.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
     if isinstance(content, str):
         content = [{"type": "text", "text": content}]
+    if not isinstance(content, list):
+        content = []
     if t == "assistant":
         for item in content:
             if not isinstance(item, dict):
                 continue
-            if item.get("type") == "text" and str(item.get("text", "")).strip():
+            if item.get("type") == "text" and str(item.get("text") or "").strip():
                 out.append(wrap(f"{hhmm()} text: {item['text']}"))
             elif item.get("type") == "tool_use":
                 inp = tool_input(item.get("input", {}))
-                out.append(wrap(f"{hhmm()} tool: {item.get('name', '?')} {inp}"))
+                out.append(wrap(f"{hhmm()} tool: {item.get('name') or '?'} {inp}"))
     elif t == "user":
         for item in content:
             if isinstance(item, dict) and item.get("type") == "tool_result":
                 out.append(wrap(f"{hhmm()} {result_line(item)}"))
     elif t == "result":
-        cost = ev.get("total_cost_usd") or 0
-        out.append(f"{hhmm()} done: {ev.get('subtype', '?')}, {ev.get('num_turns', 0)} turns, ${float(cost):.2f}")
+        try:
+            cost = float(ev.get("total_cost_usd") or 0)
+        except (TypeError, ValueError):
+            cost = 0.0
+        out.append(f"{hhmm()} done: {ev.get('subtype') or '?'}, {ev.get('num_turns') or 0} turns, ${cost:.2f}")
     return out
 
 
 def main():
+    # A viewer must never take the pipe (and with it the conductor) down.
+    try:
+        sys.stdin.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
     for line in sys.stdin:
         try:
             ev = json.loads(line)
-        except ValueError:
+            if not isinstance(ev, dict):
+                continue
+            texts = render(ev)
+        except Exception:
             continue
-        if not isinstance(ev, dict):
-            continue
-        for text in render(ev):
-            print(text, flush=True)
+        for text in texts:
+            try:
+                print(text, flush=True)
+            except BrokenPipeError:
+                try:
+                    sys.stdout = open(os.devnull, "w")
+                except OSError:
+                    pass
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:
+        pass
+    sys.exit(0)

@@ -36,9 +36,9 @@ ledger_of() { printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$SBX-$1" "$1"; }
   run ns ls
   assert_success
   [ "${#lines[@]}" -eq 3 ]
-  [ "${lines[0]}" = "$(printf '%-14s %-4s %-18s %-8s %-14s %s' ID TIER PHASE STATE WAITING-ON AGE)" ]
-  [ "${lines[1]}" = "$(printf '%-14s %-4s %-18s %-8s %-14s %s' sbx-12 T1 intake queued - 1h)" ]
-  [ "${lines[2]}" = "$(printf '%-14s %-4s %-18s %-8s %-14s %s' sbx-x1 T2 intake queued - 30m)" ]
+  [ "${lines[0]}" = "$(printf '%-14s %-4s %-18s %-11s %-14s %-7s %-8s %s' ID TIER PHASE STATE WAITING-ON AGE ELAPSED LAST-OUT)" ]
+  [ "${lines[1]}" = "$(printf '%-14s %-4s %-18s %-11s %-14s %-7s %-8s %s' sbx-12 T1 intake queued - 1h 1h -)" ]
+  [ "${lines[2]}" = "$(printf '%-14s %-4s %-18s %-11s %-14s %-7s %-8s %s' sbx-x1 T2 intake queued - 30m 30m -)" ]
 }
 
 @test "ns ls shows running phases, gate and pool" {

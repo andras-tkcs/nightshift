@@ -137,7 +137,7 @@ doc_services() {
     doc_warn services "systemctl not found"
     return 0
   fi
-  for u in silverbullet ns-gc.timer; do
+  for u in silverbullet ns-gc.timer ns-health.timer; do
     if systemctl --user is-active "$u" >/dev/null 2>&1; then
       doc_ok "service $u" "active"
     else
