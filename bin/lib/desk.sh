@@ -7,11 +7,44 @@ ns_desk_run_dir() {
   printf '%s/%s/runs/%s\n' "$(ns_desk_dir)" "$1" "$2"
 }
 
-# ns_desk_check_html <file>: return 1 when the HTML is not self-contained (R-DSK-2)
+# ns_desk_check_html <file>: return 1 when the HTML is not self-contained (R-DSK-2).
+# A deny-list over the whole file (grep -z, so matches span lines), case-insensitive.
+# The CSP header on the desk listeners is the second layer (templates/caddy/Caddyfile.tmpl).
 ns_desk_check_html() {
-  if grep -Eiq '<script[^>]*[[:space:]]src[[:space:]]*=|<link[^>]*href[[:space:]]*=[[:space:]]*["'\'']?http|@import' "$1"; then
-    return 1
-  fi
+  local f="$1" tag remote r rc
+  # a tag body: any characters but ">", or a quoted string taken whole so a quoted ">" does not end the tag
+  tag='([^>]|"[^"]*"|'\''[^'\'']*'\'')*'
+  # "=" then a value that leaves the page: http:, https:, //, \, /\ or an entity (&...)
+  remote='[[:space:]]*=[[:space:]]*["'\'']?[[:space:]]*(https?:|//|\\|/\\|&)'
+  local -a rules=(
+    # any script, inline or not, any case
+    '<script'
+    # tags that only load things
+    '<(link|base|iframe|frame|object|embed)[[:space:]/>]'
+    # src= with a remote value, on any element
+    '[[:space:]/"'\'']src'"$remote"
+    # srcset is a list of URLs; a self-contained page uses src="data:..."
+    '[[:space:]/"'\'']srcset[[:space:]]*='
+    # href= (or xlink:href=) with a remote value on any tag but <a>
+    '<([b-z][a-z0-9:-]*|a[a-z0-9:-]+)'"$tag"'[[:space:]/"'\''](xlink:)?href'"$remote"
+    # CSS imports
+    '@import'
+    # CSS url() with a remote value
+    'url\([[:space:]]*["'\'']?[[:space:]]*(https?:|//|\\|/\\|&)'
+    # inline event handlers (on...=) inside a tag
+    '<[a-z][a-z0-9:-]*'"$tag"'[[:space:]/"'\'']on[a-z]+[[:space:]]*='
+    # javascript: URLs, anywhere
+    'javascript:'
+    # <meta http-equiv=refresh>
+    'http-equiv[[:space:]]*=[[:space:]]*["'\'']?[[:space:]]*refresh'
+  )
+  # a NUL byte would split grep -z records and reopen the multiline bypass (also refuses UTF-16)
+  [ "$(LC_ALL=C tr -cd '\000' <"$f" | wc -c)" -eq 0 ] || return 1
+  for r in "${rules[@]}"; do
+    rc=0
+    LC_ALL=C grep -Eiqz -e "$r" -- "$f" || rc=$?
+    [ "$rc" -eq 1 ] || return 1
+  done
   return 0
 }
 
