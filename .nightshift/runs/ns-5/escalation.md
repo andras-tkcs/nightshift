@@ -49,3 +49,19 @@ Pick one: (a) the python stack should not apply to this repo (remove or override
 
 I revise my previous decision fix this python issue as it become blocker
 
+
+
+---
+# Escalation 4: python check fixed, but the bats suite fails inside the conductor environment
+
+Owner answer was: fix the python issue.
+- Done: added a real pytest suite (`tests/unit/test_nsyaml.py`, `test_manifest.py`, `test_profile.py`; 17 pass with the system python) and `pytest.ini` (`testpaths = tests/unit`, `pythonpath = bin/lib`). Pushed to `feature/5--p1-publish-check`, head 49704af. No profile or stack edits.
+- New blocker: the profile's `python test` check runs `bats tests/bats`. Under the conductor session it now fails 3 cases (common.bats "ns_die and ns_usage format", "ns_require dies on a missing command"; desk.bats "publishing at a gate notifies with the desk URL"). Those pass with every `NS_*` variable unset (`env -u ...`). Bisecting shows the leaks are `NS_CMD=ns-launch` (breaks the two common.bats cases) and `NS_NTFY_URL` (desk.bats). The conductor session exports both. Unsetting them in front of `ns-conductor checks` did not help, so the conductor sets them again itself.
+- These are test-isolation bugs (the tests inherit `NS_CMD` and `NS_NTFY_URL` from the caller), not caused by this phase. `ns-conductor merge` re-runs the same check and will refuse the merge.
+- Not done: I did not merge by hand and did not change the tests.
+
+## Question
+Pick one: (a) allow a small extra fix on the phase branch that makes those three tests set or unset `NS_CMD` and `NS_NTFY_URL` themselves (in `tests/bats/common.bats`, `tests/bats/desk.bats` or a shared setup); (b) merge `feature/5--p1-publish-check` yourself with plain git.
+
+## Owner's answer
+
