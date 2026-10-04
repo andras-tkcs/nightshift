@@ -143,6 +143,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns publish <id> <file>…` | Copy gate documents to `/srv/ns-space/<repo>/runs/<id>/`, update `index.md`, send ntfy. |
 | `ns approve <id>` | Show the diff between the desk copies and the run's branch, ask, then commit the edited Markdown back with trailer `Approved-By: owner` and release the gate. |
 | `ns gc [--dry-run]` | Housekeeping (section 12). |
+| `ns rm <id> [--force] [--remote] [--dry-run] [--yes]` / `--all-stopped` (alias `ns purge`) | Remove a stopped, failed, parked or done run: worktrees, local branches, tmux session, desk folder (archived). Refuses live runs and unsaved work unless `--force`; remote branches and an open PR only with `--remote`. |
 | `ns doctor` | Check services, logins, tokens (expiry where readable), auto-mode availability, desk, tunnel, timers, disk (warn at 80 %). Non-zero exit if anything is red. |
 | `ns profile check [path]` | R-PRO-1. |
 | `ns help` | List commands; `docs/usage.md` must document each (R-DOC-2). |

@@ -44,16 +44,20 @@ rm_inner() {
       ;;
   esac
 
-  local dry=$GC_DRY
-  if [ "$dry" = 0 ] && [ "$RM_YES" = 0 ]; then
+  local dry=$GC_DRY out
+  if [ "$dry" = 0 ]; then
+    # preview first: a refused run (unsaved work) must have no side effects, PR included
     GC_DRY=1
-    gc_cleanup_run "$run" "$proj" "$RM_REMOTE" "$RM_FORCE" || rc=$?
+    out=$(gc_cleanup_run "$run" "$proj" "$RM_REMOTE" "$RM_FORCE" 2>&1) || rc=$?
     GC_DRY=0
+    if [ "$rc" != 0 ] || [ "$RM_YES" = 0 ]; then printf '%s\n' "$out"; fi
     [ "$rc" = 0 ] || return "$rc"
-    ns_confirm "Remove run $id?" || {
-      printf 'kept %s\n' "$id"
-      return 0
-    }
+    if [ "$RM_YES" = 0 ]; then
+      ns_confirm "Remove run $id?" || {
+        printf 'kept %s\n' "$id"
+        return 0
+      }
+    fi
   fi
 
   pr=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.pr // ""')

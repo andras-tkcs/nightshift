@@ -122,3 +122,31 @@ set_pr() {
   [ -n "$(git ls-remote --heads "$REMOTE" 'phase/sbx-12--p1')" ]
   [ -n "$(git ls-remote --heads "$REMOTE" 'feature/sbx-12')" ]
 }
+
+@test "ns rm --yes --remote leaves an open PR open when unsaved work refuses the run" {
+  set_pr 101
+  printf 'x\n' >"$FWT/scratch.txt"
+  run ns rm sbx-12 --yes --remote
+  assert_failure
+  assert_output_contains "uncommitted changes"
+  assert_output_not_contains "closed PR"
+  [ -d "$FWT" ]
+  [ -d "$WT" ]
+  if [ -f "$GH_STUB_LOG" ]; then ! grep -q 'pr close' "$GH_STUB_LOG"; fi
+}
+
+@test "ns rm --all-stopped removes parked runs only" {
+  "$NS_REPO_ROOT/bin/ns" new sbx-13 --tier T1 --yes >/dev/null
+  WT2="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13"
+  ns-ledger set "$WT2/.nightshift/runs/sbx-13/ledger.yaml" '.state="running"'
+  run ns rm --all-stopped --yes
+  assert_success
+  [ ! -e "$WT" ]
+  [ -d "$WT2" ]
+}
+
+@test "ns rm keeps the run when the confirmation is declined" {
+  run bash -c "printf 'n\\n' | '$NS_REPO_ROOT/bin/ns' rm sbx-12"
+  assert_output_contains "kept sbx-12"
+  [ -d "$WT" ]
+}

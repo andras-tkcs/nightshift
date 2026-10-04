@@ -54,6 +54,8 @@ ns gc --dry-run
 
 It ends with one ntfy line such as "freed 3.1 GB, 1 item(s) need you, reboot required, disk 85%", and it warns when the disk is 80 % full or more.
 
+`ns gc` only drops runs that are `done` and merged or closed. To clear a stopped, failed or parked run, use `ns rm <id>` (or `ns rm --all-stopped`); see `docs/usage.md`.
+
 What piles up, and what drops it:
 
 | What | Where | Dropped when | By |
