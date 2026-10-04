@@ -74,7 +74,7 @@ If the run already exists, `ns new` prints `already running` and exits 0 when it
 ns ls [--all] [--json]
 ```
 
-`ns ls` lists the runs in `~/.config/ns/runs.yaml`, oldest first, one line each: ID, TIER (`-` before a tier is set), PHASE (the phases that are running or in review, else the ledger's step), STATE, WAITING-ON and AGE. WAITING-ON is `owner:gate<g>` when the run waits at a gate, `pool` when a phase is queued for a free worker, and otherwise `-`. A run whose worktree has been deleted shows state `?` and `no-worktree`. With no runs it prints `no runs`. `--all` includes archived runs; `--json` prints an array of `{id, project, tier, state, gate, step, phases, created}`.
+`ns ls` lists the runs in `~/.config/ns/runs.yaml`, oldest first, one line each: ID, TIER (`-` before a tier is set), PHASE (the phases that are running or in review, else the ledger's step), STATE, WAITING-ON, AGE, ELAPSED (since the run was created) and LAST-OUT (since the newest log under `logs/<id>/` was written, `-` when there is none). A run in state `running` with no open gate shows its health in the STATE column when it is not `ok`: `dead` when its tmux session or pane process is gone, `silent <N>m` when its log has not grown for `NS_SILENT_SECS` seconds (default 1200). An open gate is never silent. WAITING-ON is `owner:gate<g>` when the run waits at a gate, `pool` when a phase is queued for a free worker, and otherwise `-`. A run whose worktree has been deleted shows state `?` and `no-worktree`. With no runs it prints `no runs`. `--all` includes archived runs; `--json` prints an array of `{id, project, tier, state, gate, step, phases, created, health, elapsed_s, idle_s}`; `health` is `ok`, `dead` or `silent <N>m`, `idle_s` is null without a log.
 
 ### ns status
 
@@ -82,7 +82,7 @@ ns ls [--all] [--json]
 ns status <id> [--json]
 ```
 
-`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. `--json` prints the whole ledger, the same as `ns-ledger get`.
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
 
 ### ns attach
 
@@ -155,12 +155,20 @@ ns doctor [--no-claude]
 4. `projects.yaml` parses and every project path exists.
 5. The desk directory exists and is writable.
 6. `NS_NTFY_TOPIC` and `NS_DESK_URL` are set (`warn` if not).
-7. The services `silverbullet` and `ns-gc.timer` (user units), `caddy` and `cloudflared` are active (`FAIL` if not; without `systemctl` a `warn`).
+7. The services `silverbullet` and `ns-gc.timer` and `ns-health.timer` (user units), `caddy` and `cloudflared` are active (`FAIL` if not; without `systemctl` a `warn`).
 8. `NS_DESK_URL` answers with an HTTP status from 200 to 403, else `FAIL`.
 9. Disk use: 80 % or more is a `warn`, 95 % or more a `FAIL`.
 10. A pending reboot is a `warn`.
 11. Auto permission mode works in a headless call (`ns-conductor check-auto`). On failure the `FAIL` line carries the hint to set `NS_WORKER_MODE=bypassPermissions` (R-CON-4). `--no-claude` skips this call and prints a `warn`.
 12. A run in state `running` without a tmux session is a `warn`: `run <id> has no session: ns resume <id>`.
+
+### ns health-check
+
+```
+ns health-check
+```
+
+`ns health-check` is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
 
 ### ns gc
 

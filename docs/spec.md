@@ -279,7 +279,7 @@ Steps:
 7. ntfy topic (generates one if none), `NS_DESK_URL`, optional `NS_HEALTHCHECK_URL` in `~ns/.config/ns/env`.
 8. Install the release, not the dev clone: `git clone --branch <tag>` into `/opt/nightshift/<tag>` (owned by root, read-only for `ns`), point `/opt/nightshift/current` at it, and link `ns`, `ns-conductor`, `ns-notify` and `ns-gh` from `current/bin` into `/usr/local/bin`. `bootstrap.sh --upgrade <tag>` repeats this for a new tag; the previous one stays for rollback. Work in `~/Coding/nightshift` (Build B, any later change) therefore never affects the running version, and agents running as `ns` can't modify it.
 9. As `ns`: `claude plugin marketplace add <owner>/nightshift` pinned to the latest tag; install `ns` and `ns-python` at user scope.
-10. `ns-gc` timer; Remote Control tmux session.
+10. `ns-gc` and `ns-health` timers; Remote Control tmux session.
 11. Ends by running `ns doctor` as `ns`.
 
 - **R-BS-1** Never prints or logs a token. Prompts use `read -rs`.
