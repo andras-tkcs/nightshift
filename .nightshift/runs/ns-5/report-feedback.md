@@ -1,0 +1,1 @@
+The branch already has all work done (head 8821a7c: pytest suite plus bats env-isolation fix in tests/bats/helpers.bash, approved by owner). Do not change code. Verify tests/lint, bats and pytest pass, then emit a fresh PHASE-REPORT status=done with the current head sha.
