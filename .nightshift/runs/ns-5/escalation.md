@@ -33,3 +33,17 @@ Pick one: (a) merge `feature/5--p1-publish-check` into `feature/5` yourself (or 
 
 B
 
+
+---
+# Escalation 3: scoping pytest is not enough
+
+Owner answer was B (scope pytest away from `tests/fixtures`).
+- Done: committed `pytest.ini` (`norecursedirs = tests/fixtures ...`) on `feature/5--p1-publish-check` (847ed62) and pushed. Collection errors are gone.
+- Result: `ns-conductor checks ns-5 p1-publish-check` still reports `FAIL python test`. This repo has no Python tests outside the fixtures, so `pytest -q` exits 5 ("no tests ran"). `PASS python lint`, bats ok.
+- Not done: I did not add a placeholder test or edit the stack/profile to skip the check, as either weakens or sidesteps a check.
+
+## Question
+Pick one: (a) the python stack should not apply to this repo (remove or override `test` in the project profile, a change outside this plan); (b) allow a trivial placeholder Python test in this repo; (c) merge `feature/5--p1-publish-check` yourself with plain git.
+
+## Owner's answer
+
