@@ -1,0 +1,1 @@
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "mcp__docs__update", "input": {"path": "docs/usage.md", "section": "ns log", "text": "Show the readable stream for a run, following new output while the conductor keeps writing to the log files"}}]}}

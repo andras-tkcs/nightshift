@@ -2,7 +2,9 @@
 """Turn claude stream-json lines on stdin into one readable line per event."""
 import json
 import os
+import re
 import sys
+import textwrap
 from datetime import datetime, timezone
 
 
@@ -13,28 +15,87 @@ def hhmm():
     return datetime.now(timezone.utc).strftime("%H:%M")
 
 
-def one_line(s, n):
-    return " ".join(str(s).split())[:n]
+def one_line(s):
+    return " ".join(str(s).split())
+
+
+def width():
+    try:
+        w = int(os.environ.get("COLUMNS", ""))
+    except ValueError:
+        w = 80
+    return w if w >= 20 else 80
+
+
+def wrap(s):
+    s = one_line(s)
+    w = width()
+    # words stay whole unless one alone cannot fit a hanging-indented line
+    longest = max(len(x) for x in s.split()) if s else 0
+    return textwrap.fill(
+        s,
+        width=w,
+        subsequent_indent=" " * 6,
+        break_long_words=longest > w - 6,
+        break_on_hyphens=False,
+    )
+
+
+PRIMARY = ("command", "file_path", "notebook_path", "pattern", "url")
+
+
+def tool_input(inp):
+    if isinstance(inp, dict):
+        for key in PRIMARY:
+            if isinstance(inp.get(key), str) and inp[key].strip():
+                return inp[key]
+    return json.dumps(inp, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def result_text(content):
+    if isinstance(content, list):
+        content = "\n".join(
+            str(c.get("text", "")) for c in content if isinstance(c, dict)
+        )
+    return str(content or "")
+
+
+def result_line(item):
+    if not item.get("is_error"):
+        return "result: ok"
+    lines = [l.strip() for l in result_text(item.get("content")).splitlines() if l.strip()]
+    code = ""
+    if lines:
+        m = re.match(r"Exit code (\d+)$", lines[0])
+        if m:
+            code = m.group(1)
+            lines = lines[1:]
+    head = f"error, exit {code}" if code else "error"
+    return f"result: {head}: {lines[0]}" if lines else f"result: {head}"
 
 
 def render(ev):
     out = []
     t = ev.get("type")
+    msg = ev.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if isinstance(content, str):
+        content = [{"type": "text", "text": content}]
+    if not isinstance(content, list):
+        content = []
     if t == "assistant":
-        msg = ev.get("message")
-        content = msg.get("content") if isinstance(msg, dict) else None
-        if isinstance(content, str):
-            content = [{"type": "text", "text": content}]
-        if not isinstance(content, list):
-            content = []
         for item in content:
             if not isinstance(item, dict):
                 continue
             if item.get("type") == "text" and str(item.get("text") or "").strip():
-                out.append(f"{hhmm()} text: {one_line(item['text'], 300)}")
+                out.append(wrap(f"{hhmm()} text: {item['text']}"))
             elif item.get("type") == "tool_use":
-                inp = json.dumps(item.get("input", {}), ensure_ascii=False, default=str)
-                out.append(f"{hhmm()} tool: {item.get('name') or '?'} {inp[:120]}")
+                inp = tool_input(item.get("input", {}))
+                out.append(wrap(f"{hhmm()} tool: {item.get('name') or '?'} {inp}"))
+    elif t == "user":
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "tool_result":
+                out.append(wrap(f"{hhmm()} {result_line(item)}"))
     elif t == "result":
         try:
             cost = float(ev.get("total_cost_usd") or 0)
@@ -46,6 +107,10 @@ def render(ev):
 
 def main():
     # A viewer must never take the pipe (and with it the conductor) down.
+    try:
+        sys.stdin.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
     for line in sys.stdin:
         try:
             ev = json.loads(line)
