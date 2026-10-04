@@ -1,0 +1,3 @@
+21:00 tool: mcp__docs__update {"path":"docs/usage.md","section":"ns
+      log","text":"Show the readable stream for a run, following new output
+      while the conductor keeps writing to the log files"}

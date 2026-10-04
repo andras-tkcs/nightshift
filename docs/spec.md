@@ -134,6 +134,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns new <prefix>-<issue>` / `ns new <prefix> "text"` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. |
 | `ns ls` | One line per run: id, tier, phase, state, waiting-on, age. |
 | `ns attach <id>` | Attach to the run's tmux session. |
+| `ns log <id> [-f] [--phase <p>] [--raw]` | Show the run's session logs as readable, wrapped text. |
 | `ns status <id>` | Print the ledger summary without attaching. |
 | `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`; a run with no live conductor stops at once. |
 | `ns kill <id>` | Kill the session, conductor and workers now and mark the run `stopped` (owner only). |
