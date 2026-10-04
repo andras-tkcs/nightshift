@@ -67,3 +67,21 @@ Pick one: (a) allow a small extra fix on the phase branch that makes those three
 
 Fix
 
+
+
+---
+# Escalation 5: phase report head mismatch (abbreviated sha)
+
+Owner answer 4 was "Fix". Done: the bats tests no longer inherit `NS_CMD` and `NS_NTFY_URL`. `ns_test_setup` in `tests/bats/helpers.bash` now unsets both. Pushed as 8821a7c359336dc639890f5f4cf34e1026040362. `NS_CMD=ns-launch NS_NTFY_URL=http://x bats tests/bats` has 0 `not ok`; pytest has 17 passed; `tests/lint` is ok.
+
+Stuck: `ns-conductor report` fails with a head mismatch.
+- The first report recorded the older head 673c13f.
+- I restarted the phase once with feedback. The new report says `head=8821a7c`, which is an abbreviation of the correct head, and `report` compares the strings exactly.
+- The one allowed restart is used up, and I did not edit the report by hand. Because the report fails, `ns-conductor merge` is not reached.
+- The reviewer approved an earlier head (673c13f). Since then the phase gained `pytest.ini`, the unit tests and the helpers.bash fix.
+
+## Question
+Pick one: (a) allow `ns-conductor report` to accept an abbreviated sha that prefixes the full head (a conductor change outside this plan); (b) tell me to hand-write the report line with the full sha and re-run review and merge; (c) merge `feature/5--p1-publish-check` yourself with plain git.
+
+## Owner's answer
+
