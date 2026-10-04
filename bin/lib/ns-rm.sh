@@ -67,8 +67,11 @@ rm_inner() {
       if [ "$dry" = 1 ]; then
         printf 'would close PR %s\n' "$pr"
       else
-        gh pr close "$pr" --comment "Closed by ns rm $id." >/dev/null || ns_warn "could not close $pr"
-        printf 'closed PR %s\n' "$pr"
+        if gh pr close "$pr" --comment "Closed by ns rm $id." >/dev/null; then
+          printf 'closed PR %s\n' "$pr"
+        else
+          ns_warn "could not close $pr"
+        fi
       fi
     fi
   fi

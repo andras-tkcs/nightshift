@@ -124,7 +124,7 @@ set_pr() {
 }
 
 @test "ns rm --yes --remote leaves an open PR open when unsaved work refuses the run" {
-  set_pr 101
+  set_pr 103
   printf 'x\n' >"$FWT/scratch.txt"
   run ns rm sbx-12 --yes --remote
   assert_failure
@@ -132,7 +132,15 @@ set_pr() {
   assert_output_not_contains "closed PR"
   [ -d "$FWT" ]
   [ -d "$WT" ]
-  if [ -f "$GH_STUB_LOG" ]; then ! grep -q 'pr close' "$GH_STUB_LOG"; fi
+  ! grep -q 'pr close' "$GH_STUB_LOG"
+}
+
+@test "ns rm --yes --remote closes an open PR when the run is clean" {
+  set_pr 103
+  run ns rm sbx-12 --yes --remote
+  assert_success
+  assert_output_contains "closed PR"
+  grep -q 'pr close' "$GH_STUB_LOG"
 }
 
 @test "ns rm --all-stopped removes parked runs only" {
