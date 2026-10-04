@@ -19,16 +19,16 @@ branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T09:41:44Z'
+updated: '2026-10-04T10:13:28Z'
 budget:
-  used: 5.99
+  used: 6.52
   limit: 8
   paused: false
-  since: '2026-10-04T09:41:44Z'
+  since: '2026-10-04T10:13:28Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
-  state: running
+  state: review
   branch: feature/5--p1-publish-check
   worktree: /home/ns/Coding/worktrees/nightshift-ns-5--p1-publish-check
   attempts: 2
@@ -154,3 +154,6 @@ events:
 - time: '2026-10-04T09:41:43Z'
   type: phase-start
   note: 'p1-publish-check attempt: pid 346723'
+- time: '2026-10-04T10:13:27Z'
+  type: phase-end
+  note: p1-publish-check exit 0
