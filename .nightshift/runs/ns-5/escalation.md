@@ -31,3 +31,5 @@ Pick one: (a) merge `feature/5--p1-publish-check` into `feature/5` yourself (or 
 
 ## Owner's answer
 
+B
+
