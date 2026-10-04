@@ -14,17 +14,17 @@ tags:
 state: waiting
 gate: '1.5'
 step: phases
-stop_requested: null
+stop_requested: stopped
 branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T12:05:03Z'
+updated: '2026-10-04T15:02:41Z'
 budget:
   used: 6.71
   limit: 8
   paused: false
-  since: '2026-10-04T12:05:03Z'
+  since: '2026-10-04T15:02:41Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
@@ -190,3 +190,6 @@ events:
 - time: '2026-10-04T12:04:56Z'
   type: gate
   note: 'gate 1.5: waiting for the owner'
+- time: '2026-10-04T15:02:41Z'
+  type: stop-requested
+  note: stop requested by the owner
