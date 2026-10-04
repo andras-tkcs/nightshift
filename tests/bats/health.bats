@@ -151,6 +151,30 @@ age_log() { touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/conductor.js
   [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
 }
 
+@test "health-check notifies again when a silent run becomes dead, not when silence grows" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  age_log sbx-12
+  run ns health-check
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  touch -d "2026-10-02T20:00:00Z" "$NS_CONFIG_DIR/logs/sbx-12/conductor.jsonl"
+  run ns health-check
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  rm -f "$TMUX_STUB_DIR/sbx-12"
+  run ns health-check
+  assert_success
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 2 ]
+}
+
+@test "health-check removes the incident file of a run that is gone" {
+  export NS_NTFY_TOPIC=t
+  mkdir -p "$NS_CONFIG_DIR/health"
+  printf 'dead\n' >"$NS_CONFIG_DIR/health/sbx-99"
+  run ns health-check
+  assert_success
+  [ ! -e "$NS_CONFIG_DIR/health/sbx-99" ]
+}
+
 @test "stream-view survives malformed events and keeps going" {
   big=$(head -c 300000 /dev/zero | tr '\0' x)
   {

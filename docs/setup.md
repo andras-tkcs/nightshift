@@ -180,7 +180,7 @@ claude plugin install ns-python@nightshift --scope user
 claude plugin list
 ```
 
-### 10. ns-gc timer and Remote Control
+### 10. ns-gc and ns-health timers and Remote Control
 
 The units `ns-gc.*` and `ns-health.*` from `templates/systemd/` go to `~ns/.config/systemd/user/` and the timers are enabled (daily housekeeping at 04:00; `ns health-check` every 5 minutes). When a project is registered, the Remote Control session (tmux `rc`) is started as `ns up` does; before that the step says `ok (no project yet; ns up starts it)`. The manual way, as `ns`:
 
