@@ -113,7 +113,8 @@ loop_checks() {
   rcf="$logdir/$target.checks.rc"
   mkdir -p "$logdir"
   rm -f "$rcf"
-  loop_checks_body "$target" || rc=$?
+  # subshell: an ns_die (exit) in the body must not skip the marker
+  ( loop_checks_body "$target" ) || rc=$?
   tmp="$rcf.tmp.$$"
   printf '%s\n' "$rc" >"$tmp"
   mv -f "$tmp" "$rcf"

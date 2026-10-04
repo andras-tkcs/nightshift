@@ -177,6 +177,16 @@ mkphase() {
   [ "$(cat "$rc")" = 0 ]
 }
 
+@test "checks with no worktree exits non-zero and still writes a non-zero marker" {
+  commit_plan
+  rc="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc"
+  run ns-conductor checks sbx-12 feature
+  assert_failure
+  assert_output_contains "no worktree for feature"
+  [ -f "$rc" ]
+  [ "$(cat "$rc")" -ne 0 ]
+}
+
 @test "report exits 0 for a matching done report, 1 for a head mismatch and for blocked" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null

@@ -104,7 +104,7 @@ For T2 and T3 runs. Fetches, then creates the branch `git.feature_branch` and it
 ns-conductor checks <id> <phase|feature>
 ```
 
-Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>` or `FAIL <stack> <name>` for each check. The full output goes to `logs/<id>/<phase>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
+Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>` or `FAIL <stack> <name>` for each check. The full output goes to `logs/<id>/<target>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
 
 ### report
 
