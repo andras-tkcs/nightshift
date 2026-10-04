@@ -85,3 +85,5 @@ Pick one: (a) allow `ns-conductor report` to accept an abbreviated sha that pref
 
 ## Owner's answer
 
+a
+
