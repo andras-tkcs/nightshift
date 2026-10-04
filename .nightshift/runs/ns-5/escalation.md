@@ -101,3 +101,24 @@ Pick one: (a) fix and install the conductor change yourself (or in a separate ru
 
 ## Owner's answer
 
+(b), with this scope. Write the full 40-character sha of the current head of
+
+feature/5--p1-publish-check into the report line yourself (git rev-parse), then
+
+re-run checks and a new review round on that head. The previous approval was for
+
+673c13f and does not count for 8821a7c.
+
+  
+
+The new review covers 673c13f..head, including the three test commits (847ed62,
+
+49704af, 8821a7c). Accept them only if they touch nothing but pytest.ini,
+
+tests/unit/ and the NS\_CMD/NS\_NTFY\_URL unset in tests/bats/helpers.bash. The PR
+
+description must list them separately and say they partly address #37. Merge only
+
+if the review approves. Do not change any other part of the report, and do not
+
+change the conductor.
