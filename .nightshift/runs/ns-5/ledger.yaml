@@ -14,17 +14,17 @@ tags:
 state: running
 gate: null
 step: phases
-stop_requested: null
+stop_requested: stopped
 branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T09:00:13Z'
+updated: '2026-10-04T09:10:56Z'
 budget:
-  used: 5.3
+  used: 5.48
   limit: 8
   paused: false
-  since: '2026-10-04T09:00:13Z'
+  since: '2026-10-04T09:10:56Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
@@ -139,3 +139,9 @@ events:
 - time: '2026-10-04T09:00:13Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-04T09:00:28Z'
+  type: state
+  note: running
+- time: '2026-10-04T09:10:56Z'
+  type: stop-requested
+  note: stop requested by the owner
