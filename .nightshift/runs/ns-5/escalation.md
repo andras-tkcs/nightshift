@@ -47,3 +47,5 @@ Pick one: (a) the python stack should not apply to this repo (remove or override
 
 ## Owner's answer
 
+I revise my previous decision fix this python issue as it become blocker
+
