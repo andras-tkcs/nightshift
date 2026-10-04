@@ -122,3 +122,18 @@ description must list them separately and say they partly address #37. Merge onl
 if the review approves. Do not change any other part of the report, and do not
 
 change the conductor.
+
+
+---
+# Escalation 7: the hand-written report line was denied
+
+Owner answer 6 was (b): write the full 40-character sha into the report line, re-run checks, run a new review round on 673c13f..head, and merge only on approve.
+- Scope check done: `git diff --stat 673c13f..8821a7c359336dc639890f5f4cf34e1026040362` touches only `pytest.ini`, `tests/bats/helpers.bash` and `tests/unit/*`. That matches your scope.
+- Blocked: the report line lives in `~/.config/ns/logs/ns-5/p1-publish-check.jsonl`. Appending the `PHASE-REPORT ... head=<full sha>` result event there was denied by the auto-mode classifier (reason: logging/audit tampering). A follow-up `ns-conductor checks` call was denied too (reason: auto-mode bypass).
+- I did not retry or find another route. Nothing was changed in the log, and the phase is still in `review`.
+
+## Question
+Pick one: (a) append that line to the log yourself, or add a permission rule that allows it, then `ns approve` and I continue with checks, review and merge; (b) merge `feature/5--p1-publish-check` yourself with plain git.
+
+## Owner's answer
+
