@@ -106,7 +106,7 @@ ns stop <id>
 ns kill <id>
 ```
 
-`ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL), resets `running` phases to `pending`, sets the state to `stopped`, records a `killed` event (`killed by owner`), commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
+`ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL), resets `running` phases to `pending`, sets the state to `stopped`, records the state event `stopped: killed by owner`, commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
 
 ### ns resume
 
