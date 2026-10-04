@@ -566,10 +566,11 @@ has_project() { grep -qs 'path:' "$NS_USER_HOME/.config/ns/projects.yaml"; }
 
 check_10() {
   local todo=() u
-  for u in ns-gc.service ns-gc.timer; do
+  for u in ns-gc.service ns-gc.timer ns-health.service ns-health.timer; do
     cmp -s "$NS_BS_TEMPLATES/systemd/$u" "$(ud)/$u" 2>/dev/null || todo+=("install $u")
   done
   [ -L "$(ud)/timers.target.wants/ns-gc.timer" ] || todo+=("enable ns-gc.timer")
+  [ -L "$(ud)/timers.target.wants/ns-health.timer" ] || todo+=("enable ns-health.timer")
   if has_project && ! as_ns tmux has-session -t rc 2>/dev/null; then
     todo+=("start the Remote Control session")
   fi
@@ -584,11 +585,12 @@ check_10() {
 apply_10() {
   local u
   as_ns mkdir -p "$(ud)"
-  for u in ns-gc.service ns-gc.timer; do
+  for u in ns-gc.service ns-gc.timer ns-health.service ns-health.timer; do
     as_ns tee "$(ud)/$u" <"$NS_BS_TEMPLATES/systemd/$u" >/dev/null
   done
   as_ns systemctl --user daemon-reload
   as_ns systemctl --user enable --now ns-gc.timer
+  as_ns systemctl --user enable --now ns-health.timer
   if has_project; then
     as_ns tmux has-session -t rc 2>/dev/null || as_ns "$(P /usr/local/bin/ns)" up >/dev/null || true
     APPLY_MSG="changed"

@@ -73,6 +73,8 @@ prepare_tree() {
   chmod 600 "$h/.config/ns/env"
   cp "$NS_REPO_ROOT"/templates/systemd/ns-gc.* "$h/.config/systemd/user/"
   ln -s ../ns-gc.timer "$h/.config/systemd/user/timers.target.wants/ns-gc.timer"
+  cp "$NS_REPO_ROOT"/templates/systemd/ns-health.* "$h/.config/systemd/user/"
+  ln -s ../ns-health.timer "$h/.config/systemd/user/timers.target.wants/ns-health.timer"
   run bootstrap_apply --upgrade v0.1.0
   [ "$status" -eq 0 ]
 }
@@ -218,6 +220,8 @@ EOF
   assert_success
   cmp "$NS_REPO_ROOT/templates/systemd/ns-gc.timer" "$NS_USER_HOME/.config/systemd/user/ns-gc.timer"
   grep -F 'systemctl --user enable --now ns-gc.timer' "$NS_STUB_LOG"
+  cmp "$NS_REPO_ROOT/templates/systemd/ns-health.timer" "$NS_USER_HOME/.config/systemd/user/ns-health.timer"
+  grep -F "systemctl --user enable --now ns-health.timer" "$NS_STUB_LOG"
   assert_output_contains "no project yet"
 }
 

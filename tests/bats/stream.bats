@@ -103,3 +103,11 @@ mklogs() {
   assert_failure 1
   assert_output_contains "nophase"
 }
+
+@test "stream-view keeps going after invalid UTF-8 and a string message" {
+  printf '\xff\xfe{"type":"x"}\n{"type":"assistant","message":"oops"}\n{"type":"assistant","message":{"content":"after"}}\n' \
+    >"$BATS_TEST_TMPDIR/bad.jsonl"
+  run "$NS_REPO_ROOT/bin/lib/stream-view.py" <"$BATS_TEST_TMPDIR/bad.jsonl"
+  assert_success
+  assert_output_contains "text: after"
+}

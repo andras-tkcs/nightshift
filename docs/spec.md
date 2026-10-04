@@ -136,7 +136,8 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns attach <id>` | Attach to the run's tmux session. |
 | `ns log <id> [-f] [--phase <p>] [--raw]` | Show the run's session logs as readable, wrapped text. |
 | `ns status <id>` | Print the ledger summary without attaching. |
-| `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`. |
+| `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`; a run with no live conductor stops at once. |
+| `ns kill <id>` | Kill the session, conductor and workers now and mark the run `stopped` (owner only). |
 | `ns drain` | Ask every run to stop at its next checkpoint; return when all are `parked`. |
 | `ns up` | After a reboot: run `ns doctor`, then restart the Remote Control tmux session. |
 | `ns resume <id>` / `--all` | Restart parked/stopped runs from their ledgers. |
@@ -279,7 +280,7 @@ Steps:
 7. ntfy topic (generates one if none), `NS_DESK_URL`, optional `NS_HEALTHCHECK_URL` in `~ns/.config/ns/env`.
 8. Install the release, not the dev clone: `git clone --branch <tag>` into `/opt/nightshift/<tag>` (owned by root, read-only for `ns`), point `/opt/nightshift/current` at it, and link `ns`, `ns-conductor`, `ns-notify` and `ns-gh` from `current/bin` into `/usr/local/bin`. `bootstrap.sh --upgrade <tag>` repeats this for a new tag; the previous one stays for rollback. Work in `~/Coding/nightshift` (Build B, any later change) therefore never affects the running version, and agents running as `ns` can't modify it.
 9. As `ns`: `claude plugin marketplace add <owner>/nightshift` pinned to the latest tag; install `ns` and `ns-python` at user scope.
-10. `ns-gc` timer; Remote Control tmux session.
+10. `ns-gc` and `ns-health` timers; Remote Control tmux session.
 11. Ends by running `ns doctor` as `ns`.
 
 - **R-BS-1** Never prints or logs a token. Prompts use `read -rs`.
