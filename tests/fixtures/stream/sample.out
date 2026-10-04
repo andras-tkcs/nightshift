@@ -1,3 +1,3 @@
 21:00 text: Reading the ledger first.
-21:00 tool: Bash {"command": "ns-ledger get $NS_LEDGER"}
+21:00 tool: Bash ns-ledger get $NS_LEDGER
 21:00 done: success, 3 turns, $0.12

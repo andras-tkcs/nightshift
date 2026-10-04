@@ -21,7 +21,7 @@ Once the server is set up ([docs/setup.md](docs/setup.md)):
 1. Register a project: `ns project add owner/repo --prefix app`. If the repo has no profile yet, an onboarding run starts and publishes drafts; `ns approve app-onboard` opens the pull request, you merge it ([docs/projects.md](docs/projects.md)).
 2. Start work: `ns new app-12` runs GitHub issue 12, or `ns new app "fix the typo in the README"` runs free text. Triage proposes a tier and you confirm.
 3. See what is going on: `ns ls` lists runs with tier, state and gate. `ns status app-12` reads the ledger.
-4. Watch or answer: `ns attach app-12` jumps into the run's tmux session. Detach with Ctrl-b d; the run keeps going.
+4. Watch or answer: `ns attach app-12` jumps into the run's tmux session. Detach with Ctrl-b d; the run keeps going. `ns log app-12` reads the session log.
 5. At a gate you get a push notification. The plan or report is on the review desk: edit the Markdown in a browser, read the HTML report.
 6. Release the gate: `ns approve app-12` shows your edits as a diff, commits them and continues the run. At the end you get a pull request; you merge it yourself.
 
