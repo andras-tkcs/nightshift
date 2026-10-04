@@ -11,20 +11,20 @@ tags:
 - caddy
 - security
 - bats
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: phases
 stop_requested: null
 branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T11:18:27Z'
+updated: '2026-10-04T12:04:00Z'
 budget:
   used: 6.7
   limit: 8
   paused: false
-  since: '2026-10-04T11:18:27Z'
+  since: '2026-10-04T12:04:00Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
@@ -175,3 +175,6 @@ events:
 - time: '2026-10-04T11:18:19Z'
   type: gate
   note: 'gate 1.5: waiting for the owner'
+- time: '2026-10-04T12:03:59Z'
+  type: approved
+  note: gate 1.5
