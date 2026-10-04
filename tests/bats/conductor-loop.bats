@@ -142,6 +142,19 @@ mkphase() {
   assert_output_contains "boom-output"
 }
 
+@test "checks writes a <target>.checks.rc marker with the exit code" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  rc="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(cat "$rc")" = 0 ]
+  set_test_cmd "false"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  [ "$(cat "$rc")" = 1 ]
+}
+
 @test "report exits 0 for a matching done report, 1 for a head mismatch and for blocked" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null
