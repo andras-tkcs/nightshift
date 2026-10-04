@@ -290,6 +290,9 @@ def check_bash(cmd, cwd):
             words = shlex.split(seg)
         except ValueError:
             continue
+        sw = strip_env(words)
+        if argv0(sw) == "ns" and sw[1:2] == ["kill"]:
+            raise Block("ns kill is the owner's command")
         gh = gh_args(words)
         if gh is not None:
             check_gh(gh)

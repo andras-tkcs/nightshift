@@ -53,7 +53,8 @@ The Nightshift plugin installs a guard that runs before an agent edits a file, r
 - reading or writing the token folder `~/.config/ns/tokens`, by file tools, by `Grep`, `Glob` and `LS` (any path that equals or contains the folder, or a glob pattern that reaches it), or by a shell command that names it, including `tok*` globs;
 - edits to files that match `protected_paths` in the project's `.claude/project-profile.yaml`, and always edits to that profile itself (file tools and shell redirections such as `>`, `tee`, `cp`, `mv`), so an agent cannot widen its own guard; reading it stays allowed;
 - `git push` to the project's base branch, force pushes (`-f` also inside combined flags like `-uf`, `--force*`, `--mirror`, `+refspec`), `--all`/`--branches`, and pushing tags (`--tags`, `--follow-tags`, `refs/tags/...` or a bare `v1...` name);
-- `gh pr merge`, `gh api` calls that write to a `.../merge` path, and `gh release create`.
+- `gh pr merge`, `gh api` calls that write to a `.../merge` path, and `gh release create`;
+- `ns kill`, which is the owner's command.
 
 The git and gh checks look through global options (`git -C`, `--git-dir=...`, `gh -R <repo>`), a full path to the program and prefix words (`env`, `command`, `exec`, `nohup`, `time`).
 
