@@ -10,7 +10,10 @@ source "$NS_HOME/bin/lib/runs.sh"
 ns_queue_max() {
   local v
   v=$(ns_config_get max_runs 2)
-  [[ $v =~ ^[0-9]+$ ]] || v=2
+  if ! [[ $v =~ ^[1-9][0-9]*$ ]]; then
+    ns_warn "max_runs must be a positive integer, got '$v'; using 2"
+    v=2
+  fi
   printf '%s\n' "$v"
 }
 

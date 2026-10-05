@@ -183,3 +183,32 @@ EOS
   [ "$(lget sbx-12 '[.events[].type] | index("dequeued") == null')" = true ]
   grep -q "0 started" "$SBX-sbx-12/dequeue.out"
 }
+
+@test "a failed tmux start during ns dequeue leaves the run queued and reports nothing" {
+  set_max_runs 1
+  live_run 11
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  end_session 11
+  real_tmux=$(command -v tmux)
+  mkdir -p "$BATS_TEST_TMPDIR/failbin"
+  cat >"$BATS_TEST_TMPDIR/failbin/tmux" <<EOS
+#!/usr/bin/env bash
+[ "\${1:-}" != new-session ] || exit 1
+exec "$real_tmux" "\$@"
+EOS
+  chmod +x "$BATS_TEST_TMPDIR/failbin/tmux"
+  export NS_STUB_LOG="$BATS_TEST_TMPDIR/stub.log"
+  PATH="$BATS_TEST_TMPDIR/failbin:$PATH" run ns dequeue
+  assert_output_contains "0 started, 1 still queued"
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget sbx-12 .state)" = queued ]
+  [ "$(lget sbx-12 .queued_for_slot)" = true ]
+  [ "$(lget sbx-12 '[.events[].type] | index("dequeued") == null')" = true ]
+  ! grep -q ntfy "$NS_STUB_LOG" 2>/dev/null
+}
+
+@test "a non-positive max_runs falls back to 2 with a warning" {
+  set_max_runs 0
+  run bash -c 'source "$NS_REPO_ROOT/bin/lib/common.sh"; NS_HOME="$NS_REPO_ROOT"; source "$NS_REPO_ROOT/bin/lib/queue.sh"; ns_queue_max'
+  assert_output_contains "using 2"
+}

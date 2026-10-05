@@ -33,15 +33,15 @@ ns_new_start() {
   fi
   live=$(ns_queue_live_count)
   if [ "$now" = false ] && [ "$live" -ge "$(ns_queue_max)" ]; then
-    "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true'
-    "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot"
-    "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot"
-    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&-
+    "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+    "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot" || return 1
+    "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot" || return 1
+    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&- || return 1
     ns_queue_msg "$id" "$live"
     return 10
   fi
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.queued_for_slot = false'
-  ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id"
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.queued_for_slot = false' || return 1
+  ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id" || return 1
   printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
 }
 
