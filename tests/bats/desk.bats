@@ -314,3 +314,12 @@ published() {
   assert_output_contains "ns-notify:"
   ! grep -q tk_secrettoken123 <<<"$output"
 }
+
+@test "publishing at gate 1.5 puts the escalation question in the notification (ns-47)" {
+  export NS_NTFY_TOPIC=topic1 NS_DESK_URL=https://desk.example
+  ns-ledger state "$LEDGER" waiting --gate 1.5
+  printf '# Escalation\n\n## Question\n\nShould beta drop the cache?\n\n## Options\n\n- a\n' >"$RUNDIR/escalation.md"
+  run ns publish sbx-12 RUN/plan.md
+  assert_success
+  grep -qF 'sbx-12: gate 1.5 needs you: Should beta drop the cache?' "$NS_STUB_LOG"
+}
