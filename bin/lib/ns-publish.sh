@@ -88,7 +88,15 @@ ns_publish_main() {
   fi
   local -a nargs=()
   if [ -n "$gate" ]; then
-    nargs=("$id: gate $gate needs you")
+    local q=""
+    if [ "$gate" = 1.5 ] && [ -f "$wt/.nightshift/runs/$id/escalation.md" ]; then
+      q=$(ns_escalation_question "$wt/.nightshift/runs/$id/escalation.md")
+    fi
+    if [ -n "$q" ]; then
+      nargs=("$id: gate $gate needs you: $q")
+    else
+      nargs=("$id: gate $gate needs you")
+    fi
   else
     nargs=("$id: ${#names[@]} document(s) published")
   fi

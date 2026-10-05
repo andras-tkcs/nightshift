@@ -103,7 +103,9 @@ Ledger step: `integrate` before; `ns-conductor finish` sets `done`.
 
 Gate 1.5. Use when the budget, the review rounds, the pool, auto mode or a failing phase leaves the run stuck. Ledger step stays where it is.
 
-1. Write `RUN/escalation.md`: what is stuck, what was tried, the question, and an empty `## Owner's answer` section.
+Escalate only when no sanctioned command fits: record follow-ups with `ns-conductor note <id> <text>`, regenerate a missing phase report with `ns-conductor report <id> <phase> --rerun`; never use `gh issue create` and never write log lines by hand.
+
+1. Write `RUN/escalation.md`: what is stuck, what was tried, a `## Question` section with the one question for the owner (it appears in `ns status` and the notification), and an empty `## Owner's answer` section.
 2. `ns-conductor gate <id> 1.5 RUN/escalation.md`, then end the session.
 3. After `ns approve`, the resumed session reads the answer from `RUN/escalation.md` (owner text) and continues at the ledger `step`.
 

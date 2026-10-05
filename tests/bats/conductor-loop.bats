@@ -410,7 +410,7 @@ mkphase() {
   [ "$output" = "note 2" ]
   [ "$(sed -n 1p "$RUNDIR/notes.md")" = "1. first follow-up" ]
   [ "$(sed -n 2p "$RUNDIR/notes.md")" = "2. second follow-up" ]
-  [ "$(lget '[.events[] | select(.event == "note")] | length')" = 2 ]
+  [ "$(lget '[.events[] | select(.type == "note")] | length')" = 2 ]
   printf 'from a file\n' >"$BATS_TEST_TMPDIR/n.txt"
   run ns-conductor note sbx-12 --file "$BATS_TEST_TMPDIR/n.txt"
   assert_success

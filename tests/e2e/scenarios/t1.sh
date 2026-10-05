@@ -12,9 +12,17 @@ scenario_main() {
   e2e_wait "$E2E_ID" '.state == "done"' "$E2E_TIMEOUT" || return 1
   e2e_assert "triage recommendation is in the ledger" e2e_triage_recorded "$E2E_ID" || return 1
   e2e_assert "ledger has a review event" e2e_ledger_has "$E2E_ID" 'any(.events[]; .type == "review")' || return 1
+  e2e_assert "ledger has a note event" e2e_ledger_has "$E2E_ID" 'any(.events[]; .type == "note")' || return 1
+  e2e_assert "no classifier denial in the run logs" t1_no_denial "$E2E_ID" || return 1
   e2e_assert "PR is open against the base" e2e_pr_open_against_base "$E2E_ID" || return 1
   e2e_assert "first test commit fails alone, head passes" t1_tests_first || return 1
   e2e_assert "PR checks are green" e2e_pr_checks_green "$E2E_ID" 20 || return 1
+}
+
+# t1_no_denial <id>: no session log of the run mentions an auto-mode classifier denial
+t1_no_denial() {
+  ! grep -rqiE 'denied by (the )?(auto mode )?classifier|classifier (denied|blocked)' \
+    "${NS_CONFIG_DIR:-$HOME/.config/ns}/logs/$1" 2>/dev/null
 }
 
 # t1_pytest <dir>: set up the stack's virtualenv in <dir> and run pytest
