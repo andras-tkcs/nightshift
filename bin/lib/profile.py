@@ -5,7 +5,6 @@ import json
 import os
 import sys
 
-import jsonschema
 import yaml
 
 NS_HOME = os.environ.get("NS_HOME") or os.path.dirname(
@@ -101,6 +100,7 @@ def cmd_check(path, repo):
     except (OSError, ValueError, yaml.YAMLError) as e:
         print(f"{path}: not valid YAML: {' '.join(str(e).split())}")
         return 1
+    import jsonschema  # lazy: ~100 ms, only needed when validating
     validator = jsonschema.Draft202012Validator(load_schema())
     errors = sorted(validator.iter_errors(doc),
                     key=lambda e: (json_path(e.absolute_path), e.message))

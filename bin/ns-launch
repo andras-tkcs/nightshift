@@ -59,6 +59,7 @@ fi
 ns_token_export "${repo%%/*}"
 export NS_RUN_ID="$id"
 export NS_LEDGER="$ledger"
+export NS_RUN_HOME="$NS_HOME"
 export NS_PROJECT="$pname"
 export PATH="$NS_HOME/bin:$PATH"
 NS_WORKER_MODE="${NS_WORKER_MODE:-$(ns_config_get worker_mode auto)}"

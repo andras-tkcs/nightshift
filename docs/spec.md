@@ -138,7 +138,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns status <id>` | Print the ledger summary without attaching. |
 | `ns stop <id>` | Stop at the next checkpoint and mark the run `stopped`; a run with no live conductor stops at once. |
 | `ns kill <id>` | Kill the session, conductor and workers now and mark the run `stopped` (owner only). |
-| `ns tag <vX.Y.Z> [--repo <dir>] [--yes]` | Check that the base branch is clean and equal to origin, that the version is the next step, that the tag is new and that the project checks pass, then tag, push and print the upgrade command; warn when CI is not green (owner only). |
+| `ns tag <vX.Y.Z> [--repo <dir>] [--yes]` | Check that the base branch is clean and equal to origin, that the version is the next step, that the tag is new and that the project checks pass, then tag, push and print the upgrade command; warn when CI is not green or Nightshift runs are active (owner only). |
 | `ns drain` | Ask every run to stop at its next checkpoint; return when all are `parked`. |
 | `ns up` | After a reboot: run `ns doctor`, then restart the Remote Control tmux session. |
 | `ns resume <id>` / `--all` | Restart parked/stopped runs from their ledgers. |
