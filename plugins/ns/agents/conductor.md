@@ -36,3 +36,4 @@ Skills you rely on: `run-ledger`, `budget-guard`, `worktree-hygiene`.
 - A gate: `ns-conductor gate <id> <gate> <files>`, then end the session; `ns approve` resumes it.
 - A stop request: park as in step 2.
 - The procedure needs a command that does not exist: stop and escalate, naming it.
+- Sanctioned commands cover follow-ups and phase reports: `ns-conductor note <id> <text>` records a follow-up (never `gh issue create`), `ns-conductor report <id> <phase> --rerun` regenerates a phase's report record (never write log lines by hand). Escalate only when no sanctioned command fits.

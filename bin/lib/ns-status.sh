@@ -35,15 +35,20 @@ ns_status_main() {
     printf '%s\n' "$led"
     return 0
   fi
-  local health
+  local health question="" esc
+  if [ "$(jq -r '.gate // ""' <<<"$led")" = 1.5 ]; then
+    esc="$(jq -r .worktree <<<"$(ns_run_get "$id")")/.nightshift/runs/$id/escalation.md"
+    [ ! -f "$esc" ] || question=$(ns_escalation_question "$esc")
+  fi
   health=$(ns_run_health "$id" "$(jq -r .state <<<"$led")" "$(jq -r '.gate // ""' <<<"$led")")
-  jq -r --arg health "$health" '
+  jq -r --arg health "$health" --arg question "$question" '
     def pad($n): . + (" " * ([$n - length, 0] | max));
     "run      \(.id) (\(.project))",
     "tier     \(.tier // "-") (\(.tier_source // "-")\(if .tier_recommended then "; triage recommended " + .tier_recommended else "" end))",
     "state    \(.state) · gate \(.gate // "-") · step \(.step)",
     "health   \($health)",
     "release  \(.release // "-")",
+    (if $question != "" then "question \($question)" else empty end),
     "budget   \(.budget.used) h of \(if .budget.limit == null then "-" else (.budget.limit | tostring) end) h",
     "branches \(.branch) · \(.feature_branch // "-") · pr \(.pr // "-")",
     "phases",

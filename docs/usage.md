@@ -82,7 +82,7 @@ ns ls [--all] [--json]
 ns status <id> [--json]
 ```
 
-`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). At gate 1.5 a `question` line shows the first 200 characters of the `## Question` section of `RUN/escalation.md`. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
 
 ### ns attach
 
@@ -202,6 +202,8 @@ ns publish <id> <file>[:<name>]...
 ```
 
 `ns publish` copies documents from the run worktree to the review desk. A leading `RUN/` in a file means `.nightshift/runs/<id>/`; other relative paths are resolved against the run worktree, and every file must lie inside it. The name defaults to the file's basename and must match `[A-Za-z0-9._-]+.(md|html|yaml|env)`. The copy gets mode 0640. HTML must be self-contained: an external `<script src>`, a `<link href="http...">` or an `@import` is refused. A file that looks like it contains a token is refused. Nothing is copied unless every file passes. After copying, `ns publish` records the file in `.published`, regenerates the repo's `index.md` and sends a notification through `ns-notify`: `<id>: gate <g> needs you` when the run waits at a gate, else `<id>: <n> document(s) published`. With `NS_DESK_URL` set, the notification links to the first document. Without `NS_NTFY_TOPIC` no notification is sent (`ns-notify` says so on stderr).
+
+At gate 1.5 the notification reads `<id>: gate 1.5 needs you: <question>`, taken from the `## Question` section of `RUN/escalation.md`.
 
 `ns-notify "<text>" [url]` is the notification helper `ns publish` uses. It posts to `NS_NTFY_URL` (default `https://ntfy.sh`) under the topic `NS_NTFY_TOPIC`, cuts the text to 200 characters and refuses text that looks like a token. The text is sent literally (`--data-raw`), so a text starting with `@` is not read as a file. If the ntfy token file exists under `~/.config/ns/tokens/`, its token is sent as a bearer token, handed to curl on stdin so it never appears in argv. A non-2xx answer is an error: `ns-notify` says so (never printing the token) and exits 1.
 
