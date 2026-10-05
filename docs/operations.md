@@ -93,7 +93,7 @@ Nightshift runs from a release under `/opt/nightshift/<tag>`, not from your dev 
 /opt/nightshift/current/bin/bootstrap.sh --upgrade <tag>
 ```
 
-It installs `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current` to it, and re-pins the plugin marketplace and plugins to that tag. Earlier releases stay in place.
+It installs `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current` to it, and re-pins the plugin marketplace and plugins to that tag. Earlier releases stay in place, and a run keeps using the release it started on (recorded as `release` in its ledger), so keep an old release until no run points at it. The upgrade refuses with exit 1 while any run is active (state not `done`, `stopped` or `failed`), listing each with its release; stop them, wait, or pass `--force` (`bootstrap.sh --upgrade <tag> --force`).
 
 Rollback is the same command with the previous tag:
 

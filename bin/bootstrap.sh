@@ -34,12 +34,14 @@ APPLY_MSG=""
 
 usage() {
   cat <<'EOF'
-usage: bootstrap.sh [--check | --upgrade <tag>]
+usage: bootstrap.sh [--check | --upgrade <tag> [--force]]
 
 Turns a phase-2 server into a Nightshift runtime. Idempotent; run as root.
   --check          report each step (ok, would change, needs you, unknown); change nothing
   --upgrade <tag>  install release <tag> under /opt/nightshift and re-pin the plugins
-                   (runs steps 8 and 9 only; earlier releases stay for rollback)
+                   (runs steps 8 and 9 only; earlier releases stay for rollback);
+                   refuses while a run is active unless --force
+  --force          with --upgrade: proceed although runs are active
   --help           show this text
 Exit status: 0 everything ok, 1 something to do or needs you, 2 usage error.
 EOF
@@ -621,10 +623,27 @@ apply_11() {
   return 1
 }
 
+# active_runs: "id state release" for each registered run whose ledger is not done, stopped or failed
+active_runs() {
+  local cfg="${NS_CONFIG_DIR:-$NS_USER_HOME/.config/ns}" f wt id l line
+  f="$cfg/runs.yaml"
+  [ -f "$f" ] || return 0
+  while IFS=$'\t' read -r id wt; do
+    l="$wt/.nightshift/runs/$id/ledger.yaml"
+    [ -f "$l" ] || continue
+    line="$(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$l" \
+      | jq -r 'select((.state // "") as $s | ["done","stopped","failed"] | index($s) | not)
+        | "\(.id)  \(.state)  \(.release // "-")"')" || continue
+    [ -z "$line" ] || printf '%s\n' "$line"
+  done < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$f" \
+    | jq -r '.runs // [] | .[] | select(.archived | not) | [.id, .worktree] | @tsv')
+}
+
 # ---- main ------------------------------------------------------------------
 
 mode=apply
 upgrade_tag=""
+force=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --help | -h)
@@ -632,6 +651,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     --check) mode=check ;;
+    --force) force=true ;;
     --upgrade)
       if [ $# -lt 2 ] || [ -z "$2" ]; then
         echo "bootstrap.sh: --upgrade needs a tag" >&2
@@ -659,6 +679,17 @@ if [ "$mode" = upgrade ]; then
   if ! tag_exists "$upgrade_tag"; then
     echo "bootstrap.sh: tag $upgrade_tag not found in $NS_REPO_URL" >&2
     exit 1
+  fi
+  if [ "$force" != true ]; then
+    active="$(active_runs)"
+    if [ -n "$active" ]; then
+      {
+        echo "bootstrap.sh: refusing to upgrade while runs are active (id, state, release):"
+        printf '%s\n' "$active" | sed 's/^/  /'
+        echo "Runs resume on the release they started on. Wait for them, or pass --force."
+      } >&2
+      exit 1
+    fi
   fi
   TARGET_TAG="$upgrade_tag"
   STEPS="8 9"

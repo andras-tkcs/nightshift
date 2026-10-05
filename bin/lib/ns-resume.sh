@@ -64,7 +64,7 @@ ns_resume_reconcile() {
 
 # ns_resume_one <id>
 ns_resume_one() {
-  local id="$1" entry wt ledger state gate
+  local id="$1" entry wt ledger state gate rhome
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")
@@ -88,6 +88,8 @@ ns_resume_one() {
     printf '%s waits for the owner at gate %s: edit the desk documents, then ns approve %s\n' "$id" "$gate" "$id"
     return 0
   fi
+  rhome=$(ns_release_home "$ledger")
+  [ -n "$rhome" ] || rhome="$NS_HOME"
   if ns_tmux_has "$id"; then
     ns_tmux_kill "$id"
   fi
@@ -95,7 +97,7 @@ ns_resume_one() {
   "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .state = "running"'
   "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state"
   "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
-  ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id --resume"
+  NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"
   printf 'resumed %s\n' "$id"
 }
 

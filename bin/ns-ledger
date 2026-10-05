@@ -57,7 +57,7 @@ git_retry() {
 }
 
 cmd_init() {
-  local ledger="$1" id="" project="" issue="" text="" branch="" dir now
+  local ledger="$1" id="" project="" issue="" text="" branch="" dir now release
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -78,13 +78,16 @@ cmd_init() {
   lock "$ledger"
   [ ! -e "$ledger" ] || ns_die "ledger exists: $ledger"
   now="$(ns_now)"
-  if jq -n -c --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
+  release="$(basename "${NS_HOME:-}")"
+  [[ $release =~ ^v[0-9] ]] || release=""
+  if jq -n -c --arg release "$release" --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
     --arg branch "$branch" --arg now "$now" '{
       version: 1, id: $id, project: $project,
       request: (if $issue != "" then {issue: ($issue | tonumber)} else {text: $text} end),
       tier: null, tier_source: null, tier_recommended: null, tags: [],
       state: "queued", gate: null, step: "intake", stop_requested: null,
       branch: $branch, feature_branch: null, pr: null,
+      release: (if $release == "" then null else $release end),
       created: $now, updated: $now,
       budget: {used: 0, limit: null, paused: false, since: $now},
       phases: [],

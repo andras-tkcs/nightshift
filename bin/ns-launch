@@ -52,6 +52,12 @@ repo=$(jq -r .repo <<<"$project")
 ns_token_export "${repo%%/*}"
 
 ledger=$(ns_run_ledger "$id")
+if [ -f "$ledger" ] && [ -z "${NS_LAUNCH_PINNED:-}" ]; then
+  rhome=$(ns_release_home "$ledger")
+  if [ -n "$rhome" ] && ! [ "$rhome" -ef "$NS_HOME" ]; then
+    NS_HOME="$rhome" NS_LAUNCH_PINNED=1 exec "$rhome/bin/ns-launch" "$id" ${mode:+"$mode"}
+  fi
+fi
 export NS_RUN_ID="$id"
 export NS_LEDGER="$ledger"
 export NS_PROJECT="$pname"

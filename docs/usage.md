@@ -82,7 +82,7 @@ ns ls [--all] [--json]
 ns status <id> [--json]
 ```
 
-`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
 
 ### ns attach
 
@@ -123,7 +123,7 @@ ns resume <id>
 ns resume --all
 ```
 
-`ns resume` restarts a parked or stopped run, or one that crashed (state `running` but no tmux session). It rebuilds a deleted run worktree from the run's branch (local, else `origin`), marks phases whose `Plan-Phase: <phase>` trailer is already on the feature branch as `merged`, resets `running` phases without a live worker to `pending`, sets the state to `running`, records a `resumed` event, pushes the ledger and starts the conductor in a new tmux session. A run that is already running prints `<id> is already running`; a `done` or `failed` run prints `<id> is <state>; nothing to resume`; a run waiting at a gate tells you to edit the desk documents and `ns approve` it. `--all` does this for every non-archived run that is parked, stopped or crashed and leaves the others alone.
+`ns resume` restarts a parked or stopped run, or one that crashed (state `running` but no tmux session). It rebuilds a deleted run worktree from the run's branch (local, else `origin`), marks phases whose `Plan-Phase: <phase>` trailer is already on the feature branch as `merged`, resets `running` phases without a live worker to `pending`, sets the state to `running`, records a `resumed` event, pushes the ledger and starts the conductor in a new tmux session. A run that is already running prints `<id> is already running`; a `done` or `failed` run prints `<id> is <state>; nothing to resume`; a run waiting at a gate tells you to edit the desk documents and `ns approve` it. A run keeps the release it started on: resume starts the conductor from `/opt/nightshift/<release>` (override the base with `NS_OPT`), and exits 1 naming the release when it is no longer installed. `--all` does this for every non-archived run that is parked, stopped or crashed and leaves the others alone.
 
 ### ns drain
 

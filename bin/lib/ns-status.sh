@@ -43,6 +43,7 @@ ns_status_main() {
     "tier     \(.tier // "-") (\(.tier_source // "-")\(if .tier_recommended then "; triage recommended " + .tier_recommended else "" end))",
     "state    \(.state) · gate \(.gate // "-") · step \(.step)",
     "health   \($health)",
+    "release  \(.release // "-")",
     "budget   \(.budget.used) h of \(if .budget.limit == null then "-" else (.budget.limit | tostring) end) h",
     "branches \(.branch) · \(.feature_branch // "-") · pr \(.pr // "-")",
     "phases",

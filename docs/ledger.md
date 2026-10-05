@@ -26,6 +26,7 @@ gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
 stop_requested: null             # null | stopped | parked
 branch: plan/sbx-12
+release: v0.1.0                 # Nightshift release the run started on; null for a dev checkout. Resume and workers use it
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
