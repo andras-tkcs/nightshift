@@ -120,3 +120,20 @@ PRS_TWO='[
   assert_success
   assert_output_contains "stacked  sbx-11"
 }
+
+@test "ns stack orders a chain deeper than 7 by depth, not by age" {
+  local json="[" i base
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    if [ "$i" = 0 ]; then base=main; else base="fix/sbx-2$((i - 1))"; fi
+    # deeper PRs are older, so a wrong depth would reorder them
+    json+="{\"number\":$((30 + i)),\"headRefName\":\"fix/sbx-2$i\",\"baseRefName\":\"$base\",\"createdAt\":\"2026-10-02T1$((9 - i)):00:00Z\",\"reviewDecision\":\"\",\"statusCheckRollup\":[]}"
+    [ "$i" = 9 ] || json+=","
+  done
+  json+="]"
+  pr_list "$json"
+  run ns stack sbx
+  assert_success
+  local order
+  order=$(grep -o 'sbx-2[0-9]' <<<"$output" | tr '\n' ' ')
+  [ "$order" = "sbx-20 sbx-21 sbx-22 sbx-23 sbx-24 sbx-25 sbx-26 sbx-27 sbx-28 sbx-29 " ]
+}
