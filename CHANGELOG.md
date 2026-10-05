@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ns tag <vX.Y.Z>` tags and pushes a release after checking that main is clean and equal to origin, the version is the next step, the tag is new and the project checks pass; it warns on CI that is not green and prints the upgrade command. The guard blocks agents from running it (issue #50).
 - Runs keep the Nightshift release they started on: the ledger records `release`, `ns resume` and `ns-launch` use it (failing clearly if it is gone), `ns status` shows it, and `bootstrap.sh --upgrade` refuses while runs are active unless `--force`. A ledger `release` that is not a tag is refused, and runs whose ledger cannot be read count as active for the upgrade check (ns-46).
 - `ns-conductor note` records follow-ups in `RUN/notes.md` (listed in the PR body) and `ns-conductor report --rerun` regenerates a phase report record; `ns status` and the gate 1.5 notification show the escalation question (issue #47).
 - `ns kill <id>` ends a run's session, conductor and worker process groups at once and marks it `stopped`; the guard blocks agents from running it (ns-42).
