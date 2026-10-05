@@ -139,3 +139,11 @@ ledger_of() { printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$SBX-$1" "$1"; }
   assert_success
   [ "$output" = "sbx-12 is already stopped" ]
 }
+
+@test "ns status shows the release the run started on (ns-46)" {
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  ns-ledger set "$(ledger_of sbx-12)" '.release="v0.0.9"'
+  run ns status sbx-12
+  assert_success
+  assert_output_contains "release  v0.0.9"
+}

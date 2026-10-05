@@ -143,3 +143,22 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   [ ! -f "$TMUX_STUB_DIR/sbx-14" ]
   [ ! -f "$TMUX_STUB_DIR/sbx-15" ]
 }
+
+@test "resume launches the release the run started on (ns-46)" {
+  mkdir -p "$BATS_TEST_TMPDIR/opt"
+  ln -s "$NS_REPO_ROOT" "$BATS_TEST_TMPDIR/opt/v0.0.9"
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  ns-ledger set "$LEDGER" '.state="parked" | .release="v0.0.9"'
+  run ns resume sbx-12
+  assert_success
+  grep -q "$BATS_TEST_TMPDIR/opt/v0.0.9/bin/ns-launch sbx-12 --resume" "$TMUX_STUB_DIR/sbx-12"
+}
+
+@test "resume dies when the pinned release is gone (ns-46)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  ns-ledger set "$LEDGER" '.state="parked" | .release="v0.0.1"'
+  run ns resume sbx-12
+  assert_failure
+  assert_output_contains "v0.0.1"
+}

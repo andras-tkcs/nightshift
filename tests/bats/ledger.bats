@@ -214,3 +214,12 @@ init_ledger() {
   assert_success
   assert_output_contains "usage: ns-ledger"
 }
+
+@test "init records the release tag when NS_HOME is /opt/nightshift/<tag> (ns-46)" {
+  mkdir -p "$BATS_TEST_TMPDIR/opt"
+  ln -s "$NS_REPO_ROOT" "$BATS_TEST_TMPDIR/opt/v0.1.0"
+  NS_HOME="$BATS_TEST_TMPDIR/opt/v0.1.0" init_ledger
+  run ns-ledger get "$L" '.release'
+  assert_success
+  [ "$output" = "v0.1.0" ]
+}

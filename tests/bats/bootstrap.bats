@@ -311,3 +311,37 @@ git_clone_fails() {
   printf '%s\n' "$output" | grep -E '^\[1/11\].*needs you: systemctl failed'
   ! printf '%s\n' "$output" | grep -E '^\[1/11\].*changed'
 }
+
+# an active run pinned to v0.0.9, registered in runs.yaml under NS_CONFIG_DIR
+make_active_run() {
+  local wt="$BATS_TEST_TMPDIR/wt-act" l
+  l="$wt/.nightshift/runs/act-1/ledger.yaml"
+  mkdir -p "$wt"
+  ns-ledger init "$l" --id act-1 --project app --text x --branch plan/act-1
+  ns-ledger set "$l" '.state="running" | .release="v0.0.9"'
+  printf '{"runs":[{"id":"act-1","project":"app","worktree":"%s","branch":"plan/act-1"}]}\n' "$wt" \
+    >"$NS_CONFIG_DIR/runs.yaml"
+}
+
+@test "--upgrade refuses while a run is active and lists it (ns-46)" {
+  make_active_run
+  before="$(snapshot)"
+  run bootstrap_apply --upgrade v0.1.0
+  assert_failure 1
+  assert_output_contains "act-1"
+  assert_output_contains "v0.0.9"
+  assert_output_contains "--force"
+  [ "$before" = "$(snapshot)" ]
+}
+
+@test "--upgrade --force proceeds despite an active run (ns-46)" {
+  make_active_run
+  run bootstrap_apply --upgrade v0.1.0 --force
+  assert_success
+  [ -d "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+}
+
+@test "--upgrade with no active runs proceeds without --force (ns-46)" {
+  run bootstrap_apply --upgrade v0.1.0
+  assert_success
+}
