@@ -305,3 +305,12 @@ make_ledger() {
   bash_guard "ns stop sbx-12"
   [ -z "$output" ]
 }
+
+@test "ns tag is blocked for agents" {
+  for c in "ns tag v0.1.1" "NS_X=1 ns tag v0.1.1 --yes" "cd /tmp && ns tag v0.1.1"; do
+    bash_guard "$c"
+    blocked "ns tag is the owner's command"
+  done
+  bash_guard "ns status"
+  [ -z "$output" ]
+}

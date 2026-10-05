@@ -19,3 +19,5 @@ Rejected alternatives:
 ## Consequences
 
 The tag always points at the merged, reviewed commit. The owner has one manual step after the merge.
+
+Note: `ns tag <vX.Y.Z>` is the owner's way to make this tag. It checks main and the project checks first, and the guard blocks agents from running it.
