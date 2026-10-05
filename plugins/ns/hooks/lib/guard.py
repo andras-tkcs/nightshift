@@ -293,6 +293,8 @@ def check_bash(cmd, cwd):
         sw = strip_env(words)
         if argv0(sw) == "ns" and sw[1:2] == ["kill"]:
             raise Block("ns kill is the owner's command")
+        if argv0(sw) == "ns" and sw[1:2] == ["tag"]:
+            raise Block("ns tag is the owner's command")
         gh = gh_args(words)
         if gh is not None:
             check_gh(gh)

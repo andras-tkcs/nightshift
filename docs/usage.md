@@ -126,6 +126,14 @@ ns kill <id>
 
 `ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL), resets `running` phases to `pending`, sets the state to `stopped`, records the state event `stopped: killed by owner`, commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
 
+### ns tag
+
+```
+ns tag <vX.Y.Z> [--repo <dir>] [--yes]
+```
+
+`ns tag` tags a release on the base branch (`git.base_branch`, default `main`) of `--repo` (default: the repository of the current directory) and pushes the tag to `origin`. It refuses, with exit 1 and the reason, when local main is dirty or differs from `origin/main`, the name is not `vX.Y.Z`, the tag exists locally or on origin, the version is not the next patch, minor or major step after the newest tag, or the project checks (`commands.test` of the profile, else `tests/lint` and `bats tests/bats`) fail. It warns, but goes on, when CI on the commit is not green, still runs or cannot be read. The annotated tag message is `Release <tag>` plus the merged pull request titles since the last tag. It asks for confirmation unless `--yes` is given, then prints the root command `/opt/nightshift/current/bin/bootstrap.sh --upgrade <tag>`. Agents cannot run it: the guard hook blocks it.
+
 ### ns resume
 
 ```
