@@ -18,6 +18,8 @@ source "$NS_HOME/bin/lib/profile.sh"
 source "$NS_HOME/bin/lib/stacks.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/pool.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/stack-pr.sh"
 # the phase loop subcommands (fix-branch, feature, checks, ...); they use this file's helpers
 if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ]; then
   # shellcheck source=/dev/null

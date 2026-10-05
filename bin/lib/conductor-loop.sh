@@ -7,6 +7,7 @@
 conductor_loop_usage() {
   printf '  fix-branch    <id>\n'
   printf '  feature       <id>\n'
+  printf '  stack-base    <id>\n'
   printf '  checks        <id> <phase|feature>\n'
   printf '  report        <id> <phase> [--rerun]\n'
   printf '  note          <id> <text> | --file <file>\n'
@@ -95,6 +96,42 @@ conductor_feature() {
     lg checkpoint "$ledger"
   fi
   printf '%s\n' "$dir"
+}
+
+# conductor_stack_base <id>: print the base branch for the run's PR. With open PRs of other
+# runs it merges the top of the stack into the code branch (never a rebase), records
+# stacked_on and prints that branch; exit 6 on a conflict, the merge is left in progress.
+conductor_stack_base() {
+  [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
+  local base repo prefix fixpat featpat prs top head dir stacked own mout
+  load_run "$1"
+  base=$(jq -r '.git.base_branch' <<<"$profile")
+  repo=$(jq -r .repo <<<"$project")
+  prefix=$(jq -r .prefix <<<"$project")
+  fixpat=$(jq -r '.git.fix_branch' <<<"$profile")
+  featpat=$(jq -r '.git.feature_branch' <<<"$profile")
+  prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix") || ns_die "could not list the pull requests of $repo"
+  top=$(jq -c --arg me "$id" '[.[] | select(.run != $me)] | last // empty' <<<"$prs")
+  if [ -z "$top" ]; then
+    lg set "$ledger" '.stacked_on = "main"'
+    lg checkpoint "$ledger"
+    printf '%s\n' "$base"
+    return 0
+  fi
+  head=$(jq -r .head <<<"$top")
+  stacked=$(jq -r .run <<<"$top")
+  dir=$(loop_code_wt)
+  [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
+  own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
+  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+  lg checkpoint "$ledger"
+  git -C "$dir" fetch -q origin "$head" || ns_die "could not fetch origin $head"
+  if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $head into $own (stacked on $stacked)" "origin/$head" 2>&1); then
+    printf '%s\n' "$mout" >&2
+    printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$head" "$own" "$dir" >&2
+    exit 6
+  fi
+  printf '%s\n' "$head"
 }
 
 # loop_phase_wt <phase|feature>
@@ -368,6 +405,7 @@ conductor_loop_dispatch() {
   case "$sub" in
     fix-branch) conductor_fix_branch "$@" ;;
     feature) conductor_feature "$@" ;;
+    stack-base) conductor_stack_base "$@" ;;
     checks) conductor_checks "$@" ;;
     report) conductor_report "$@" ;;
     note) conductor_note "$@" ;;

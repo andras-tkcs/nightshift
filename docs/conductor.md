@@ -98,6 +98,14 @@ ns-conductor feature <id>
 
 For T2 and T3 runs. Fetches, then creates the branch `git.feature_branch` and its worktree `<id>--feature` from `origin/<base>`, so the branch carries none of the run's `ns-ledger:` commits (ADR 0002). It copies the plan document and the acceptance tests from `plan/<id>` (every added or modified file except those under `.nightshift/`) into one commit `ns: plan and acceptance tests for <id>`, when anything changed. Then it runs the stack setup, pushes with `-u`, records `feature_branch` and prints the worktree path. A rerun changes nothing. Exit 0, or 1 on failure.
 
+### stack-base
+
+```
+ns-conductor stack-base <id>
+```
+
+Prints the branch the run's pull request must target. It lists the open PRs of the project (`gh pr list`), keeps those whose head is a run branch (the profile's `fix_branch` or `feature_branch` pattern) other than this run's, and orders them by `baseRefName` into one line. Without any it prints the profile base branch and sets the ledger's `stacked_on` to `main`. Otherwise it sets `stacked_on` to the run id of the top PR, fetches and merges its branch into the run's code branch with `git merge --no-ff` (never a rebase), and prints that branch. On a conflict the merge is left in progress in the code worktree and the exit code is 6. After resolving, the caller commits and reruns `checks <id> feature`.
+
 ### checks
 
 ```

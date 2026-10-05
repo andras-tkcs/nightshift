@@ -68,6 +68,16 @@ If the run already exists, `ns new` prints `already running` and exits 0 when it
 
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
+### ns stack
+
+```
+ns stack [project]
+```
+
+`ns stack` lists the open pull requests of runs, bottom to top (`main <- a <- b`), by asking GitHub, so it needs no ledgers of other runs. A run PR is one whose head branch matches the project's `fix_branch` or `feature_branch` pattern. Columns: RUN, PR, BASE, CHECKS (`pass`, `fail`, `pending` or `none`), REVIEW (the review decision, `-` when none) and AGE. `project` is a prefix, name or `owner/repo`; without it every project is shown.
+
+Stacking: before opening its PR a run asks `ns-conductor stack-base <id>`. When another run's PR is open, the run merges the top of the stack into its code branch (a merge, never a rebase), opens its PR against that branch and records `stacked_on` in its ledger (`ns status` shows a `stacked` line). With no open run PR it targets the base branch and records `main`. A merge conflict is resolved by the integrator, which reruns the checks; when that is not possible the run goes to gate 1.5 and opens no PR. Merge the PRs bottom to top.
+
 ### ns ls
 
 ```
@@ -82,7 +92,7 @@ ns ls [--all] [--json]
 ns status <id> [--json]
 ```
 
-`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). At gate 1.5 a `question` line shows the first 200 characters of the `## Question` section of `RUN/escalation.md`. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `stacked` line names the run (or `main`) the PR is stacked on, when set. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). At gate 1.5 a `question` line shows the first 200 characters of the `## Question` section of `RUN/escalation.md`. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
 
 ### ns attach
 

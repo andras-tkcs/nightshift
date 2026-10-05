@@ -50,6 +50,7 @@ ns_status_main() {
     "release  \(.release // "-")",
     (if $question != "" then "question \($question)" else empty end),
     "budget   \(.budget.used) h of \(if .budget.limit == null then "-" else (.budget.limit | tostring) end) h",
+    (if .stacked_on then "stacked  \(.stacked_on)" else empty end),
     "branches \(.branch) · \(.feature_branch // "-") · pr \(.pr // "-")",
     "phases",
     (.phases[] | "  \(.id | pad(8))  \(.state | pad(9)) \(.branch // "-")  attempts \(.attempts)  rounds \(.review_rounds)"),
