@@ -89,7 +89,7 @@ When a `needs you` line appears, go to that worktree, commit and push or discard
 
 ## Updates
 
-To cut a release, merge the pull request, then run `ns tag vX.Y.Z` in your dev clone as the owner (see [usage.md](usage.md#ns-tag)). It checks main, runs the project checks, pushes the tag and prints the upgrade command below.
+To cut a release, merge the pull request, then run `ns tag vX.Y.Z` in your dev clone as the owner (see [usage.md](usage.md#ns-tag)). It checks the base branch, runs the project checks, warns when runs are active (since the upgrade refuses then), pushes the tag and prints the upgrade command below.
 
 Nightshift runs from a release under `/opt/nightshift/<tag>`, not from your dev clone. Your dev clone `~/Coding/nightshift` is never involved in an update. To install a release or go back to an older one, as root:
 
