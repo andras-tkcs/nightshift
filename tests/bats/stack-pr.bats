@@ -48,7 +48,8 @@ plan_branch() {
   rm -rf "$w"
 }
 
-# pr_closed <json>: make `gh pr list --state closed` answer with the JSON
+# pr_closed <json>: make `gh pr list --state closed` answer with the JSON.
+# The stub takes the first matching map line, so pr_closed must stay ahead of the `^pr list` line.
 pr_closed() {
   printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-closed.json"
   { printf '0\tpr-closed.json\t^pr list .*--state closed\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
@@ -270,4 +271,24 @@ CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":n
   assert_output_contains "sbx-13"
   assert_output_contains "closed"
   assert_output_contains "ns stack drop"
+}
+
+@test "stack-base warns when its own stacked_on run PR was closed unmerged" {
+  ns-ledger set "$LEDGER" '.stacked_on = "sbx-11"'
+  pr_list '[]'
+  pr_closed "$CLOSED_11"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  assert_output_contains "sbx-12"
+  assert_output_contains "ns stack drop"
+}
+
+@test "stack-base fails when the origin cannot be listed" {
+  other_run_branch fix/sbx-11 main one.txt "one"
+  plan_branch sbx-11
+  pr_list "$PRS_ONE"
+  git -C "$(ns_project_path)" remote set-url origin "$BATS_TEST_TMPDIR/no-such-remote.git"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "could not list"
 }
