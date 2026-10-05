@@ -10,12 +10,12 @@ claude --plugin-dir ./plugins/ns --plugin-dir ./plugins/ns-python
 
 ```bash
 tests/lint
-bats tests/bats
+bats --jobs 2 tests/bats
 claude plugin validate --strict .
 tests/docs-check --final
 ```
 
-`tests/lint` runs shellcheck over every script. `bats tests/bats` runs the unit suite and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`.
+`tests/lint` runs shellcheck over every script. `bats --jobs 2 tests/bats` runs the unit suite in parallel (needs GNU `parallel`, `sudo apt-get install parallel`; CI uses `--jobs "$(nproc)"`). Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`.
 
 ## End-to-end runs
 

@@ -27,7 +27,7 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 
 ```bash
 tests/lint
-bats tests/bats
+bats --jobs 2 tests/bats      # needs GNU `parallel`; 2 jobs because of the 4 GB RAM cap
 claude plugin validate --strict .
 claude plugin validate --strict plugins/ns
 claude plugin validate --strict plugins/ns-python
