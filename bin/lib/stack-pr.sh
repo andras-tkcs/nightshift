@@ -83,3 +83,41 @@ ns_stack_closed_heads() {
   gh pr list --repo "$1" --state closed --limit 100 --json number,headRefName,state,mergedAt 2>/dev/null \
     | jq -r '.[] | select((.state // "") == "CLOSED" and .mergedAt == null) | .headRefName' 2>/dev/null || true
 }
+
+# ns_stack_gate <pr json> <live json>: print why a PR cannot be merged (one line, empty when it can).
+# The review decision and checks come from the PR list row, mergeability and state from `gh pr view`.
+ns_stack_gate() {
+  local row="$1" live="$2" rev checks mergeable state
+  rev=$(jq -r '.reviewDecision' <<<"$row")
+  checks=$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")
+  mergeable=$(jq -r '.mergeable // ""' <<<"$live")
+  state=$(jq -r '.state // "OPEN"' <<<"$live")
+  if [ "$state" != OPEN ]; then
+    printf 'is %s, not open\n' "$state"
+  elif [ "$rev" != APPROVED ]; then
+    printf 'is not approved (review: %s)\n' "${rev:--}"
+  elif [ "$checks" = fail ] || [ "$checks" = pending ]; then
+    printf 'has checks that are not green (%s)\n' "$checks"
+  elif [ "$mergeable" = CONFLICTING ]; then
+    printf 'has merge conflicts\n'
+  fi
+}
+
+# ns_stack_find_project <selector>: print the registered project JSON for a prefix, name or owner/repo
+ns_stack_find_project() {
+  local out
+  out=$(ns_projects_json | jq -c --arg s "$1" '[.[] | select(.prefix == $s or .name == $s or .repo == $s)] | first // empty')
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+# ns_stack_project_prs <project json>: print the open run PRs of the project (JSON array, bottom to top)
+ns_stack_project_prs() {
+  local p="$1" prof path prefix branch
+  path=$(jq -r .path <<<"$p")
+  prefix=$(jq -r .prefix <<<"$p")
+  branch=$(jq -r '.branch // ""' <<<"$p")
+  prof=$(ns_profile_json "$path" "$prefix" "$branch" 2>/dev/null) || [ $? -eq 3 ] || return 1
+  ns_stack_open_prs "$(jq -r .repo <<<"$p")" "$(jq -r '.git.fix_branch' <<<"$prof")" \
+    "$(jq -r '.git.feature_branch' <<<"$prof")" "$prefix" "$path"
+}
