@@ -11,6 +11,7 @@ This page builds ns-main, a plain hardened Ubuntu server, before Nightshift is p
 | System | Ubuntu 24.04 |
 | Agent user | `ns`, with no sudo on purpose |
 | Workers | `max_workers` is 2: never more than two at once, because of the 4 GB of RAM |
+| Conductors | `max_runs` is 2 (`config.yaml`): further runs wait as `queued` until a conductor ends (`ns dequeue`) |
 | Reachable | only over Tailscale (name `ns-main`, tag `tag:ns-main`) |
 
 ## Do this first

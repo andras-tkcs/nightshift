@@ -103,7 +103,9 @@ ns_tmux_start() {
       args+=(-e "$v=${!v}")
     fi
   done
-  tmux new-session -d -s "$name" -c "$dir" "${args[@]}" "exec $cmd"
+  # 9>&-: a tmux server started here must not inherit the queue lock
+  # env -u GH_TOKEN: the tmux server must not keep the caller's token in its global environment
+  env -u GH_TOKEN tmux new-session -d -s "$name" -c "$dir" "${args[@]}" "exec $cmd" 9>&-
 }
 
 ns_tmux_has() { tmux has-session -t "=$1" 2>/dev/null; }

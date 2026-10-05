@@ -47,6 +47,8 @@ ns resume --all
 
 ## A run that stopped without telling you
 
+Runs beyond `max_runs` (default 2, in `config.yaml`) wait as `queued`: `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position. They start by themselves when a conductor ends; `ns dequeue` starts them by hand and `ns new --now` skips the queue. After a reboot `ns resume --all` starts as many runs as `max_runs` allows and queues the rest.
+
 `ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to the log for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
 
 ## Cleanup: what `ns gc` drops

@@ -5,6 +5,8 @@
 source "$NS_HOME/bin/lib/config.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/runs.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/queue.sh"
 
 ns_status_help() {
   printf 'usage: ns status <id> [--json]\n\n'
@@ -40,13 +42,20 @@ ns_status_main() {
     esc="$(jq -r .worktree <<<"$(ns_run_get "$id")")/.nightshift/runs/$id/escalation.md"
     [ ! -f "$esc" ] || question=$(ns_escalation_question "$esc")
   fi
+  local qline="" qlist qpos
+  if [ "$(jq -r .state <<<"$led")" = queued ]; then
+    qlist=$(ns_queue_list)
+    qpos=$(grep -nxF "$id" <<<"$qlist" | cut -d: -f1 | head -1) || qpos=""
+    if [ -n "$qpos" ]; then qline="position $qpos of $(grep -c . <<<"$qlist")"; fi
+  fi
   health=$(ns_run_health "$id" "$(jq -r .state <<<"$led")" "$(jq -r '.gate // ""' <<<"$led")")
-  jq -r --arg health "$health" --arg question "$question" '
+  jq -r --arg qline "$qline" --arg health "$health" --arg question "$question" '
     def pad($n): . + (" " * ([$n - length, 0] | max));
     "run      \(.id) (\(.project))",
     "tier     \(.tier // "-") (\(.tier_source // "-")\(if .tier_recommended then "; triage recommended " + .tier_recommended else "" end))",
     "state    \(.state) · gate \(.gate // "-") · step \(.step)",
     "health   \($health)",
+    (if $qline != "" then "queue    \($qline)" else empty end),
     "release  \(.release // "-")",
     (if $question != "" then "question \($question)" else empty end),
     "budget   \(.budget.used) h of \(if .budget.limit == null then "-" else (.budget.limit | tostring) end) h",

@@ -2,7 +2,7 @@
 
 ## What the conductor is
 
-A run's conductor is the headless `claude -p "/ns:run <id>"` session that `ns-launch` starts in tmux (ADR 0008). It follows the tier's pipeline and does its deterministic work through `bin/ns-conductor`. Phase workers are separate headless `claude -p --agent ns:implementer` processes, one per phase, each in its own worktree. They are started with `setsid`, so they survive a conductor crash, and a resumed conductor adopts them through their pid files. A gate ends the conductor session (state `waiting`); `ns approve` starts a new one through `ns resume`.
+A run's conductor is the headless `claude -p "/ns:run <id>"` session that `ns-launch` starts in tmux (ADR 0008). It follows the tier's pipeline and does its deterministic work through `bin/ns-conductor`. Phase workers are separate headless `claude -p --agent ns:implementer` processes, one per phase, each in its own worktree. They are started with `setsid`, so they survive a conductor crash, and a resumed conductor adopts them through their pid files. A gate ends the conductor session (state `waiting`); `ns approve` starts a new one through `ns resume`. At most `max_runs` conductors are live at once; when a conductor ends, `ns-launch` runs `ns dequeue` (clean environment, output in `logs/<id>/dequeue.log`) so a queued run takes the slot.
 
 `ns-conductor` is on `PATH` for conductor sessions. Errors go to stderr as `ns-conductor: <message>`. Unless a subcommand says otherwise, exit codes are 0 ok, 1 failure, 2 usage error. A leading `RUN/` in a file argument stands for `.nightshift/runs/<id>/` in the run worktree. `ns-conductor --help` lists the subcommands.
 

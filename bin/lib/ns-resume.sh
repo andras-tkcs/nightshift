@@ -9,6 +9,8 @@ source "$NS_HOME/bin/lib/runs.sh"
 source "$NS_HOME/bin/lib/pool.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/profile.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/queue.sh"
 
 ns_resume_help() {
   printf 'usage: ns resume <id> | ns resume --all\n\n'
@@ -62,17 +64,69 @@ ns_resume_reconcile() {
   done < <("$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[] | [.id, .state] | @tsv')
 }
 
-# ns_resume_one <id>
+# ns_resume_start <id> <wt> <ledger> <state> <rhome>: under the queue lock, start the conductor
+# when a slot is free, else mark the run queued (returns 10). With NS_DEQUEUE=1 (ns dequeue) it
+# starts the run only if it is still waiting in the queue: returns 10 when no slot is free (run
+# left as is) and 11 when another process already took the run
+ns_resume_start() {
+  local id="$1" wt="$2" ledger="$3" state="$4" rhome="$5" live
+  if [ "${NS_DEQUEUE:-}" = 1 ]; then
+    local cur
+    cur=$("$NS_HOME/bin/ns-ledger" get "$ledger" '[.state, (.gate // "-"), (.queued_for_slot // false)] | @tsv') || return 11
+    state=${cur%%$'\t'*}
+    if [ "$cur" != "queued"$'\t'"-"$'\t'"true" ] || ns_tmux_has "$id"; then
+      return 11
+    fi
+    live=$(ns_queue_live_count)
+    [ "$live" -lt "$(ns_queue_max)" ] || return 10
+  elif ns_tmux_has "$id"; then
+    printf '%s is already running\n' "$id"
+    return 0
+  fi
+  [ "${NS_DEQUEUE:-}" = 1 ] || live=$(ns_queue_live_count)
+  if [ "$live" -ge "$(ns_queue_max)" ]; then
+    if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
+      "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+      "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot" || return 1
+      "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot" || return 1
+      "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&- || return 1
+    fi
+    ns_queue_msg "$id" "$live"
+    return 10
+  fi
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running"' || return 1
+  "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state" || return 1
+  "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&- || return 1
+  if ! NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"; then
+    # the start failed: put the run back where it was so it is not lost from the queue
+    if [ "${NS_DEQUEUE:-}" = 1 ]; then
+      "$NS_HOME/bin/ns-ledger" set "$ledger" '.queued_for_slot = true | .state = "queued"' || true
+    else
+      "$NS_HOME/bin/ns-ledger" set "$ledger" ".state = \"$state\"" || true
+    fi
+    return 1
+  fi
+  printf 'resumed %s\n' "$id"
+}
+
+# ns_resume_one <id>: returns 10 when the run had to wait in the queue
 ns_resume_one() {
   local id="$1" entry wt ledger state gate rhome
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")
   if [ ! -d "$wt" ]; then
-    ns_resume_rebuild "$id" "$entry"
+    ns_resume_rebuild "$id" "$entry" || return 1
   fi
   [ -f "$ledger" ] || ns_die "cannot resume $id: no ledger at $ledger"
-  state=$("$NS_HOME/bin/ns-ledger" get "$ledger" .state)
+  if [ "${NS_DEQUEUE:-}" = 1 ]; then
+    # queue membership is checked under the lock; no kill or reconcile on a run that may be live
+    rhome=$(ns_release_home "$ledger") || return 1
+    [ -n "$rhome" ] || rhome="$NS_HOME"
+    ns_queue_locked ns_resume_start "$id" "$wt" "$ledger" queued "$rhome"
+    return
+  fi
+  state=$("$NS_HOME/bin/ns-ledger" get "$ledger" .state) || return 1
   if [ "$state" = running ] && ns_tmux_has "$id"; then
     printf '%s is already running\n' "$id"
     return 0
@@ -91,14 +145,10 @@ ns_resume_one() {
   rhome=$(ns_release_home "$ledger") || return 1
   [ -n "$rhome" ] || rhome="$NS_HOME"
   if ns_tmux_has "$id"; then
-    ns_tmux_kill "$id"
+    ns_tmux_kill "$id" || return 1
   fi
-  ns_resume_reconcile "$id" "$wt" "$ledger" "$entry"
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .state = "running"'
-  "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state"
-  "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
-  NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"
-  printf 'resumed %s\n' "$id"
+  ns_resume_reconcile "$id" "$wt" "$ledger" "$entry" || return 1
+  ns_queue_locked ns_resume_start "$id" "$wt" "$ledger" "$state" "$rhome"
 }
 
 ns_resume_main() {
@@ -121,11 +171,11 @@ ns_resume_main() {
         *) continue ;;
       esac
       n=$((n + 1))
-      (ns_resume_one "$id") || rc=1
+      (ns_resume_one "$id") || [ $? -eq 10 ] || rc=1
     done < <(ns_runs_json | jq -r '.[] | select(.archived | not) | .id')
     [ "$n" -gt 0 ] || printf 'nothing to resume\n'
     return "$rc"
   fi
   [[ $1 != -* ]] || ns_usage "$u"
-  ns_resume_one "$1"
+  ns_resume_one "$1" || [ $? -eq 10 ]
 }

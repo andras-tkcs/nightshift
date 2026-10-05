@@ -53,5 +53,6 @@ ns_health_check_main() {
       case "$seen" in *" $id "*) ;; *) rm -f "$f" ;; esac
     done
   fi
+  "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
   printf 'ns health-check: %s run(s) checked, %s unhealthy, %s notified\n' "$total" "$bad" "$sent"
 }

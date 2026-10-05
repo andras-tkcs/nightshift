@@ -77,4 +77,5 @@ ns_kill_main() {
   ns_kill_teardown "$id" "$ledger" "killed by owner" session
   "$NS_HOME/bin/ns-notify" "ns: $id killed by owner" || ns_warn "notification failed"
   printf 'killed %s; ns resume %s restarts it\n' "$id" "$id"
+  "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
 }
