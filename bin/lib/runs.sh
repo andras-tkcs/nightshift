@@ -83,6 +83,18 @@ ns_branch_name() {
   printf '%s\n' "$pat"
 }
 
+# ns_release_home <ledger>: print the directory of the release the run is pinned to, or
+# nothing when the ledger has none. Dies when that release is no longer installed.
+ns_release_home() {
+  local rel dir
+  rel=$("$NS_HOME/bin/ns-ledger" get "$1" '.release // ""' 2>/dev/null) || rel=""
+  [ -n "$rel" ] || return 0
+  [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]] || ns_die "ledger release '$rel' is not a release tag; refusing to launch it"
+  dir="${NS_OPT:-/opt/nightshift}/$rel"
+  [ -x "$dir/bin/ns-launch" ] || ns_die "release $rel, which this run started on, is not installed at $dir: install it with bootstrap.sh --upgrade $rel, then resume"
+  printf '%s\n' "$dir"
+}
+
 # ns_tmux_start <name> <dir> <command>
 ns_tmux_start() {
   local name="$1" dir="$2" cmd="$3" v args=()

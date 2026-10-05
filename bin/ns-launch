@@ -49,9 +49,14 @@ pname=$(jq -r .project <<<"$run")
 wt=$(jq -r .worktree <<<"$run")
 project=$(ns_project_by_name "$pname") || ns_die "unknown project $pname"
 repo=$(jq -r .repo <<<"$project")
-ns_token_export "${repo%%/*}"
-
 ledger=$(ns_run_ledger "$id")
+if [ -f "$ledger" ] && [ -z "${NS_LAUNCH_PINNED:-}" ]; then
+  rhome=$(ns_release_home "$ledger") || exit 1
+  if [ -n "$rhome" ] && ! [ "$rhome" -ef "$NS_HOME" ]; then
+    NS_HOME="$rhome" NS_LAUNCH_PINNED=1 exec "$rhome/bin/ns-launch" "$id" ${mode:+"$mode"}
+  fi
+fi
+ns_token_export "${repo%%/*}"
 export NS_RUN_ID="$id"
 export NS_LEDGER="$ledger"
 export NS_PROJECT="$pname"

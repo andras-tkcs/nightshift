@@ -140,6 +140,14 @@ ledger_of() { printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$SBX-$1" "$1"; }
   [ "$output" = "sbx-12 is already stopped" ]
 }
 
+@test "ns status shows the release the run started on (ns-46)" {
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  ns-ledger set "$(ledger_of sbx-12)" '.release="v0.0.9"'
+  run ns status sbx-12
+  assert_success
+  assert_output_contains "release  v0.0.9"
+}
+
 @test "ns status prints the escalation question at gate 1.5 (ns-47)" {
   ns new sbx-12 --tier T2 --yes >/dev/null
   ns-ledger state "$(ledger_of sbx-12)" waiting --gate 1.5
@@ -147,5 +155,5 @@ ledger_of() { printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$SBX-$1" "$1"; }
     >"$SBX-sbx-12/.nightshift/runs/sbx-12/escalation.md"
   run ns status sbx-12
   assert_success
-  assert_output_contains "question  Should the beta phase drop the cache?"
+  assert_output_contains "question Should the beta phase drop the cache?"
 }
