@@ -76,6 +76,10 @@ ns ls
 
 When it reaches a green pull request, the project is ready for bigger tiers.
 
+## Notes from the desk
+
+To start a run from a note you wrote on the review desk, use `ns new <prefix> --from-desk <path.md>`: the note becomes the request and nothing is added to the repo. To keep a note in the repo (say, a design doc), use `ns desk import <path.md> <repo path>`: it opens a pull request that you merge yourself.
+
 ## Starter files
 
 A project's files for Nightshift. The onboarding run drafts the ones marked "draft"; the rest you add yourself when you need them.

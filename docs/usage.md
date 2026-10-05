@@ -57,6 +57,7 @@ Running it again with the same repo and prefix prints `already registered` and e
 ```
 ns new <prefix>-<n> [--tier T0..T3] [--yes]
 ns new <prefix> "<text>" [--tier T0..T3] [--yes]
+ns new <prefix> --from-desk <path.md> [--tier T0..T3] [--yes]
 ns new <prefix>-onboard --onboard
 ```
 
@@ -65,6 +66,8 @@ ns new <prefix>-onboard --onboard
 `--tier T0..T3` sets the tier yourself (source `owner`) and its time budget from the profile, and skips triage. Without `--tier`, the conductor triages the request first, in the foreground: it prints the start of its `triage.md` and asks `Run <id> as <T> (budget <h> h)? [Y/n/T0/T1/T2/T3]`. Enter or `Y` takes the recommendation (source `triage`), a tier takes that tier (source `owner`), and `n` marks the run `stopped`. `--yes` answers `Y` without asking.
 
 If the run already exists, `ns new` prints `already running` and exits 0 when its tmux session is alive, and otherwise exits 1 and points to `ns resume`. A project whose base branch has no `.claude/project-profile.yaml` is refused until it has one: if the onboarding pull request is open, the message names it.
+
+`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
 
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
@@ -212,6 +215,14 @@ For a **closed** PR (not merged) it does the same except that it never deletes t
 Desk archive folders older than 90 days are deleted. A worktree with uncommitted or unpushed work is never touched: it is reported as `needs you: <path>: <reason>` and its run is kept whole, as are runs that are not `done` or whose PR is still open. Project `.claude/worktrees/*` holding work are reported too. On the 1st of the month, or with `--monthly`, the stacks' `gc.monthly` targets (for Python `~/.cache/pip`) are removed.
 
 Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed.
+
+### ns desk
+
+```
+ns desk import <path.md> <repo path>
+```
+
+`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request.
 
 ### ns publish
 
