@@ -22,7 +22,7 @@ ns_ls_main() {
     esac
     shift
   done
-  local lerr runs rows="[]" entry id wt ledger led row health idle created elapsed t0
+  local runs rows="[]" entry id wt ledger led row health idle created elapsed t0
   runs=$(ns_runs_json | jq -c --argjson all "$all" '[.[] | select($all or (.archived | not))] | sort_by(.created)')
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
@@ -31,10 +31,7 @@ ns_ls_main() {
     ledger="$wt/.nightshift/runs/$id/ledger.yaml"
     led=""
     if [ -d "$wt" ] && [ -f "$ledger" ]; then
-      lerr=$(mktemp)
-      led=$("$NS_HOME/bin/ns-ledger" get "$ledger" 2>"$lerr") || led=""
-      grep 'warning:' "$lerr" >&2 || true
-      rm -f "$lerr"
+      led=$({ "$NS_HOME/bin/ns-ledger" get "$ledger" 2>&1 1>&3 | grep 'warning:' >&2 || true; } 3>&1) || led=""
     fi
     if [ -n "$led" ]; then
       row=$(jq -c --argjson e "$entry" '{id: $e.id, project: $e.project, tier, state, gate, step,

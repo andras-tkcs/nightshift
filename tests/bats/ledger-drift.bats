@@ -79,3 +79,15 @@ commit_ledger() {
   assert_output_contains "tags"
   assert_output_contains "ns-ledger validate"
 }
+
+@test "the home that launched the run writes its own ledger; another checkout cannot" {
+  export NS_RUN_ID=sbx-12 NS_LEDGER="$LEDGER" NS_RUN_HOME="$NS_HOME"
+  run ns-ledger set "$LEDGER" '.step = "phases"'
+  assert_success
+  other="$BATS_TEST_TMPDIR/other-checkout"
+  mkdir -p "$other"
+  cp -r "$NS_HOME"/. "$other"/
+  NS_HOME="$other" run "$other/bin/ns-ledger" set "$LEDGER" '.step = "plan"'
+  assert_failure 1
+  assert_output_contains "live run"
+}

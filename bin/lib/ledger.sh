@@ -20,7 +20,12 @@ ns_ledger_check() {
 # ns_ledger_unknown_keys <file>: print the unknown top-level keys of a ledger file, one per line.
 # An unknown key is schema drift (a newer or older release wrote the ledger), not corruption.
 ns_ledger_unknown_keys() {
-  ns_ledger_check "$1" | sed -n "s/^\$: Additional properties are not allowed (\(.*\) w\(as\|ere\) unexpected)\$/\1/p" |
+  ns_ledger_check "$1" | ns_ledger_keys_filter
+}
+
+# ns_ledger_keys_filter: stdin is ns_ledger_check output; print the unknown top-level keys.
+ns_ledger_keys_filter() {
+  sed -n "s/^\$: Additional properties are not allowed (\(.*\) w\(as\|ere\) unexpected)\$/\1/p" |
     tr ',' '\n' | sed -e "s/^ *'//" -e "s/' *\$//"
 }
 
@@ -35,16 +40,21 @@ ns_ledger_error() {
 }
 
 # ns_ledger_guard <ledger>: refuse to write a live run's ledger from a dev checkout.
-# NS_RUN_ID and NS_LEDGER mark the live run; the release is the installed one under /opt/nightshift/.
+# NS_RUN_ID and NS_LEDGER mark the live run; ns-launch exports NS_RUN_HOME, the home that launched it.
+# Only that home may write the run's ledger. Without NS_RUN_HOME, only an installed release may.
 ns_ledger_guard() {
   local ledger="$1" live
   [ -n "${NS_RUN_ID:-}" ] && [ -n "${NS_LEDGER:-}" ] || return 0
   live="$(readlink -f "$NS_LEDGER" 2>/dev/null || printf '%s' "$NS_LEDGER")"
   [ "$(readlink -f "$ledger" 2>/dev/null || printf '%s' "$ledger")" = "$live" ] || return 0
-  case "$(readlink -f "$NS_HOME")/" in
-    /opt/nightshift/*) return 0 ;;
-  esac
-  ns_die "refusing to write $ledger: it belongs to live run $NS_RUN_ID and NS_HOME=$NS_HOME is not an installed release (/opt/nightshift); test new code against a temp ledger"
+  if [ -n "${NS_RUN_HOME:-}" ]; then
+    [ "$(readlink -f "$NS_HOME")" != "$(readlink -f "$NS_RUN_HOME")" ] || return 0
+  else
+    case "$(readlink -f "$NS_HOME")/" in
+      "${NS_OPT:-/opt/nightshift}"/*) return 0 ;;
+    esac
+  fi
+  ns_die "refusing to write $ledger: it belongs to live run $NS_RUN_ID and NS_HOME=$NS_HOME is not the home that launched it (${NS_RUN_HOME:-${NS_OPT:-/opt/nightshift}}); test new code against a temp ledger"
 }
 
 # ns_ledger_write <ledger>: read JSON on stdin, validate, replace the file atomically.
@@ -85,13 +95,15 @@ ns_ledger_recover() {
 ns_ledger_read() {
   local ledger="$1"
   [ -f "$ledger" ] || ns_die "no such ledger: $ledger"
-  local err key
-  if ! err="$(ns_ledger_error "$ledger")"; then
+  local chk err key
+  chk="$(ns_ledger_check "$ledger")"
+  err="$(printf '%s\n' "$chk" | grep -v '^\$: Additional properties are not allowed' | grep -v '^$' | head -n1 || true)"
+  if [ -n "$err" ]; then
     ns_ledger_recover "$ledger" ||
       ns_die "ledger $ledger is corrupt and has no valid committed version: $err; run: ns-ledger validate $ledger"
   fi
   while IFS= read -r key; do
     [ -z "$key" ] || ns_warn "ledger has unknown field $key; kept"
-  done < <(ns_ledger_unknown_keys "$ledger")
+  done < <(printf '%s\n' "$chk" | ns_ledger_keys_filter)
   ns_yaml_json "$ledger"
 }

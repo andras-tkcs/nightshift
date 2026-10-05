@@ -157,11 +157,11 @@ ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --
 
 An unknown top-level key (for example one written by a newer or older release) is not corruption: `ns-ledger get`, `ns ls`, `ns status` and `ns resume` read the ledger, print `ledger has unknown field <k>; kept` and keep the key on write. A missing required field or a wrong type is an error that names the field; run `ns-ledger validate <ledger>` to see it.
 
-A command started from a checkout that is not an installed release (`NS_HOME` not under `/opt/nightshift/`) refuses to write the ledger that `NS_LEDGER` names while `NS_RUN_ID` is set, because that ledger belongs to a live run. Any other ledger (a test fixture or temp file) can still be written.
+`ns-launch` exports `NS_RUN_HOME`, the home that launched the run. A command whose `NS_HOME` differs from `NS_RUN_HOME` (a different checkout) refuses to write the ledger that `NS_LEDGER` names while `NS_RUN_ID` is set, because that ledger belongs to a live run. Without `NS_RUN_HOME`, only an installed release (`NS_HOME` under `${NS_OPT:-/opt/nightshift}/`) may write it. Any other ledger (a test fixture or temp file) can still be written.
 
 ## Recovery
 
-Every subcommand except `init` checks the file first. If it does not parse or fails the schema, `ns-ledger` reads the version committed at `HEAD` (`git show HEAD:<path>`). If that version is valid, it writes it back, appends a `recovered` event (`ledger was corrupt; restored from <short sha>`), warns on stderr and carries on. If there is no valid committed version it exits 1 with `ledger <path> is corrupt and has no valid committed version`.
+Every subcommand except `init` checks the file first. If it does not parse or fails the schema, `ns-ledger` reads the version committed at `HEAD` (`git show HEAD:<path>`). If that version is valid, it writes it back, appends a `recovered` event (`ledger was corrupt; restored from <short sha>`), warns on stderr and carries on. If there is no valid committed version it exits 1 with `ledger <path> is corrupt and has no valid committed version: <error>; run: ns-ledger validate <path>`.
 
 Recovery loses only what happened since the last checkpoint, which is why the conductor checkpoints after every step.
 
