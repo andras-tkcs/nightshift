@@ -4,6 +4,7 @@ load helpers
 
 setup() {
   ns_test_setup
+  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/desk"
   FIX="$BATS_TEST_TMPDIR/fixture"
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
