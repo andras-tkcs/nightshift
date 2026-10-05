@@ -134,6 +134,6 @@ PRS_TWO='[
   run ns stack sbx
   assert_success
   local order
-  order=$(grep -o 'sbx-2[0-9]' <<<"$output" | tr '\n' ' ')
+  order=$(awk '$1 ~ /^sbx-2/ {printf "%s ", $1}' <<<"$output")
   [ "$order" = "sbx-20 sbx-21 sbx-22 sbx-23 sbx-24 sbx-25 sbx-26 sbx-27 sbx-28 sbx-29 " ]
 }
