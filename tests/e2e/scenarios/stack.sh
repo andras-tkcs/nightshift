@@ -28,8 +28,45 @@ scenario_main() {
   e2e_wait "$third" '.state == "done"' "$E2E_TIMEOUT" || return 1
   e2e_assert "third PR is based on the second PR's branch" stack_base_is_first "$second" "$third" || return 1
 
-  # land the stack with one command (the sandbox PRs need an approval first, so this needs the owner's review)
+  # land the stack with one command; the owner has to approve the three PRs first
+  e2e_log "approve the three PRs now: $(stack_pr_urls "$first" "$second" "$third")"
+  e2e_assert "the owner approved all three PRs (waiting up to ${E2E_APPROVE_TIMEOUT}s)" stack_wait_approved "$first" "$second" "$third" || return 1
   e2e_assert "ns stack merge lands all three PRs" stack_merge_all "$first" "$second" "$third" || return 1
+  e2e_assert "the checks on the base branch are green" stack_main_green || return 1
+}
+
+E2E_APPROVE_TIMEOUT=${E2E_APPROVE_TIMEOUT:-1800}
+
+stack_pr_urls() {
+  local id
+  for id in "$@"; do printf '%s ' "$(e2e_pr_url "$id")"; done
+}
+
+# stack_wait_approved <id>...: poll until every PR has reviewDecision APPROVED, or time out
+stack_wait_approved() {
+  local start id ok
+  start=$(date +%s)
+  while :; do
+    ok=1
+    for id in "$@"; do
+      [ "$(e2e_pr_json "$id" reviewDecision | jq -r '.reviewDecision')" = APPROVED ] || ok=0
+    done
+    [ "$ok" -eq 0 ] || return 0
+    [ $(($(date +%s) - start)) -lt "$E2E_APPROVE_TIMEOUT" ] || return 1
+    sleep 30
+  done
+}
+
+# stack_main_green: the checks of the base branch's head commit pass (no failing runs, none pending)
+stack_main_green() {
+  local sha n
+  sleep 20
+  sha=$(gh api "repos/$E2E_REPO/commits/$E2E_BASE" --jq .sha) || return 1
+  # shellcheck disable=SC2016
+  timeout 1200 bash -c 'until [ "$(gh api "repos/$0/commits/$1/status" --jq .state)" != pending ] \
+    && ! gh api "repos/$0/commits/$1/check-runs" --jq ".check_runs[] | select(.status != \"completed\")" | grep -q .; do sleep 20; done' "$E2E_REPO" "$sha" || return 1
+  n=$(gh api "repos/$E2E_REPO/commits/$sha/check-runs" --jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length') || return 1
+  [ "$n" -eq 0 ] && [ "$(gh api "repos/$E2E_REPO/commits/$sha/status" --jq .state)" != failure ]
 }
 
 stack_merge_all() {

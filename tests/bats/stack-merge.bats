@@ -17,7 +17,7 @@ setup() {
   : >"$GH_STUB_RESPONSES/map"
   # pr edit / merge / close and pr view all succeed; the list answers come from pr_list
   printf '0\t-\t^pr (edit|merge|close) \n' >>"$GH_STUB_RESPONSES/map"
-  printf '{"mergeable":"MERGEABLE","reviewDecision":"APPROVED","state":"OPEN"}\n' >"$GH_STUB_RESPONSES/pr-view.json"
+  printf '{"mergeable":"MERGEABLE","state":"OPEN"}\n' >"$GH_STUB_RESPONSES/pr-view.json"
   printf '0\tpr-view.json\t^pr view\n' >>"$GH_STUB_RESPONSES/map"
 }
 
@@ -139,5 +139,106 @@ line_of() { grep -n -- "$1" "$GH_STUB_LOG" | head -1 | cut -d: -f1 || true; }
   assert_output_contains "#6"
   run grep -E "^gh pr (merge|edit|close)" "$GH_STUB_LOG"
   assert_failure 1
+  [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
+}
+
+# set_lint <cmd>: change the lint check of the profile on the default branch of the remote
+set_lint() {
+  local w tree commit
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/prof.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  sed -i "s|^  lint: .*|  lint: \"$1\"|" "$w/.claude/project-profile.yaml"
+  git -C "$w" commit -q -am "profile lint $1"
+  commit=$(git -C "$w" rev-parse HEAD)
+  git -C "$REMOTE" fetch -q "$w" HEAD
+  git -C "$REMOTE" update-ref HEAD "$commit"
+  rm -rf "$w"
+}
+
+@test "ns stack merge runs the profile checks on the top of the stack, then merges" {
+  stack3 APPROVED
+  run ns stack merge sbx
+  assert_success
+  assert_output_contains "check python lint: pass"
+  [ -n "$(line_of "pr merge 7 ")" ]
+}
+
+@test "ns stack merge merges nothing when the profile checks fail on the top of the stack" {
+  stack3 APPROVED
+  set_lint false
+  run ns stack merge sbx
+  assert_failure
+  assert_output_contains "checks failed on top of the stack (#7)"
+  [ -z "$(line_of "pr merge")" ]
+}
+
+@test "ns stack merge --dry-run lists the checks step" {
+  stack3 APPROVED
+  run ns stack merge sbx --dry-run
+  assert_success
+  assert_output_contains "profile checks on the top of the stack (#7)"
+}
+
+@test "ns stack merge stops at a middle PR with failing checks" {
+  stack3 APPROVED
+  pr_list '[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T11:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[{"conclusion":"FAILURE","status":"COMPLETED"}]},
+ {"number":7,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]}
+]'
+  run ns stack merge sbx
+  assert_failure
+  assert_output_contains "#6"
+  assert_output_contains "not green"
+  [ -n "$(line_of "pr merge 5 ")" ]
+  [ -z "$(line_of "pr merge 6 ")" ]
+  [ -z "$(line_of "pr merge 7 ")" ]
+}
+
+@test "ns stack merge stops at a PR that has new conflicts" {
+  stack3 APPROVED
+  { printf '0\tpr-view6.json\t^pr view 6 \n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+  printf '{"mergeable":"CONFLICTING","state":"OPEN"}\n' >"$GH_STUB_RESPONSES/pr-view6.json"
+  run ns stack merge sbx
+  assert_failure
+  assert_output_contains "#6"
+  assert_output_contains "conflicts"
+  [ -n "$(line_of "pr merge 5 ")" ]
+  [ -z "$(line_of "pr merge 6 ")" ]
+  [ -z "$(line_of "pr merge 7 ")" ]
+}
+
+@test "ns stack drop reverts the dropped change in the PR above" {
+  stack3 APPROVED
+  run ns stack drop sbx-13
+  assert_success
+  assert_output_contains "reverted"
+  local w
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/chk.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  git -C "$w" checkout -q fix/sbx-14
+  [ ! -e "$w/b.txt" ]
+  [ -e "$w/c.txt" ]
+  [ -e "$w/a.txt" ]
+}
+
+@test "ns stack drop stops and names the PR above when the revert does not apply" {
+  stack3 APPROVED
+  # the top layer edits the file the dropped layer added, so its change cannot be taken out
+  local w before
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/top.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  git -C "$w" checkout -q -b fix/sbx-14 origin/fix/sbx-14
+  printf 'edited above\n' >"$w/b.txt"
+  git -C "$w" commit -q -am "top edits b.txt"
+  git -C "$w" push -q origin fix/sbx-14
+  rm -rf "$w"
+  before=$(git -C "$REMOTE" rev-parse fix/sbx-14)
+  run ns stack drop sbx-13
+  assert_failure
+  assert_output_contains "#7"
+  [ -z "$(line_of "pr close 6")" ]
+  [ -z "$(line_of "pr edit 7")" ]
   [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
 }

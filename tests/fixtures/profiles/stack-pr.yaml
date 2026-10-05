@@ -3,5 +3,6 @@ prefix: sbx
 commands:
   setup: "true"
   test: "true"
+  lint: "true"
 git: {}
 stacks: [python]

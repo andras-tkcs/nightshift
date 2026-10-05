@@ -85,11 +85,11 @@ ns_stack_closed_heads() {
 }
 
 # ns_stack_gate <pr json> <live json>: print why a PR cannot be merged (one line, empty when it can).
-# The review decision and checks come from the PR list row, mergeability and state from `gh pr view`.
+# Review decision, checks, mergeability and state come from the live `gh pr view`; the PR list row is the fallback.
 ns_stack_gate() {
   local row="$1" live="$2" rev checks mergeable state
-  rev=$(jq -r '.reviewDecision' <<<"$row")
-  checks=$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")
+  rev=$(jq -r --argjson r "$row" 'if has("reviewDecision") then .reviewDecision else $r.reviewDecision end // ""' <<<"$live")
+  checks=$(ns_stack_checks_state "$(jq -c --argjson r "$row" 'if has("statusCheckRollup") then .statusCheckRollup else $r.statusCheckRollup end // []' <<<"$live")")
   mergeable=$(jq -r '.mergeable // ""' <<<"$live")
   state=$(jq -r '.state // "OPEN"' <<<"$live")
   if [ "$state" != OPEN ]; then
