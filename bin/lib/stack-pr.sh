@@ -74,7 +74,7 @@ ns_stack_chains() {
         else ([$all[] | select(.head == $p.base)] | first) as $b
           | if $b == null then $p.head else root($b; $n - 1) end end;
     map(. + {root: root(.; $max)}) as $m
-    | reduce $m[] as $r ([]; if any(.[]; . == $r.root) then . else . + [$r.root] end) as $roots
+    | (reduce $m[] as $r ([]; if any(.[]; . == $r.root) then . else . + [$r.root] end)) as $roots
     | [$roots[] as $x | [$m[] | select(.root == $x) | del(.root)]]' <<<"$1"
 }
 
