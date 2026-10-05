@@ -31,7 +31,7 @@
     "step": { "enum": ["intake", "triage", "discovery", "gate1", "implement", "phases", "board", "integrate", "onboard", "done"], "description": "Current step." },
     "stop_requested": { "enum": [null, "stopped", "parked"], "description": "Pending stop request." },
     "branch": { "type": "string", "minLength": 1, "description": "Run branch holding the ledger." },
-    "release": { "$ref": "#/$defs/nullable_string", "description": "Nightshift release tag the run started on (basename of NS_HOME); null for a dev checkout. Resume and workers use this release." },
+    "release": { "type": ["string", "null"], "pattern": "^v[0-9][0-9A-Za-z._-]*$", "description": "Nightshift release tag the run started on (basename of NS_HOME); null for a dev checkout. Resume and workers use this release." },
     "feature_branch": { "$ref": "#/$defs/nullable_string", "description": "Code branch, set when created." },
     "pr": { "$ref": "#/$defs/nullable_string", "description": "Pull request URL." },
     "created": { "$ref": "#/$defs/time", "description": "Creation time." },

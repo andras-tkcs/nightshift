@@ -162,3 +162,51 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   assert_failure
   assert_output_contains "v0.0.1"
 }
+
+@test "resume --all fails and starts nothing when the pinned release is gone (ns-46)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  ns-ledger set "$LEDGER" '.state="parked" | .release="v0.0.1"'
+  run ns resume --all
+  assert_failure
+  assert_output_contains "v0.0.1"
+  [ ! -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget .state)" = parked ]
+}
+
+@test "a release value that is not a tag is refused (ns-46)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT/x/bin" "$BATS_TEST_TMPDIR/fakehome/bin"
+  : >"$NS_OPT/x/bin/ns-launch"
+  chmod +x "$NS_OPT/x/bin/ns-launch"
+  printf '#!/usr/bin/env bash\necho ../x\n' >"$BATS_TEST_TMPDIR/fakehome/bin/ns-ledger"
+  chmod +x "$BATS_TEST_TMPDIR/fakehome/bin/ns-ledger"
+  mkdir -p "$NS_OPT/v1"
+  run bash -c 'NS_HOME="$1"; source "$2/bin/lib/common.sh"; source "$2/bin/lib/runs.sh"; ns_release_home /nonexistent' _ \
+    "$BATS_TEST_TMPDIR/fakehome" "$NS_REPO_ROOT"
+  assert_failure
+  assert_output_contains "not a release tag"
+}
+
+@test "ns-launch re-execs the pinned release (ns-46)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT/v0.0.9/bin"
+  cat >"$NS_OPT/v0.0.9/bin/ns-launch" <<EOS
+#!/usr/bin/env bash
+printf 'HOME=%s PINNED=%s ARGS=%s\n' "\$NS_HOME" "\${NS_LAUNCH_PINNED:-}" "\$*" >"$BATS_TEST_TMPDIR/stub.out"
+EOS
+  chmod +x "$NS_OPT/v0.0.9/bin/ns-launch"
+  ns-ledger set "$LEDGER" '.release="v0.0.9"'
+  run ns-launch sbx-12 --resume
+  assert_success
+  [ "$(cat "$BATS_TEST_TMPDIR/stub.out")" = "HOME=$NS_OPT/v0.0.9 PINNED=1 ARGS=sbx-12 --resume" ]
+}
+
+@test "ns-launch dies when the pinned release is gone (ns-46)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  ns-ledger set "$LEDGER" '.release="v0.0.1"'
+  run ns-launch sbx-12 --resume
+  assert_failure
+  assert_output_contains "v0.0.1"
+}

@@ -630,10 +630,13 @@ active_runs() {
   [ -f "$f" ] || return 0
   while IFS=$'\t' read -r id wt; do
     l="$wt/.nightshift/runs/$id/ledger.yaml"
-    [ -f "$l" ] || continue
+    if [ ! -f "$l" ]; then
+      printf '%s  unknown  -\n' "$id"
+      continue
+    fi
     line="$(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$l" \
       | jq -r 'select((.state // "") as $s | ["done","stopped","failed"] | index($s) | not)
-        | "\(.id)  \(.state)  \(.release // "-")"')" || continue
+        | "\(.id)  \(.state)  \(.release // "-")"')" || line="$id  unknown  -"
     [ -z "$line" ] || printf '%s\n' "$line"
   done < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$f" \
     | jq -r '.runs // [] | .[] | select(.archived | not) | [.id, .worktree] | @tsv')

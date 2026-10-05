@@ -88,7 +88,7 @@ ns_resume_one() {
     printf '%s waits for the owner at gate %s: edit the desk documents, then ns approve %s\n' "$id" "$gate" "$id"
     return 0
   fi
-  rhome=$(ns_release_home "$ledger")
+  rhome=$(ns_release_home "$ledger") || return 1
   [ -n "$rhome" ] || rhome="$NS_HOME"
   if ns_tmux_has "$id"; then
     ns_tmux_kill "$id"

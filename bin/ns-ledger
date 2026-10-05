@@ -79,7 +79,10 @@ cmd_init() {
   [ ! -e "$ledger" ] || ns_die "ledger exists: $ledger"
   now="$(ns_now)"
   release="$(basename "${NS_HOME:-}")"
-  [[ $release =~ ^v[0-9] ]] || release=""
+  if ! [[ $release =~ ^v[0-9] ]]; then
+    release="$(basename "$(readlink -f "${NS_HOME:-/}" 2>/dev/null || true)")"
+    [[ $release =~ ^v[0-9] ]] || release=""
+  fi
   if jq -n -c --arg release "$release" --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
     --arg branch "$branch" --arg now "$now" '{
       version: 1, id: $id, project: $project,

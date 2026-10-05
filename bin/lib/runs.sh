@@ -89,6 +89,7 @@ ns_release_home() {
   local rel dir
   rel=$("$NS_HOME/bin/ns-ledger" get "$1" '.release // ""' 2>/dev/null) || rel=""
   [ -n "$rel" ] || return 0
+  [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]] || ns_die "ledger release '$rel' is not a release tag; refusing to launch it"
   dir="${NS_OPT:-/opt/nightshift}/$rel"
   [ -x "$dir/bin/ns-launch" ] || ns_die "release $rel, which this run started on, is not installed at $dir: install it with bootstrap.sh --upgrade $rel, then resume"
   printf '%s\n' "$dir"
