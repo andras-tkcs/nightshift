@@ -23,11 +23,11 @@ End-to-end tests run on ns-main only and touch only `andras-tkcs/nightshift-sand
 
 ```bash
 tests/e2e/run.sh preflight          # gh login, sandbox repo, auto mode, bats, shellcheck, memory
-tests/e2e/run.sh t0                 # one scenario: t0, t1, t2, t3 or resume
+tests/e2e/run.sh t0                 # one scenario: t0, t1, t2, t3, stack or resume
 tests/e2e/run.sh cleanup <branch>   # remove what a failed attempt left behind
 ```
 
-Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take minutes and a little usage, `t2` and `t3` take much longer and use a lot, and `resume` kills a conductor and resumes it. Each run appends a line to `tests/e2e/results.md`. `--keep` leaves the pull request and branches in place after a pass. Run one scenario at a time (4 GB RAM).
+Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take minutes and a little usage, `t2` and `t3` take much longer and use a lot, `stack` runs two T0 runs in a row and checks that the second pull request is stacked on the first (its base is the first branch and its diff shows only its own change), and `resume` kills a conductor and resumes it. Each run appends a line to `tests/e2e/results.md`. `--keep` leaves the pull request and branches in place after a pass. Run one scenario at a time (4 GB RAM).
 
 ## Conventions
 
