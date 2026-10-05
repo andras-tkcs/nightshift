@@ -55,14 +55,16 @@ Running it again with the same repo and prefix prints `already registered` and e
 ### ns new
 
 ```
-ns new <prefix>-<n> [--tier T0..T3] [--yes]
-ns new <prefix> "<text>" [--tier T0..T3] [--yes]
+ns new <prefix>-<n> [--tier T0..T3] [--yes] [--now]
+ns new <prefix> "<text>" [--tier T0..T3] [--yes] [--now]
 ns new <prefix>-onboard --onboard
 ```
 
 `ns new` starts a run. `sbx-12` runs GitHub issue 12 of the project with prefix `sbx`; `ns new sbx "text"` runs free text and gets the id `sbx-x1`, then `sbx-x2` and so on (a number whose `plan/<id>` branch already exists on GitHub, say from another machine, is skipped). The command creates a worktree `~/Coding/worktrees/<repo>-<id>` on the branch `plan/<id>` from `origin/<base branch>`, runs the project's setup there, writes and pushes the run ledger (state `queued`), adds the run to `~/.config/ns/runs.yaml`, and starts the conductor in a detached tmux session named `<id>` (`ns attach <id>` to watch it). The session runs `ns-launch`, which starts Claude headless; its stream is logged to `~/.config/ns/logs/<id>/conductor.jsonl` and shown as one line per event.
 
 `--tier T0..T3` sets the tier yourself (source `owner`) and its time budget from the profile, and skips triage. Without `--tier`, the conductor triages the request first, in the foreground: it prints the start of its `triage.md` and asks `Run <id> as <T> (budget <h> h)? [Y/n/T0/T1/T2/T3]`. Enter or `Y` takes the recommendation (source `triage`), a tier takes that tier (source `owner`), and `n` marks the run `stopped`. `--yes` answers `Y` without asking.
+
+At most `max_runs` conductors run at once (`~/.config/ns/config.yaml: max_runs`, default 2; the 4 GB machine cannot carry more). When that many runs already have a live tmux session, `ns new` still creates the worktree and ledger but starts no session: the run stays `queued` and the command prints `queued <id>: 2 of 2 runs active (starts when one finishes)`. `ns dequeue` starts it, oldest first, as soon as a conductor ends. `--now` starts the run at once, past the limit. `ns resume`, `ns resume --all` and `ns approve` obey the same limit; a run that cannot start becomes `queued`.
 
 If the run already exists, `ns new` prints `already running` and exits 0 when its tmux session is alive, and otherwise exits 1 and points to `ns resume`. A project whose base branch has no `.claude/project-profile.yaml` is refused until it has one: if the onboarding pull request is open, the message names it.
 
@@ -84,7 +86,7 @@ Stacking: before opening its PR a run asks `ns-conductor stack-base <id>`. When 
 ns ls [--all] [--json]
 ```
 
-`ns ls` lists the runs in `~/.config/ns/runs.yaml`, oldest first, one line each: ID, TIER (`-` before a tier is set), PHASE (the phases that are running or in review, else the ledger's step), STATE, WAITING-ON, AGE, ELAPSED (since the run was created) and LAST-OUT (since the newest log under `logs/<id>/` was written, `-` when there is none). A run in state `running` with no open gate shows its health in the STATE column when it is not `ok`: `dead` when its tmux session or pane process is gone, `silent <N>m` when its log has not grown for `NS_SILENT_SECS` seconds (default 1200). An open gate is never silent. WAITING-ON is `owner:gate<g>` when the run waits at a gate, `pool` when a phase is queued for a free worker, and otherwise `-`. A run whose worktree has been deleted shows state `?` and `no-worktree`. With no runs it prints `no runs`. `--all` includes archived runs; `--json` prints an array of `{id, project, tier, state, gate, step, phases, created, health, elapsed_s, idle_s}`; `health` is `ok`, `dead` or `silent <N>m`, `idle_s` is null without a log.
+`ns ls` lists the runs in `~/.config/ns/runs.yaml`, oldest first, one line each: ID, TIER (`-` before a tier is set), PHASE (the phases that are running or in review, else the ledger's step), STATE, WAITING-ON, AGE, ELAPSED (since the run was created) and LAST-OUT (since the newest log under `logs/<id>/` was written, `-` when there is none). A run in state `running` with no open gate shows its health in the STATE column when it is not `ok`: `dead` when its tmux session or pane process is gone, `silent <N>m` when its log has not grown for `NS_SILENT_SECS` seconds (default 1200). An open gate is never silent. WAITING-ON is `owner:gate<g>` when the run waits at a gate, `runs` when a queued run waits for a free run slot (`max_runs`), `pool` when a phase is queued for a free worker, and otherwise `-`. A run whose worktree has been deleted shows state `?` and `no-worktree`. With no runs it prints `no runs`. `--all` includes archived runs; `--json` prints an array of `{id, project, tier, state, gate, step, phases, created, health, elapsed_s, idle_s}`; `health` is `ok`, `dead` or `silent <N>m`, `idle_s` is null without a log.
 
 ### ns status
 
@@ -92,7 +94,7 @@ ns ls [--all] [--json]
 ns status <id> [--json]
 ```
 
-`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `stacked` line names the run (or `main`) the PR is stacked on, when set. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). At gate 1.5 a `question` line shows the first 200 characters of the `## Question` section of `RUN/escalation.md`. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
+`ns status` shows one run: tier and where it came from, state, gate and step, the time budget used, the branches and pull request, every phase with its attempts and review rounds, and the last five ledger events. A `queue` line (`position N of M`) shows where a queued run stands. A `stacked` line names the run (or `main`) the PR is stacked on, when set. A `release` line names the Nightshift release the run started on (`-` for a dev checkout). At gate 1.5 a `question` line shows the first 200 characters of the `## Question` section of `RUN/escalation.md`. A `health` line says `ok`, `dead` or `silent <N>m` as in `ns ls`. `--json` prints the whole ledger, the same as `ns-ledger get`.
 
 ### ns attach
 
@@ -180,13 +182,21 @@ ns doctor [--no-claude]
 11. Auto permission mode works in a headless call (`ns-conductor check-auto`). On failure the `FAIL` line carries the hint to set `NS_WORKER_MODE=bypassPermissions` (R-CON-4). `--no-claude` skips this call and prints a `warn`.
 12. A run in state `running` without a tmux session is a `warn`: `run <id> has no session: ns resume <id>`.
 
+### ns dequeue
+
+```
+ns dequeue
+```
+
+`ns dequeue` starts queued runs, oldest first, while fewer than `max_runs` conductors are live (a conductor is live when the run has a tmux session; the `rc` session is not a run). Each start re-checks the count under a lock (`~/.config/ns/queue.lock`), so concurrent calls never start more than the free slots. A started run gets a `dequeued` ledger event and one ntfy line. The last line is `ns dequeue: <n> started, <m> still queued`. `ns-launch` calls it when a conductor ends, `ns kill` and `ns stop` call it, and `ns health-check` calls it as a backstop; you can run it by hand.
+
 ### ns health-check
 
 ```
 ns health-check
 ```
 
-`ns health-check` is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
+`ns health-check` also runs `ns dequeue`. It is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
 
 ### ns rm
 

@@ -84,6 +84,13 @@ log="$(ns_config_dir)/logs/$id/conductor.jsonl"
 mkdir -p "$(dirname "$log")"
 
 cd "$wt"
-exec "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
+rc=0
+"${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
   --model "$model" --agent ns:conductor "${plugin_args[@]}" "$prompt" \
-  < /dev/null > >(tee -a "$log" | python3 "$NS_HOME/bin/lib/stream-view.py")
+  < /dev/null > >(tee -a "$log" | python3 "$NS_HOME/bin/lib/stream-view.py") || rc=$?
+wait || true
+# the conductor ended: let the next queued run take the slot
+if [ "$mode" != --triage ]; then
+  NS_QUEUE_EXCLUDE="$id" "$NS_HOME/bin/ns" dequeue >/dev/null 2>&1 || true
+fi
+exit "$rc"

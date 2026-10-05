@@ -9,20 +9,37 @@ source "$NS_HOME/bin/lib/runs.sh"
 source "$NS_HOME/bin/lib/stacks.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/profile.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/queue.sh"
 
 NS_NEW_USAGE="ns new <prefix>-<n> | <prefix> \"<text>\" | <prefix>-onboard --onboard [--tier T0..T3] [--yes]"
 
 ns_new_help() {
-  printf 'usage: ns new <prefix>-<n> [--tier T0..T3] [--yes]\n'
-  printf '       ns new <prefix> "<text>" [--tier T0..T3] [--yes]\n'
+  printf 'usage: ns new <prefix>-<n> [--tier T0..T3] [--yes] [--now]\n'
+  printf '       ns new <prefix> "<text>" [--tier T0..T3] [--yes] [--now]\n'
   printf '       ns new <prefix>-onboard --onboard\n\n'
   printf 'Create a run: worktree on plan/<id>, ledger, then a tmux session running the\n'
   printf 'conductor. Without --tier the conductor triages first and asks for the tier\n'
-  printf '(--yes takes its recommendation).\n'
+  printf '(--yes takes its recommendation). At max_runs live conductors the run waits in the\n'
+  printf 'queue (ns dequeue); --now starts it anyway.\n'
+}
+
+# ns_new_start <id> <wt> <ledger> <now>: under the queue lock, start the conductor or queue the run
+ns_new_start() {
+  local id="$1" wt="$2" ledger="$3" now="$4" live
+  live=$(ns_queue_live_count)
+  if [ "$now" = false ] && [ "$live" -ge "$(ns_queue_max)" ]; then
+    "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot"
+    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
+    ns_queue_msg "$id" "$live"
+    return 10
+  fi
+  ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id"
+  printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
 }
 
 ns_new_main() {
-  local arg="" text="" tier="" yes=false onboard=false
+  local arg="" text="" tier="" yes=false onboard=false now=false
   local prefix n id project profile rc=0 path pname repo branch base plan_branch wt ledger hours
   local ans rec src
   while [ $# -gt 0 ]; do
@@ -34,6 +51,10 @@ ns_new_main() {
         ;;
       --yes | -y)
         yes=true
+        shift
+        ;;
+      --now)
+        now=true
         shift
         ;;
       --onboard)
@@ -180,6 +201,7 @@ ns_new_main() {
   fi
 
   # 6. detach
-  ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id"
-  printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
+  rc=0
+  ns_queue_locked ns_new_start "$id" "$wt" "$ledger" "$now" || rc=$?
+  [ "$rc" -eq 0 ] || [ "$rc" -eq 10 ] || return "$rc"
 }
