@@ -39,16 +39,40 @@ if [ "${#libs[@]}" -gt 0 ]; then
   shellcheck -x --shell=bash "${libs[@]}" || rc=1
 fi
 
-# jq-compat (ns-105): CI runs jq 1.7.1, which rejects an unparenthesised
-# `reduce/foreach <pipeline> as $x`. Newer jq accepts it, so flag it here.
+# jq-compat (ns-105): CI runs jq 1.7.1. A reduce/foreach expression used
+# directly as a binding source, `reduce .[] as $x (INIT; UPDATE) as $roots`,
+# must be parenthesised: `(reduce ... ) as $roots` (see fix/ns-84). jq 1.8.1
+# accepts the bare form, 1.7.x rejects it, so a local run cannot catch it.
+# Scope: multi-line aware paren matching over file text; comment lines skipped.
 CI_JQ_VERSION="1.7.1"
-re='(reduce|foreach)[[:space:]]+[^(][^$]*\|[^$]*[[:space:]]as[[:space:]]+[$[]'
 for f in "${files[@]}"; do
-  while IFS= read -r hit; do
-    [ -n "$hit" ] || continue
-    echo "$f:${hit%%:*}: jq 1.7-incompatible: parenthesise the reduce/foreach source: (...) as \$x" >&2
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    echo "$f:$line: jq 1.7-incompatible: wrap in parentheses: (reduce/foreach ... ) as \$name" >&2
     rc=1
-  done < <(grep -nE "$re" "$f" || true)
+  done < <(python3 - "$f" <<'PY'
+import re, sys
+text = "".join("\n" if l.lstrip().startswith("#") else l
+               for l in open(sys.argv[1], errors="replace").read().splitlines(True))
+head = re.compile(r"\b(reduce|foreach)\b")
+binder = re.compile(r"\bas\s+(\$\w+|\[[^\]]*\]|\{[^}]*\})\s*\(")
+after = re.compile(r"\s*as\s+[$\[{]")
+seen = set()
+for m in head.finditer(text):
+    b = binder.search(text, m.end())
+    if not b:
+        continue
+    i, depth = b.end(), 1
+    while i < len(text) and depth:
+        depth += {"(": 1, ")": -1}.get(text[i], 0)
+        i += 1
+    if depth == 0 and after.match(text, i):
+        ln = text.count("\n", 0, m.start()) + 1
+        if ln not in seen:
+            seen.add(ln)
+            print(ln)
+PY
+)
 done
 
 if command -v jq >/dev/null 2>&1; then

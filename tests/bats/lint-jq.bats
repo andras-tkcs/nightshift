@@ -12,22 +12,22 @@ fake_jq() {
   chmod +x "$BATS_TEST_TMPDIR/fakebin/jq"
 }
 
-@test "lint fails on unparenthesised reduce source followed by as" {
+@test "lint fails on unparenthesised reduce expression followed by as" {
   cat >"$TREE/bin/bad.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-jq 'reduce .items | .[] as $x (0; . + $x)' <<<'{"items":[1]}'
+jq 'reduce .[] as $x (0; .+$x) as $t | $t' <<<'[1]'
 SH
   NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
   [ "$status" -ne 0 ]
   [[ "$output" == *"bad.sh:3"* ]]
 }
 
-@test "lint fails on unparenthesised foreach source followed by as" {
+@test "lint fails on unparenthesised foreach expression followed by as" {
   cat >"$TREE/bin/badfe.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-jq 'foreach .items | .[] as $x (0; . + $x)' <<<'{"items":[1]}'
+jq 'foreach .[] as $x (0; .+$x) as $t | $t' <<<'[1]'
 SH
   NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
   [ "$status" -ne 0 ]
@@ -38,9 +38,10 @@ SH
   cat >"$TREE/bin/good.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-jq 'reduce (.items[]) as $x (0; . + $x)' <<<'{"items":[1]}'
+jq '(reduce .[] as $x (0; .+$x)) as $t | $t' <<<'[1]'
+# reduce .[] as $x (0; .+$x) as $t is only a comment
 SH
-  NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
+  NS_LINT_STRICT_JQ=0 NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
   [ "$status" -eq 0 ]
   [[ "$output" == *"lint: ok"* ]]
 }
@@ -70,4 +71,18 @@ SH
   fake_jq 1.8.1
   PATH="$BATS_TEST_TMPDIR/fakebin:$PATH" NS_LINT_STRICT_JQ=1 NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
   [ "$status" -ne 0 ]
+}
+
+@test "lint catches a multi-line bare reduce binding" {
+  cat >"$TREE/bin/ml.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+jq '
+  reduce .[] as $x (
+    0; . + $x
+  ) as $t | $t' <<<'[1]'
+SH
+  NS_LINT_ROOT="$TREE" run "$REPO/tests/lint"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"ml.sh:4"* ]]
 }
