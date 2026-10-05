@@ -242,3 +242,24 @@ set_lint() {
   [ -z "$(line_of "pr edit 7")" ]
   [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
 }
+
+@test "ns stack drop stops and names the PR above when merging the layer below conflicts" {
+  stack3 APPROVED
+  # the bottom layer moves on with a c.txt that the top layer also adds
+  local w before
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/bot.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  git -C "$w" checkout -q -b fix/sbx-11 origin/fix/sbx-11
+  printf 'bottom c\n' >"$w/c.txt"
+  git -C "$w" add c.txt
+  git -C "$w" commit -q -m "bottom adds c.txt"
+  git -C "$w" push -q origin fix/sbx-11
+  rm -rf "$w"
+  before=$(git -C "$REMOTE" rev-parse fix/sbx-14)
+  run ns stack drop sbx-13
+  assert_failure
+  assert_output_contains "#7"
+  assert_output_contains "conflict"
+  [ -z "$(line_of "pr close 6")" ]
+  [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
+}

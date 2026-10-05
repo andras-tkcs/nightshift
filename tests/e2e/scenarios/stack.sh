@@ -63,10 +63,11 @@ stack_main_green() {
   sleep 20
   sha=$(gh api "repos/$E2E_REPO/commits/$E2E_BASE" --jq .sha) || return 1
   # shellcheck disable=SC2016
-  timeout 1200 bash -c 'until [ "$(gh api "repos/$0/commits/$1/status" --jq .state)" != pending ] \
+  timeout 1200 bash -c 'until [ "$(gh api "repos/$0/commits/$1/status" --jq "[.statuses[] | select(.state == \"pending\")] | length")" = 0 ] \
+    && [ "$(gh api "repos/$0/commits/$1/check-runs" --jq ".total_count")" -gt 0 ] \
     && ! gh api "repos/$0/commits/$1/check-runs" --jq ".check_runs[] | select(.status != \"completed\")" | grep -q .; do sleep 20; done' "$E2E_REPO" "$sha" || return 1
   n=$(gh api "repos/$E2E_REPO/commits/$sha/check-runs" --jq '[.check_runs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length') || return 1
-  [ "$n" -eq 0 ] && [ "$(gh api "repos/$E2E_REPO/commits/$sha/status" --jq .state)" != failure ]
+  [ "$n" -eq 0 ] && [ "$(gh api "repos/$E2E_REPO/commits/$sha/status" --jq '[.statuses[] | select(.state == "failure" or .state == "error")] | length')" = 0 ]
 }
 
 stack_merge_all() {

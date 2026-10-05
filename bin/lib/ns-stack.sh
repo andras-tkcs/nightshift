@@ -189,16 +189,26 @@ ns_stack_top_checks() {
   local p="$1" id="$2" head="$3" path name prof wt total n cmd cname stack crc failed=0
   path=$(jq -r .path <<<"$p")
   name=$(jq -r .name <<<"$p")
-  prof=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$p")" "$(jq -r '.branch // ""' <<<"$p")" 2>/dev/null) || [ $? -eq 3 ] || return 1
-  git -C "$path" fetch -q origin || return 1
+  prof=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$p")" "$(jq -r '.branch // ""' <<<"$p")" 2>/dev/null) || [ $? -eq 3 ] || {
+    printf 'could not read the profile of %s\n' "$name"
+    return 1
+  }
+  git -C "$path" fetch -q origin || {
+    printf 'could not fetch origin for %s\n' "$name"
+    return 1
+  }
   wt="$(ns_worktree_root)/$name-$id--merge"
   mkdir -p "$(ns_worktree_root)"
   if [ -e "$wt" ]; then
     git -C "$path" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt"
     git -C "$path" worktree prune
   fi
-  git -C "$path" worktree add -q --detach "$wt" "origin/$head" || return 1
+  git -C "$path" worktree add -q --detach "$wt" "origin/$head" || {
+    printf 'could not create a worktree of %s\n' "$head"
+    return 1
+  }
   total=$(jq '(.checks // []) | length' <<<"$prof")
+  [ "$total" -gt 0 ] || printf 'no checks configured\n'
   for ((n = 0; n < total; n++)); do
     stack=$(jq -r ".checks[$n].stack" <<<"$prof")
     cname=$(jq -r ".checks[$n].name" <<<"$prof")
