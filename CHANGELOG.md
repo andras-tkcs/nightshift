@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `ns tag` warns when Nightshift runs are active, since `bootstrap.sh --upgrade` refuses while they are, and its docs name the profile's base branch instead of `main` (issue #80).
+
 ## [0.1.5] - 2026-10-05
 
 ### Added

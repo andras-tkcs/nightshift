@@ -5,13 +5,16 @@
 source "$NS_HOME/bin/lib/config.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/profile.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/runs.sh"
 
 ns_tag_help() {
   printf 'usage: ns tag <vX.Y.Z> [--repo <dir>] [--yes]\n\n'
   printf 'Tag the base branch of a repository as a release and push the tag. Refuses when\n'
   printf 'the local branch is dirty or differs from origin, the name is not vX.Y.Z or is not\n'
   printf 'the next version, the tag exists, or the project checks fail. Warns when CI is not\n'
-  printf 'green. Prints the root upgrade command. --yes skips the confirmation. Owner only.\n'
+  printf 'green or Nightshift runs are active (the upgrade refuses while they are). Prints the\n'
+  printf 'root upgrade command. --yes skips the confirmation. Owner only.\n'
 }
 
 # ns_tag_next_ok <tag> <last>: succeeds when <tag> is the next step after <last>
@@ -24,6 +27,27 @@ ns_tag_next_ok() {
   [ "$tm" = "$lm" ] && [ "$tn" = "$((ln + 1))" ] && [ "$tp" = 0 ] && return 0
   [ "$tm" = "$((lm + 1))" ] && [ "$tn" = 0 ] && [ "$tp" = 0 ] && return 0
   return 1
+}
+
+# ns_tag_warn_active_runs: one warning listing runs that are running and not dead
+ns_tag_warn_active_runs() {
+  local entry id wt led state gate rel health lines=""
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    id=$(jq -r .id <<<"$entry")
+    wt=$(jq -r .worktree <<<"$entry")
+    [ -f "$wt/.nightshift/runs/$id/ledger.yaml" ] || continue
+    led=$("$NS_HOME/bin/ns-ledger" get "$wt/.nightshift/runs/$id/ledger.yaml" 2>/dev/null) || continue
+    state=$(jq -r '.state // ""' <<<"$led")
+    [ "$state" = running ] || continue
+    gate=$(jq -r '.gate // ""' <<<"$led")
+    health=$(ns_run_health "$id" "$state" "$gate")
+    [ "$health" != dead ] || continue
+    rel=$(jq -r '.release // "-"' <<<"$led")
+    lines+=$(printf '\n  %s  %s  %s' "$id" "$state" "$rel")
+  done < <(ns_runs_json | jq -c '.[] | select(.archived | not)' 2>/dev/null || true)
+  [ -z "$lines" ] ||
+    ns_warn "Nightshift runs are active (bootstrap.sh --upgrade refuses while they run):$lines"
 }
 
 ns_tag_main() {
@@ -103,6 +127,8 @@ ns_tag_main() {
   elif [ "$(jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length' <<<"$runs")" != 0 ]; then
     ns_warn "CI is not green on $sha"
   fi
+
+  ns_tag_warn_active_runs
 
   local msg titles
   titles=$(git -C "$repo" log --first-parent --format='%s%x1f%b%x1e' ${last:+"$last..HEAD"} |
