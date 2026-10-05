@@ -23,6 +23,9 @@ setup() {
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
+# ns_project_path: the clone of the sandbox project
+ns_project_path() { awk '$1 == "path:" {print $2; exit}' "$NS_CONFIG_DIR/projects.yaml"; }
+
 # other_run_branch <branch> <base ref> <file> <content>: push a branch with one commit
 other_run_branch() {
   local branch="$1" base="$2" file="$3" content="$4" w
@@ -36,10 +39,26 @@ other_run_branch() {
   rm -rf "$w"
 }
 
+# plan_branch <run id>: put plan/<run id> on origin (a PR only counts as a run PR then)
+plan_branch() {
+  local w
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/plan.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  git -C "$w" push -q origin "HEAD:refs/heads/plan/$1"
+  rm -rf "$w"
+}
+
+# pr_closed <json>: make `gh pr list --state closed` answer with the JSON
+pr_closed() {
+  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-closed.json"
+  { printf '0\tpr-closed.json\t^pr list .*--state closed\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+}
+
 # pr_list <json>: make `gh pr list` answer with the JSON
 pr_list() {
   printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-list.json"
-  printf '0\tpr-list.json\t^pr list\n' >"$GH_STUB_RESPONSES/map"
+  printf '0\tpr-list.json\t^pr list\n' >>"$GH_STUB_RESPONSES/map"
 }
 
 PRS_ONE='[
@@ -62,6 +81,7 @@ PRS_TWO='[
 
 @test "stack-base with one open run PR prints its branch, merges it and records its run id" {
   other_run_branch fix/sbx-11 main other.txt "from 11"
+  plan_branch sbx-11
   pr_list "$PRS_ONE"
   run ns-conductor stack-base sbx-12
   assert_success
@@ -75,6 +95,8 @@ PRS_TWO='[
 @test "stack-base picks the top of a two-PR stack" {
   other_run_branch fix/sbx-11 main other.txt "from 11"
   other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
   pr_list "$PRS_TWO"
   run ns-conductor stack-base sbx-12
   assert_success
@@ -86,15 +108,19 @@ PRS_TWO='[
   printf 'mine\n' >"$CODE_WT/README.md"
   git -C "$CODE_WT" commit -q -am "mine"
   other_run_branch fix/sbx-11 main README.md "theirs"
+  plan_branch sbx-11
   pr_list "$PRS_ONE"
   run ns-conductor stack-base sbx-12
   assert_failure 6
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-11 ]
   [ -f "$(git -C "$CODE_WT" rev-parse --absolute-git-dir)/MERGE_HEAD" ]
   run grep -q "pr create" "$GH_STUB_LOG"
   assert_failure 1
 }
 
 @test "ns stack lists the stack bottom to top" {
+  plan_branch sbx-11
+  plan_branch sbx-13
   pr_list "$PRS_TWO"
   run ns stack sbx
   assert_success
@@ -130,10 +156,114 @@ PRS_TWO='[
     [ "$i" = 9 ] || json+=","
   done
   json+="]"
+  for i in 0 1 2 3 4 5 6 7 8 9; do plan_branch "sbx-2$i"; done
   pr_list "$json"
   run ns stack sbx
   assert_success
   local order
   order=$(awk '$1 ~ /^sbx-2/ {printf "%s ", $1}' <<<"$output")
   [ "$order" = "sbx-20 sbx-21 sbx-22 sbx-23 sbx-24 sbx-25 sbx-26 sbx-27 sbx-28 sbx-29 " ]
+}
+
+@test "a feature/<word> branch is not a run PR" {
+  pr_list '[{"number":7,"headRefName":"feature/login","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+}
+
+@test "a PR whose run has no plan branch on origin is not a run PR" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  pr_list "$PRS_ONE"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ ! -f "$CODE_WT/other.txt" ]
+}
+
+@test "ns stack ignores a PR without a plan branch on origin" {
+  pr_list "$PRS_ONE"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "no open run PRs"
+}
+
+@test "stack-base records the profile's base branch, not main" {
+  local clone
+  clone=$(ns_project_path)
+  printf 'git:\n  base_branch: develop\n' >"$clone/.claude/project-profile.yaml"
+  pr_list '[]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = develop ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = develop ]
+}
+
+@test "stack-base names an untracked file the incoming branch adds" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  plan_branch sbx-11
+  pr_list "$PRS_ONE"
+  printf 'mine\n' >"$CODE_WT/other.txt"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "other.txt"
+  assert_output_contains "untracked"
+  case "$output" in *Aborting*) echo "the merge ran: $output" >&2; return 1 ;; esac
+  [ "$(cat "$CODE_WT/other.txt")" = mine ]
+}
+
+PRS_CHAINS='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"main","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "stack-base exits 7 naming the tops when there is more than one chain" {
+  other_run_branch fix/sbx-11 main a.txt "a"
+  other_run_branch fix/sbx-13 main b.txt "b"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_CHAINS"
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "fix/sbx-11"
+  assert_output_contains "fix/sbx-13"
+  [ ! -f "$CODE_WT/a.txt" ]
+  [ ! -f "$CODE_WT/b.txt" ]
+}
+
+@test "ns stack prints each chain separately" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_CHAINS"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "chain 1"
+  assert_output_contains "chain 2"
+}
+
+PRS_ABOVE_CLOSED='[
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null}]'
+
+@test "ns stack marks a PR whose base PR was closed unmerged" {
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$CLOSED_11"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+}
+
+@test "stack-base warns about a closed lower PR and points to ns stack drop" {
+  other_run_branch fix/sbx-13 main top.txt "top"
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$CLOSED_11"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  assert_output_contains "sbx-13"
+  assert_output_contains "closed"
+  assert_output_contains "ns stack drop"
 }
