@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ns_ledger_read` validates and parses a ledger in one Python launch (new `nsyaml.py read <file> <schema.json>`), halving the launches per ledger read (issue #101).
 - The bats suite runs in parallel: CI installs GNU `parallel` and runs `bats --jobs "$(nproc)"`, and CLAUDE.md and docs/development.md document `bats --jobs 2` for local runs (issue #102).
 
 ### Added

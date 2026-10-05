@@ -95,15 +95,18 @@ ns_ledger_recover() {
 ns_ledger_read() {
   local ledger="$1"
   [ -f "$ledger" ] || ns_die "no such ledger: $ledger"
-  local chk err key
-  chk="$(ns_ledger_check "$ledger")"
-  err="$(printf '%s\n' "$chk" | grep -v '^\$: Additional properties are not allowed' | grep -v '^$' | head -n1 || true)"
-  if [ -n "$err" ]; then
-    ns_ledger_recover "$ledger" ||
-      ns_die "ledger $ledger is corrupt and has no valid committed version: $err; run: ns-ledger validate $ledger"
+  local out rc=0 chk err key
+  out="$(python3 "$NS_HOME/bin/lib/nsyaml.py" read "$ledger" "$NS_LEDGER_SCHEMA" 2>&1)" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    while IFS= read -r key; do
+      [ -z "$key" ] || ns_warn "ledger has unknown field $key; kept"
+    done < <(printf '%s\n' "${out#*$'\n'}" | sed -e "s|^$ledger: ||" | ns_ledger_keys_filter)
+    printf '%s\n' "${out%%$'\n'*}"
+    return 0
   fi
-  while IFS= read -r key; do
-    [ -z "$key" ] || ns_warn "ledger has unknown field $key; kept"
-  done < <(printf '%s\n' "$chk" | ns_ledger_keys_filter)
+  chk="$(printf '%s\n' "$out" | sed -e 's/^nsyaml: //' -e "s|^$ledger: ||")"
+  err="$(printf '%s\n' "$chk" | grep -v '^\$: Additional properties are not allowed' | grep -v '^$' | head -n1 || true)"
+  ns_ledger_recover "$ledger" ||
+    ns_die "ledger $ledger is corrupt and has no valid committed version: $err; run: ns-ledger validate $ledger"
   ns_yaml_json "$ledger"
 }
