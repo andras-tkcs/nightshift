@@ -5,23 +5,28 @@ request:
   issue: 99
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
+tier_recommended: T2
+tags:
+- python
+- bash
+- ci
+- tests
+- protected:.github/workflows
 state: running
 gate: null
-step: triage
+step: implement
 stop_requested: stopped
 branch: plan/ns-99
 feature_branch: null
 pr: null
 release: v0.1.5
 created: '2026-10-05T17:07:13Z'
-updated: '2026-10-05T17:07:53Z'
+updated: '2026-10-05T17:08:01Z'
 budget:
   used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-05T17:07:53Z'
+  since: '2026-10-05T17:08:01Z'
 phases: []
 events:
 - time: '2026-10-05T17:07:13Z'
