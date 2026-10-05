@@ -6,7 +6,6 @@ import sys
 import tempfile
 
 import yaml
-import jsonschema
 
 USAGE = "usage: nsyaml.py to-json <file> | from-json <file> | validate <file> <schema.json>"
 
@@ -73,6 +72,7 @@ def cmd_validate(path, schema_path):
     except (OSError, ValueError, yaml.YAMLError) as e:
         err(f"{path}: {' '.join(str(e).split())}")
         return 1
+    import jsonschema  # lazy: ~100 ms, only needed when validating
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(doc),
                     key=lambda e: (json_path(e.absolute_path), e.message))
