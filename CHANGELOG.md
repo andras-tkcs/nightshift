@@ -7,13 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
+- `ns_ledger_read` validates and parses a ledger in one Python launch (new `nsyaml.py read <file> <schema.json>`), halving the launches per ledger read (issue #101).
+- The bats suite runs in parallel: CI installs GNU `parallel` and runs `bats --jobs "$(nproc)"`, and CLAUDE.md and docs/development.md document `bats --jobs 2` for local runs (issue #102).
+
 ### Added
 
 - `ns stack merge [project] [--dry-run]` lands the stack bottom to top (the profile checks run once on the top of the stack first; each PR needs an approval, no failing checks and no conflicts; the next PR is retargeted to the base branch before the one below is merged; it stops at the first PR that is not ready and lists what is left), and `ns stack drop <id> [--dry-run]` closes a run's PR, restacks the PR above it onto the layer below and reverts the dropped change in it (it stops and names the PR when the revert does not apply). Both are blocked for agents (issue #74).
+- `ns report <id>` writes `runs/<id>/run-report.md` from the run ledger: a summary (wall, active and waiting time, budget, review rounds, escalations) and a timeline with one row per step. It is written automatically when a run finishes or is killed, published to the desk at finish and linked from the PR body; it reads `origin/plan/<id>` when the worktree is gone (issue #64).
+- `tests/lint` guards against jq version drift: it fails on a bare `reduce`/`foreach` expression followed by `as $name` (accepted by jq 1.8, rejected by CI's jq 1.7.1; write `(reduce ...) as $name`) and warns when local jq differs from CI; `NS_LINT_STRICT_JQ=1` makes the warning a failure (issue #105).
 - `max_runs` (config, default 2) limits live run conductors: `ns new`, `ns resume`, `ns resume --all` and `ns approve` queue a run past the limit, the new `ns dequeue` starts queued runs oldest first when a conductor ends, `ns new --now` skips the limit, `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position (issue #75).
 - `ns new <prefix> --from-desk <path.md>` starts a run from a desk note (the request is copied into the ledger; nothing in the repo, no PR), and `ns desk import <path.md> <repo path>` lands a desk note in the repo via a pull request that is never merged (issue #76).
 - Stacked PRs, follow-ups: a run PR needs `plan/<run id>` on origin and `{n}` matches digits only; `stacked_on` records the profile base branch; `stack-base` refuses to merge over untracked files and exits 7 (gate 1.5) when open run PRs form more than one chain; `ns stack` prints each chain and marks a PR whose base was closed unmerged (`base closed`), and `stack-base` warns about it; new `stack` e2e scenario (issue #84).
 - `ns tag` warns when Nightshift runs are active, since `bootstrap.sh --upgrade` refuses while they are, and its docs name the profile's base branch instead of `main` (issue #80).
+
+### Fixed
+
+- A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
 
 ## [0.1.5] - 2026-10-05
 

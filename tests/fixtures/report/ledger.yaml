@@ -1,0 +1,114 @@
+version: 1
+id: sbx-12
+project: nightshift-sandbox
+request:
+  issue: 12
+tier: T2
+tier_source: owner
+tier_recommended: T2
+tags: []
+state: done
+gate: '2'
+step: done
+stop_requested: null
+branch: plan/sbx-12
+feature_branch: feature/12
+pr: https://github.com/andras-tkcs/nightshift-sandbox/pull/7
+created: '2026-10-02T10:00:00Z'
+updated: '2026-10-02T13:21:00Z'
+budget:
+  used: 1.8
+  limit: 4
+  paused: false
+  since: '2026-10-02T13:21:00Z'
+phases:
+- id: p1-core
+  title: Core
+  state: merged
+  branch: feature/12--p1-core
+  worktree: /tmp/x-p1-core
+  attempts: 1
+  review_rounds: 1
+- id: p2-docs
+  title: Docs
+  state: merged
+  branch: feature/12--p2-docs
+  worktree: /tmp/x-p2-docs
+  attempts: 1
+  review_rounds: 1
+events:
+- time: '2026-10-02T10:00:00Z'
+  type: created
+  note: 'run sbx-12 created'
+- time: '2026-10-02T10:00:05Z'
+  type: tier
+  note: 'T2 (owner, 4 h)'
+- time: '2026-10-02T10:00:10Z'
+  type: state
+  note: 'running'
+- time: '2026-10-02T10:40:00Z'
+  type: state
+  note: 'waiting gate 1'
+- time: '2026-10-02T10:40:00Z'
+  type: gate
+  note: 'gate 1: waiting for the owner'
+- time: '2026-10-02T11:10:00Z'
+  type: approved
+  note: 'gate 1'
+- time: '2026-10-02T11:10:04Z'
+  type: resumed
+  note: 'resumed from queued'
+- time: '2026-10-02T11:10:10Z'
+  type: state
+  note: 'running'
+- time: '2026-10-02T11:11:00Z'
+  type: phase-start
+  note: 'p1-core attempt: pid 100'
+- time: '2026-10-02T11:21:00Z'
+  type: phase-end
+  note: 'p1-core exit 0'
+- time: '2026-10-02T11:31:00Z'
+  type: review
+  note: 'p1-core round 1'
+- time: '2026-10-02T11:35:00Z'
+  type: merge
+  note: 'p1-core merged into feature/12'
+- time: '2026-10-02T11:36:00Z'
+  type: phase-start
+  note: 'p2-docs attempt: pid 200'
+- time: '2026-10-02T11:40:00Z'
+  type: state
+  note: 'waiting gate 1.5'
+- time: '2026-10-02T11:40:00Z'
+  type: gate
+  note: 'gate 1.5: waiting for the owner'
+- time: '2026-10-02T11:50:00Z'
+  type: approved
+  note: 'gate 1.5'
+- time: '2026-10-02T11:50:04Z'
+  type: resumed
+  note: 'resumed from queued'
+- time: '2026-10-02T11:56:00Z'
+  type: phase-end
+  note: 'p2-docs exit 0'
+- time: '2026-10-02T12:20:00Z'
+  type: review
+  note: 'p2-docs round 1'
+- time: '2026-10-02T12:50:00Z'
+  type: resumed
+  note: 'resumed from running'
+- time: '2026-10-02T12:55:00Z'
+  type: merge
+  note: 'p2-docs merged into feature/12'
+- time: '2026-10-02T13:00:00Z'
+  type: state
+  note: 'waiting gate 2'
+- time: '2026-10-02T13:00:00Z'
+  type: gate
+  note: 'gate 2: waiting for the owner'
+- time: '2026-10-02T13:20:00Z'
+  type: approved
+  note: 'gate 2'
+- time: '2026-10-02T13:21:00Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift-sandbox/pull/7'

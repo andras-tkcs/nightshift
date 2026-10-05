@@ -172,7 +172,7 @@ make_ledger() {
 @test "checkpoint commits the ledger" {
   make_ledger
   ns-ledger event "$L" note "hello"
-  NS_RUN_ID=app-x1 NS_LEDGER="$L" run "$HOOKS/checkpoint.sh"
+  NS_RUN_ID=app-x1 NS_RUN_HOME="$NS_HOME" NS_LEDGER="$L" run "$HOOKS/checkpoint.sh"
   assert_success
   [ "$(git -C "$CLONE" log -1 --format=%s)" = "ns-ledger: app-x1 queued" ]
   [ -z "$(git -C "$CLONE" status --porcelain .nightshift)" ]

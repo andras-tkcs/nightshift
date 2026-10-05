@@ -27,7 +27,7 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 
 ```bash
 tests/lint
-bats tests/bats
+bats --jobs 2 tests/bats      # needs GNU `parallel`; 2 jobs because of the 4 GB RAM cap
 claude plugin validate --strict .
 claude plugin validate --strict plugins/ns
 claude plugin validate --strict plugins/ns-python
@@ -35,3 +35,7 @@ tests/docs-check --final
 tests/e2e/run.sh preflight       # on ns-main only
 tests/e2e/run.sh <scenario>      # on ns-main only, against nightshift-sandbox
 ```
+
+## Developing Nightshift with Nightshift
+
+When a run works on this repo, run new or changed `bin/` commands only against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. A checkout that is not the installed release refuses to write the live run's ledger.

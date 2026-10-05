@@ -11,6 +11,7 @@ Profiles, registries and ledgers are YAML, and the tooling is bash.
 ## Decision
 
 YAML is handled by a small Python helper (`nsyaml.py`, PyYAML) plus `jq`.
+Its subcommands are `to-json`, `from-json`, `validate` and `read` (validate and print as JSON in one launch, used for ledger reads).
 
 Rejected alternatives:
 

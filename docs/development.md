@@ -10,12 +10,12 @@ claude --plugin-dir ./plugins/ns --plugin-dir ./plugins/ns-python
 
 ```bash
 tests/lint
-bats tests/bats
+bats --jobs 2 tests/bats
 claude plugin validate --strict .
 tests/docs-check --final
 ```
 
-`tests/lint` runs shellcheck over every script. `bats tests/bats` runs the unit suite and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`.
+`tests/lint` runs shellcheck over every script. `bats --jobs 2 tests/bats` runs the unit suite in parallel (needs GNU `parallel`, `sudo apt-get install parallel`; CI uses `--jobs "$(nproc)"`). Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`. CI (`.github/workflows/ci.yml`) runs the parallel jobs `lint`, `bats` and `plugin-validate` (plugin validation and docs-check), so a lint or manifest failure shows up without waiting for bats; the aggregate job `checks` needs all three and is the required status check (`REQUIRED_CHECKS="checks"`), so keep that name.
 
 ## End-to-end runs
 
@@ -39,6 +39,10 @@ Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take m
 
 The requirements are in [spec.md](spec.md).
 
+## Developing Nightshift with Nightshift
+
+A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. Nightshift enforces this for writes: a command whose `NS_HOME` differs from `NS_RUN_HOME` refuses to write the live run's ledger. Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
+
 ## Releasing
 
 Releases are tagged by the owner, never by an agent (ADR 0007).
@@ -53,3 +57,7 @@ Releases are tagged by the owner, never by an agent (ADR 0007).
    ```
 
 3. Install the release on the server: run `bootstrap.sh` (steps 8 and 9 install the release and the plugins), or follow the update steps in [operations.md](operations.md#updates) (`bootstrap.sh --upgrade vX.Y.Z`).
+
+## jq version drift
+
+CI runs jq 1.7.1; dev machines may have a newer jq (1.8.1 here). jq 1.7 rejects a bare `reduce`/`foreach` expression used as a binding source, as in `reduce .[] as $x (0; . + $x) as $t`, while jq 1.8.1 accepts it, so it passes locally and fails in CI. `tests/lint` fails on that form (write `(reduce .[] as $x (0; . + $x)) as $t`) and prints a warning when local `jq --version` differs from 1.7.1. Set `NS_LINT_STRICT_JQ=1` to make that warning a failure. `NS_LINT_ROOT` points the lint at another tree (used by `tests/bats/lint-jq.bats`).

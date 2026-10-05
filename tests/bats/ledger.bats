@@ -223,3 +223,21 @@ init_ledger() {
   assert_success
   [ "$output" = "v0.1.0" ]
 }
+
+@test "ns_ledger_read launches python3 exactly once (ns-101)" {
+  init_ledger
+  real=$(command -v python3)
+  mkdir -p "$BATS_TEST_TMPDIR/shim"
+  count="$BATS_TEST_TMPDIR/py-launches"
+  : >"$count"
+  cat >"$BATS_TEST_TMPDIR/shim/python3" <<SHIM
+#!/usr/bin/env bash
+echo x >>"$count"
+exec "$real" "\$@"
+SHIM
+  chmod +x "$BATS_TEST_TMPDIR/shim/python3"
+  PATH="$BATS_TEST_TMPDIR/shim:$PATH" run ns-ledger get "$L" .state
+  assert_success
+  [ "$output" = "queued" ]
+  [ "$(wc -l <"$count")" -eq 1 ]
+}
