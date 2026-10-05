@@ -7,21 +7,21 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: queued
+state: running
 gate: null
-step: intake
-stop_requested: null
+step: triage
+stop_requested: stopped
 branch: plan/ns-99
 feature_branch: null
 pr: null
 release: v0.1.5
 created: '2026-10-05T17:07:13Z'
-updated: '2026-10-05T17:07:15Z'
+updated: '2026-10-05T17:07:53Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-05T17:07:15Z'
+  since: '2026-10-05T17:07:53Z'
 phases: []
 events:
 - time: '2026-10-05T17:07:13Z'
@@ -30,3 +30,9 @@ events:
 - time: '2026-10-05T17:07:14Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-05T17:07:31Z'
+  type: state
+  note: running
+- time: '2026-10-05T17:07:52Z'
+  type: stop-requested
+  note: stop requested by the owner
