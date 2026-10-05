@@ -12,16 +12,18 @@ source "$NS_HOME/bin/lib/profile.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/queue.sh"
 
-NS_NEW_USAGE="ns new <prefix>-<n> | <prefix> \"<text>\" | <prefix>-onboard --onboard [--tier T0..T3] [--yes]"
+NS_NEW_USAGE="ns new <prefix>-<n> | <prefix> \"<text>\" | <prefix>-onboard --onboard | <prefix> --from-desk <path.md> [--tier T0..T3] [--yes]"
 
 ns_new_help() {
   printf 'usage: ns new <prefix>-<n> [--tier T0..T3] [--yes] [--now]\n'
   printf '       ns new <prefix> "<text>" [--tier T0..T3] [--yes] [--now]\n'
+  printf '       ns new <prefix> --from-desk <path.md> [--tier T0..T3] [--yes] [--now]\n'
   printf '       ns new <prefix>-onboard --onboard\n\n'
   printf 'Create a run: worktree on plan/<id>, ledger, then a tmux session running the\n'
   printf 'conductor. Without --tier the conductor triages first and asks for the tier\n'
-  printf '(--yes takes its recommendation). At max_runs live conductors the run waits in the\n'
-  printf 'queue (ns dequeue); --now starts it anyway.\n'
+  printf '(--yes takes its recommendation). --from-desk uses a desk note (absolute, or\n'
+  printf 'relative to the desk directory) as the request; nothing is added to the repo.\n'
+  printf 'At max_runs live conductors the run waits in the queue (ns dequeue); --now starts it anyway.\n'
 }
 
 # ns_new_start <id> <wt> <ledger> <now>: under the queue lock, start the conductor or queue the run
@@ -46,7 +48,7 @@ ns_new_start() {
 }
 
 ns_new_main() {
-  local arg="" text="" tier="" yes=false onboard=false now=false
+  local arg="" text="" tier="" yes=false onboard=false now=false desk_file=""
   local prefix n id project profile rc=0 path pname repo branch base plan_branch wt ledger hours
   local ans rec src
   while [ $# -gt 0 ]; do
@@ -68,6 +70,11 @@ ns_new_main() {
         onboard=true
         shift
         ;;
+      --from-desk)
+        [ $# -ge 2 ] && [ -z "$desk_file" ] || ns_usage "$NS_NEW_USAGE"
+        desk_file="$2"
+        shift 2
+        ;;
       -*) ns_usage "$NS_NEW_USAGE" ;;
       *)
         if [ -z "$arg" ]; then
@@ -82,6 +89,16 @@ ns_new_main() {
     esac
   done
   [ -n "$arg" ] || ns_usage "$NS_NEW_USAGE"
+  if [ -n "$desk_file" ]; then
+    [ -z "$text" ] && [ "$onboard" = false ] && [[ $arg =~ ^[a-z][a-z0-9]{0,9}$ ]] || ns_usage "$NS_NEW_USAGE"
+    case "$desk_file" in
+      /*) ;;
+      *) desk_file="$(ns_desk_dir)/$desk_file" ;;
+    esac
+    [ -f "$desk_file" ] || ns_die "$desk_file: no such desk note"
+    text=$(cat "$desk_file")
+    [[ $text =~ [^[:space:]] ]] || ns_die "$desk_file: the desk note is empty"
+  fi
   if [ -n "$tier" ] && [[ ! $tier =~ ^T[0-3]$ ]]; then
     ns_usage "$NS_NEW_USAGE"
   fi

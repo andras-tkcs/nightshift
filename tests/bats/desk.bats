@@ -4,6 +4,7 @@ load helpers
 
 setup() {
   ns_test_setup
+  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/desk"
   FIX="$BATS_TEST_TMPDIR/fixture"
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
@@ -322,4 +323,31 @@ published() {
   run ns publish sbx-12 RUN/plan.md
   assert_success
   grep -qF 'sbx-12: gate 1.5 needs you: Should beta drop the cache?' "$NS_STUB_LOG"
+}
+
+@test "ns desk import lands a desk note in the repo via a PR, never merged (ns-76)" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
+  assert_success
+  grep -q "pr create --repo andras-tkcs/nightshift-sandbox" "$GH_STUB_LOG"
+  ! grep -q 'pr merge' "$GH_STUB_LOG"
+  remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  br=$(git -C "$remote" for-each-ref --format='%(refname:short)' refs/heads | grep -v '^main$' | grep -v '^plan/' | head -1)
+  [ -n "$br" ]
+  [ "$(git -C "$remote" show "$br:docs/idea.md")" = "# Idea" ]
+}
+
+@test "ns desk import refuses absolute and .. repo paths and missing notes" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  run ns desk import nightshift-sandbox/notes/idea.md /etc/x.md
+  assert_failure
+  run ns desk import nightshift-sandbox/notes/idea.md ../x.md
+  assert_failure
+  run ns desk import nightshift-sandbox/notes/missing.md docs/x.md
+  assert_failure
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  run ns desk import nightshift-sandbox/notes/idea.md docs/ok.md
+  assert_success
 }

@@ -198,3 +198,37 @@ ns_run_ledger_of() {
   assert_success
   [ "$output" = "$(cat "$NS_REPO_ROOT/tests/fixtures/stream/sample.out")" ]
 }
+
+@test "ns new --from-desk seeds the request from a desk note, nothing in the repo, no PR (ns-76)" {
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox/notes"
+  printf '# Idea\n\nDo "this" and $that.\n' >"$NS_DESK_DIR/nightshift-sandbox/notes/idea.md"
+  run ns new sbx --from-desk nightshift-sandbox/notes/idea.md --tier T1 --yes
+  assert_success
+  assert_output_contains "started sbx-x1"
+  [ "$(run_field sbx-x1 .request.text)" = "$(printf '# Idea\n\nDo "this" and $that.')" ]
+  [ ! -e "$SBX-sbx-x1/idea.md" ]
+  [ -z "$(find "$SBX-sbx-x1" -name idea.md -not -path '*/.git/*')" ]
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+}
+
+@test "ns new --from-desk accepts an absolute path" {
+  printf 'absolute note\n' >"$BATS_TEST_TMPDIR/n.md"
+  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  assert_success
+  [ "$(run_field sbx-x1 .request.text)" = "absolute note" ]
+}
+
+@test "ns new --from-desk fails on a missing or empty file and on combined input" {
+  run ns new sbx --from-desk nightshift-sandbox/nope.md --tier T1 --yes
+  assert_failure
+  assert_output_contains "nope.md"
+  : >"$BATS_TEST_TMPDIR/empty.md"
+  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/empty.md" --tier T1 --yes
+  assert_failure
+  printf 'x\n' >"$BATS_TEST_TMPDIR/n.md"
+  run ns new sbx "inline text" --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  assert_failure
+  run ns new sbx-12 --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  assert_failure
+  [ ! -d "$SBX-sbx-x1" ]
+}
