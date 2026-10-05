@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tests/lint` guards against jq version drift: it fails on a bare `reduce`/`foreach` expression followed by `as $name` (accepted by jq 1.8, rejected by CI's jq 1.7.1; write `(reduce ...) as $name`) and warns when local jq differs from CI; `NS_LINT_STRICT_JQ=1` makes the warning a failure (issue #105).
 - `max_runs` (config, default 2) limits live run conductors: `ns new`, `ns resume`, `ns resume --all` and `ns approve` queue a run past the limit, the new `ns dequeue` starts queued runs oldest first when a conductor ends, `ns new --now` skips the limit, `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position (issue #75).
 - `ns new <prefix> --from-desk <path.md>` starts a run from a desk note (the request is copied into the ledger; nothing in the repo, no PR), and `ns desk import <path.md> <repo path>` lands a desk note in the repo via a pull request that is never merged (issue #76).
 - Stacked PRs, follow-ups: a run PR needs `plan/<run id>` on origin and `{n}` matches digits only; `stacked_on` records the profile base branch; `stack-base` refuses to merge over untracked files and exits 7 (gate 1.5) when open run PRs form more than one chain; `ns stack` prints each chain and marks a PR whose base was closed unmerged (`base closed`), and `stack-base` warns about it; new `stack` e2e scenario (issue #84).

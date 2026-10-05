@@ -57,3 +57,7 @@ Releases are tagged by the owner, never by an agent (ADR 0007).
    ```
 
 3. Install the release on the server: run `bootstrap.sh` (steps 8 and 9 install the release and the plugins), or follow the update steps in [operations.md](operations.md#updates) (`bootstrap.sh --upgrade vX.Y.Z`).
+
+## jq version drift
+
+CI runs jq 1.7.1; dev machines may have a newer jq (1.8.1 here). jq 1.7 rejects a bare `reduce`/`foreach` expression used as a binding source, as in `reduce .[] as $x (0; . + $x) as $t`, while jq 1.8.1 accepts it, so it passes locally and fails in CI. `tests/lint` fails on that form (write `(reduce .[] as $x (0; . + $x)) as $t`) and prints a warning when local `jq --version` differs from 1.7.1. Set `NS_LINT_STRICT_JQ=1` to make that warning a failure. `NS_LINT_ROOT` points the lint at another tree (used by `tests/bats/lint-jq.bats`).
