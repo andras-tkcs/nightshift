@@ -28,7 +28,7 @@ stop_requested: null             # null | stopped | parked
 branch: plan/sbx-12
 release: v0.1.0                 # Nightshift release the run started on; null for a dev checkout. Resume and workers use it
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
-queued_for_slot: false             # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
+queued_for_slot: false          # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
 stacked_on: null                 # null | main | run id of the PR this run is stacked on (ns-conductor stack-base)
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z

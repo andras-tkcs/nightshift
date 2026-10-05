@@ -92,6 +92,19 @@ sessions() { find "$TMUX_STUB_DIR" -type f | wc -l | tr -d ' '; }
   [ -f "$TMUX_STUB_DIR/sbx-12" ]
   [ ! -e "$TMUX_STUB_DIR/sbx-13" ]
   [ "$(lget sbx-13 .state)" = queued ]
+  [ "$(lget sbx-12 '[.events[] | select(.type=="dequeued")] | length')" = 1 ]
+  [ "$(cat "$BATS_TEST_TMPDIR"/d1.out "$BATS_TEST_TMPDIR"/d2.out | grep -c ' 1 started')" = 1 ]
+}
+
+@test "dequeue mode skips a run another process already started (stale list)" {
+  set_max_runs 2
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  ns-ledger set "$(ledger sbx-12)" '.state="running" | .queued_for_slot=false'
+  : >"$TMUX_STUB_DIR/sbx-12"
+  NS_DEQUEUE=1 run ns resume sbx-12
+  [ "$status" -ne 0 ]
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget sbx-12 '[.events[] | select(.type=="dequeued" or .type=="resumed")] | length')" = 0 ]
 }
 
 @test "ns resume --all respects max_runs: two start, one stays queued" {

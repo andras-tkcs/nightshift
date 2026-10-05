@@ -36,12 +36,12 @@ ns_ls_main() {
     if [ -n "$led" ]; then
       row=$(jq -c --argjson e "$entry" '{id: $e.id, project: $e.project, tier, state, gate, step,
         phases: [.phases[]? | select(.state == "running" or .state == "review") | .id],
-        queued: any(.phases[]?; .state == "queued"), created: $e.created}' <<<"$led")
+        queued: any(.phases[]?; .state == "queued"), slot: (.queued_for_slot // false), created: $e.created}' <<<"$led")
     else
       row=$(jq -c '{id, project, tier: null, state: "?", gate: null, step: null, phases: [], queued: false,
         missing: true, created}' <<<"$entry")
     fi
-    if [ "$(jq -r '.state' <<<"$row")" = queued ] && ! ns_tmux_has "$id"; then
+    if [ "$(jq -r '.state' <<<"$row")" = queued ] && [ "$(jq -r '.slot // false' <<<"$row")" = true ] && ! ns_tmux_has "$id"; then
       row=$(jq -c '. + {waiting: true}' <<<"$row")
     fi
     health=$(ns_run_health "$id" "$(jq -r '.state' <<<"$row")" "$(jq -r '.gate // ""' <<<"$row")")

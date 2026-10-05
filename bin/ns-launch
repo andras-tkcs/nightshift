@@ -93,6 +93,7 @@ wait || true
 if [ "$mode" != --triage ]; then
   # clean environment: the ending run's token and ids must not reach other runs' conductors
   mkdir -p "$(ns_config_dir)/logs/$id"
+  (umask 077 && : >>"$(ns_config_dir)/logs/$id/dequeue.log")
   env -u GH_TOKEN -u NS_RUN_ID -u NS_LEDGER -u NS_PROJECT NS_QUEUE_EXCLUDE="$id" \
     "$NS_HOME/bin/ns" dequeue >>"$(ns_config_dir)/logs/$id/dequeue.log" 2>&1 || true
 fi

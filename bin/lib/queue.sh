@@ -32,7 +32,7 @@ ns_queue_locked() {
   (
     flock -w "${NS_QUEUE_LOCK_WAIT:-120}" 9 || ns_die "queue lock busy: $(ns_config_dir)/queue.lock"
     "$@"
-  ) 9>"$(ns_config_dir)/queue.lock"
+  ) 9>>"$(ns_config_dir)/queue.lock"
 }
 
 # ns_queue_list: ids of runs that wait for a slot (state queued, queued_for_slot set under the

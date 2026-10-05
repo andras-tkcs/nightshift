@@ -65,18 +65,30 @@ ns_resume_reconcile() {
 }
 
 # ns_resume_start <id> <wt> <ledger> <state> <rhome>: under the queue lock, start the conductor
-# when a slot is free, else mark the run queued (returns 10)
+# when a slot is free, else mark the run queued (returns 10). With NS_DEQUEUE=1 (ns dequeue) it
+# starts the run only if it is still waiting in the queue: returns 10 when no slot is free (run
+# left as is) and 11 when another process already took the run
 ns_resume_start() {
   local id="$1" wt="$2" ledger="$3" state="$4" rhome="$5" live
-  if ns_tmux_has "$id"; then
+  if [ "${NS_DEQUEUE:-}" = 1 ]; then
+    local cur
+    cur=$("$NS_HOME/bin/ns-ledger" get "$ledger" '[.state, (.gate // "-"), (.queued_for_slot // false)] | @tsv') || return 11
+    state=${cur%%$'\t'*}
+    if [ "$cur" != "queued"$'\t'"-"$'\t'"true" ] || ns_tmux_has "$id"; then
+      return 11
+    fi
+    live=$(ns_queue_live_count)
+    [ "$live" -lt "$(ns_queue_max)" ] || return 10
+  elif ns_tmux_has "$id"; then
     printf '%s is already running\n' "$id"
     return 0
   fi
-  live=$(ns_queue_live_count)
+  [ "${NS_DEQUEUE:-}" = 1 ] || live=$(ns_queue_live_count)
   if [ "$live" -ge "$(ns_queue_max)" ]; then
     if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
       "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true'
       "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot"
+      "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot"
       "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&-
     fi
     ns_queue_msg "$id" "$live"
@@ -99,6 +111,13 @@ ns_resume_one() {
     ns_resume_rebuild "$id" "$entry"
   fi
   [ -f "$ledger" ] || ns_die "cannot resume $id: no ledger at $ledger"
+  if [ "${NS_DEQUEUE:-}" = 1 ]; then
+    # queue membership is checked under the lock; no kill or reconcile on a run that may be live
+    rhome=$(ns_release_home "$ledger") || return 1
+    [ -n "$rhome" ] || rhome="$NS_HOME"
+    ns_queue_locked ns_resume_start "$id" "$wt" "$ledger" queued "$rhome"
+    return
+  fi
   state=$("$NS_HOME/bin/ns-ledger" get "$ledger" .state)
   if [ "$state" = running ] && ns_tmux_has "$id"; then
     printf '%s is already running\n' "$id"
