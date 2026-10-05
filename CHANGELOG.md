@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ns report <id>` writes `runs/<id>/run-report.md` from the run ledger: a summary (wall, active and waiting time, budget, review rounds, escalations) and a timeline with one row per step. It is written automatically when a run finishes or is killed, published to the desk at finish and linked from the PR body; it reads `origin/plan/<id>` when the worktree is gone (issue #64).
 - `max_runs` (config, default 2) limits live run conductors: `ns new`, `ns resume`, `ns resume --all` and `ns approve` queue a run past the limit, the new `ns dequeue` starts queued runs oldest first when a conductor ends, `ns new --now` skips the limit, `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position (issue #75).
 
 ## [0.1.5] - 2026-10-05

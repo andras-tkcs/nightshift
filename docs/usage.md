@@ -234,6 +234,16 @@ ns desk import <path.md> <repo path>
 
 `ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request.
 
+### ns report
+
+```
+ns report <id>
+```
+
+`ns report` builds `runs/<id>/run-report.md` from the run ledger and prints where it wrote it. It works at any time, mid-run included. The report has a summary (wall time, active time, time waiting for you, time the run was dead or stopped, budget used against the limit, review rounds, escalations with a one-line cause each) and a timeline with one row per step: planning (created to gate 1), each gate wait, each phase's implement, review round and merge, and each escalation (a gate 1.5 wait), with start, wall, active and waiting time. Waiting time runs from the `gate` event to the matching `approved` event. Active time is wall time minus waits minus the gap before a `resumed` event that does not come from the queue (a dead or stopped run). The cause of an escalation is the first heading of `escalation.md`, which holds only the latest one; earlier escalations show `cause not recorded`. Everything taken from the ledger is escaped as data. Check durations, tokens and cost are not in the ledger yet and are not shown.
+
+When the worktree is gone, `ns report` reads the ledger with `git show origin/<plan branch>:.nightshift/runs/<id>/ledger.yaml` and writes `<config dir>/reports/<id>/run-report.md`. The report is written automatically when a run finishes (`ns-conductor finish`, published to the desk next to the handoff report) and when `ns kill` stops it, and the integrator links it from the PR body. A failure to write it never fails the run. Publish it by hand with `ns publish <id> RUN/run-report.md`.
+
 ### ns publish
 
 ```

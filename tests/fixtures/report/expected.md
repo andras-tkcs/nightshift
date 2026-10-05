@@ -26,13 +26,13 @@ Escalations:
 
 | Step | Start | Wall | Active | Waiting |
 |---|---|---|---|---|
-| planning | 2026-10-02 10:00 | 40m | 40m | 0m |
-| gate 1 wait | 2026-10-02 10:40 | 30m | 0m | 30m |
-| p1-core implement | 2026-10-02 11:11 | 10m | 10m | 0m |
-| p1-core review round 1 | 2026-10-02 11:21 | 10m | 10m | 0m |
-| p1-core merge | 2026-10-02 11:31 | 4m | 4m | 0m |
+| planning | 2026-10-02 10:00 | 40m | 40m | 0s |
+| gate 1 wait | 2026-10-02 10:40 | 30m | 0s | 30m |
+| p1-core implement | 2026-10-02 11:11 | 10m | 10m | 0s |
+| p1-core review round 1 | 2026-10-02 11:21 | 10m | 10m | 0s |
+| p1-core merge | 2026-10-02 11:31 | 4m | 4m | 0s |
 | p2-docs implement | 2026-10-02 11:36 | 20m | 10m | 10m |
-| escalation (gate 1.5) | 2026-10-02 11:40 | 10m | 0m | 10m |
-| p2-docs review round 1 | 2026-10-02 11:56 | 24m | 24m | 0m |
-| p2-docs merge | 2026-10-02 12:20 | 35m | 5m | 0m |
-| gate 2 wait | 2026-10-02 13:00 | 20m | 0m | 20m |
+| escalation (gate 1.5) | 2026-10-02 11:40 | 10m | 0s | 10m |
+| p2-docs review round 1 | 2026-10-02 11:56 | 24m | 24m | 0s |
+| p2-docs merge | 2026-10-02 12:20 | 35m | 5m | 0s |
+| gate 2 wait | 2026-10-02 13:00 | 20m | 0s | 20m |

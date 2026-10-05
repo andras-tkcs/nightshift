@@ -75,6 +75,12 @@ ns_kill_main() {
       ;;
   esac
   ns_kill_teardown "$id" "$ledger" "killed by owner" session
+  # best effort: the report of a stopped run, committed with the ledger
+  if "$NS_HOME/bin/ns" report "$id" >/dev/null 2>&1; then
+    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push || ns_warn "could not commit the run report"
+  else
+    ns_warn "could not write the run report for $id"
+  fi
   "$NS_HOME/bin/ns-notify" "ns: $id killed by owner" || ns_warn "notification failed"
   printf 'killed %s; ns resume %s restarts it\n' "$id" "$id"
   "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
