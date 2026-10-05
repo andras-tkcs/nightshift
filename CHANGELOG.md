@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Stacked PRs, follow-ups: a run PR needs `plan/<run id>` on origin and `{n}` matches digits only; `stacked_on` records the profile base branch; `stack-base` refuses to merge over untracked files and exits 7 (gate 1.5) when open run PRs form more than one chain; `ns stack` prints each chain and marks a PR whose base was closed unmerged (`base closed`), and `stack-base` warns about it; new `stack` e2e scenario (issue #84).
+- Stacked PRs, part 1: `ns-conductor stack-base <id>` merges the top open run PR into the run's branch and prints the PR base (exit 6 on a conflict), the ledger records `stacked_on`, `ns stack [project]` lists the stack bottom to top, `ns status` shows a `stacked` line, and the integrator opens the PR against the stack top (issue #73). The end-to-end scenario is still to do.
+- `ns new <prefix> --from-desk <path.md>` starts a run from a desk note (the request is copied into the ledger; nothing in the repo, no PR), and `ns desk import <path.md> <repo path>` lands a desk note in the repo via a pull request that is never merged (issue #76).
 - `ns tag <vX.Y.Z>` tags and pushes a release after checking that main is clean and equal to origin, the version is the next step, the tag is new and the project checks pass; it warns on CI that is not green and prints the upgrade command. The guard blocks agents from running it (issue #50).
 - Stacked PRs, part 1: `ns-conductor stack-base <id>` merges the top open run PR into the run's branch and prints the PR base (exit 6 on a conflict), the ledger records `stacked_on`, `ns stack [project]` lists the stack bottom to top, `ns status` shows a `stacked` line, and the integrator opens the PR against the stack top (issue #73). The end-to-end scenario is still to do.
 

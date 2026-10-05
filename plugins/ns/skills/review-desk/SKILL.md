@@ -32,4 +32,4 @@ Decisions the owner can change are Markdown, so `ns approve` can show a diff and
 
 ## Coming back into git
 
-`ns approve <id>` is the only way a desk edit reaches git: it shows the diff between the desk copies and the branch, asks the owner, commits the edited Markdown with `Approved-By: owner` and releases the gate. Never copy desk files into git yourself, and never treat a desk file as approved before the ledger says the gate is released. After a resume, read the committed versions (for an escalation, the `## Owner's answer` section) and continue from them.
+`ns approve <id>` is the way a desk edit to a gate document reaches git (the owner can also land a desk note with `ns desk import`, which only opens a pull request): it shows the diff between the desk copies and the branch, asks the owner, commits the edited Markdown with `Approved-By: owner` and releases the gate. Never copy desk files into git yourself, and never treat a desk file as approved before the ledger says the gate is released. After a resume, read the committed versions (for an escalation, the `## Owner's answer` section) and continue from them.

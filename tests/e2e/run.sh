@@ -10,7 +10,7 @@ source "$here/lib.sh"
 
 usage() {
   cat <<'EOF'
-usage: tests/e2e/run.sh <t0|t1|t2|t3|resume> [--keep]
+usage: tests/e2e/run.sh <t0|t1|t2|t3|stack|resume> [--keep]
        tests/e2e/run.sh preflight
        tests/e2e/run.sh cleanup <base branch>
        tests/e2e/run.sh --help
@@ -110,7 +110,7 @@ main() {
       [ $# -eq 2 ] || die_usage
       do_cleanup "$2"
       ;;
-    t0 | t1 | t2 | t3 | resume)
+    t0 | t1 | t2 | t3 | stack | resume)
       local scenario="$1"
       shift
       while [ $# -gt 0 ]; do
