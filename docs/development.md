@@ -15,7 +15,7 @@ claude plugin validate --strict .
 tests/docs-check --final
 ```
 
-`tests/lint` runs shellcheck over every script. `bats --jobs 2 tests/bats` runs the unit suite in parallel (needs GNU `parallel`, `sudo apt-get install parallel`; CI uses `--jobs "$(nproc)"`). Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`.
+`tests/lint` runs shellcheck over every script. `bats --jobs 2 tests/bats` runs the unit suite in parallel (needs GNU `parallel`, `sudo apt-get install parallel`; CI uses `--jobs "$(nproc)"`). Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`. CI (`.github/workflows/ci.yml`) runs the parallel jobs `lint`, `bats` and `plugin-validate` (plugin validation and docs-check), so a lint or manifest failure shows up without waiting for bats; the aggregate job `checks` needs all three and is the required status check (`REQUIRED_CHECKS="checks"`), so keep that name.
 
 ## End-to-end runs
 
