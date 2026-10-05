@@ -11,20 +11,20 @@ tags:
 - caddy
 - security
 - bats
-state: waiting
+state: stopped
 gate: '1.5'
 step: phases
-stop_requested: stopped
+stop_requested: null
 branch: plan/ns-5
 feature_branch: feature/5
 pr: null
 created: '2026-10-03T15:24:01Z'
-updated: '2026-10-04T15:02:41Z'
+updated: '2026-10-05T03:17:37Z'
 budget:
   used: 6.71
   limit: 8
   paused: false
-  since: '2026-10-04T15:02:41Z'
+  since: '2026-10-05T03:17:37Z'
 phases:
 - id: p1-publish-check
   title: Rewrite the desk HTML check (multiline, scripts, remote URLs) with bats cases
@@ -193,3 +193,6 @@ events:
 - time: '2026-10-04T15:02:41Z'
   type: stop-requested
   note: stop requested by the owner
+- time: '2026-10-05T03:17:36Z'
+  type: state
+  note: 'stopped: killed by owner'
