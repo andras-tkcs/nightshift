@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tests/lint` guards against jq version drift: it fails on `reduce`/`foreach` with an unparenthesised pipeline source before `as` (rejected by CI's jq 1.7.1) and warns when local jq differs from CI; `NS_LINT_STRICT_JQ=1` makes the warning a failure (issue #105).
 - `max_runs` (config, default 2) limits live run conductors: `ns new`, `ns resume`, `ns resume --all` and `ns approve` queue a run past the limit, the new `ns dequeue` starts queued runs oldest first when a conductor ends, `ns new --now` skips the limit, `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position (issue #75).
 
 ## [0.1.5] - 2026-10-05

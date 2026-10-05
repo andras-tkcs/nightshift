@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="${NS_LINT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$root"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -38,6 +38,30 @@ fi
 if [ "${#libs[@]}" -gt 0 ]; then
   shellcheck -x --shell=bash "${libs[@]}" || rc=1
 fi
+
+# jq-compat (ns-105): CI runs jq 1.7.1, which rejects an unparenthesised
+# `reduce/foreach <pipeline> as $x`. Newer jq accepts it, so flag it here.
+CI_JQ_VERSION="1.7.1"
+re='(reduce|foreach)[[:space:]]+[^(][^$]*\|[^$]*[[:space:]]as[[:space:]]+[$[]'
+for f in "${files[@]}"; do
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    echo "$f:${hit%%:*}: jq 1.7-incompatible: parenthesise the reduce/foreach source: (...) as \$x" >&2
+    rc=1
+  done < <(grep -nE "$re" "$f" || true)
+done
+
+if command -v jq >/dev/null 2>&1; then
+  local_jq="$(jq --version 2>/dev/null || true)"
+  local_jq="${local_jq#jq-}"
+  if [ -n "$local_jq" ] && [ "$local_jq" != "$CI_JQ_VERSION" ]; then
+    echo "lint: warning: local jq $local_jq differs from CI jq $CI_JQ_VERSION; the syntax rule above is the guard" >&2
+    if [ "${NS_LINT_STRICT_JQ:-0}" = "1" ]; then
+      rc=1
+    fi
+  fi
+fi
+
 if [ "$rc" -ne 0 ]; then
   exit 1
 fi
