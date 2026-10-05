@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ns kill <id>` ends a run's session, conductor and worker process groups at once and marks it `stopped`; the guard blocks agents from running it (ns-42).
 - `ns ls` and `ns status` show run health (`ok`, `dead`, `silent <N>m`) and `ns ls` has ELAPSED and LAST-OUT columns; `ns health-check` and the `ns-health.timer` notify once per dead or silent run (issue #43).
+- `ns rm <id>` (alias `ns purge`) removes a stopped, failed, parked or done run: worktrees, branches, tmux session and desk folder, with `--remote`, `--force`, `--dry-run`, `--yes` and `--all-stopped` (issue #60).
 - `ns log <id> [-f] [--phase <p>] [--raw]` shows a run's session logs as readable, wrapped text.
 - `ns-notify` sends the ntfy bearer token (via curl stdin) and fails on a non-2xx answer; the Caddyfile template serves ntfy on `:8444`.
 

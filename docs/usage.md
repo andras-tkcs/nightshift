@@ -170,6 +170,15 @@ ns health-check
 
 `ns health-check` is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
 
+### ns rm
+
+```
+ns rm <id> [--force] [--remote] [--dry-run] [--yes]
+ns rm --all-stopped [--force] [--remote] [--dry-run] [--yes]
+```
+
+`ns rm` (alias `ns purge`) removes a run that `ns gc` would not touch: one that is `stopped`, `failed`, `parked` or `done`. A `running` or `queued` run is refused with a pointer to `ns stop` / `ns kill`. It removes the run's worktrees, local branches, tmux session and desk folder (moved to `archive/` on the desk) and marks the run archived, so it only shows in `ns ls --all`. It lists what will go and asks for confirmation unless `--yes` is given; `--dry-run` only prints `would remove ...` lines. A worktree with uncommitted or unpushed work is refused (`needs you: <path>: uncommitted changes`) unless `--force`. Remote branches are deleted only with `--remote`, which also closes an open PR with a comment. `--all-stopped` does this for every non-archived stopped, failed or parked run. GitHub calls use the project owner's token, as `ns gc` does. Exit 0, or 1 when a run was refused or an action failed.
+
 ### ns gc
 
 ```
