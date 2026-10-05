@@ -74,17 +74,17 @@ ns_resume_start() {
   fi
   live=$(ns_queue_live_count)
   if [ "$live" -ge "$(ns_queue_max)" ]; then
-    if [ "$state" != queued ]; then
-      "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null'
+    if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
+      "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true'
       "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot"
-      "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
+      "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&-
     fi
     ns_queue_msg "$id" "$live"
     return 10
   fi
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .state = "running"'
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running"'
   "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state"
-  "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
+  "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&-
   NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"
   printf 'resumed %s\n' "$id"
 }

@@ -124,3 +124,49 @@ sessions() { find "$TMUX_STUB_DIR" -type f | wc -l | tr -d ' '; }
   assert_success
   assert_output_contains "position 1 of 1"
 }
+
+@test "the queue lock is free after ns new, even when tmux leaves a daemon behind" {
+  export TMUX_STUB_LEAK="$BATS_TEST_TMPDIR/leak.pid"
+  run ns new sbx-31 --tier T1 --yes
+  assert_success
+  [ -s "$TMUX_STUB_LEAK" ]
+  kill -0 "$(cat "$TMUX_STUB_LEAK")"
+  run flock -n "$NS_CONFIG_DIR/queue.lock" true
+  kill "$(cat "$TMUX_STUB_LEAK")" 2>/dev/null || true
+  assert_success
+}
+
+@test "a queued run created without --tier (triage left it running) is queued and dequeued" {
+  set_max_runs 1
+  live_run 11
+  cat >"$BATS_TEST_TMPDIR/triage.sh" <<'EOS'
+ns-ledger set "$NS_LEDGER" '.tier_recommended="T1"'
+ns-ledger state "$NS_LEDGER" running
+EOS
+  export CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/triage.sh"
+  run ns new sbx-12 --yes
+  assert_success
+  assert_output_contains "queued sbx-12"
+  [ "$(lget sbx-12 .state)" = queued ]
+  [ "$(lget sbx-12 .queued_for_slot)" = true ]
+  end_session 11
+  run ns dequeue
+  assert_success
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget sbx-12 .state)" = running ]
+  [ "$(lget sbx-12 .queued_for_slot)" = false ]
+}
+
+@test "ns dequeue during ns new does not start the half-created run" {
+  set_max_runs 5
+  cat >"$BATS_TEST_TMPDIR/triage.sh" <<'EOS'
+ns-ledger set "$NS_LEDGER" '.tier_recommended="T1"'
+ns dequeue >"$(dirname "$NS_LEDGER")/../../../dequeue.out" 2>&1
+EOS
+  export CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/triage.sh"
+  run ns new sbx-12 --yes
+  assert_success
+  assert_output_contains "started sbx-12"
+  [ "$(lget sbx-12 '[.events[].type] | index("dequeued") == null')" = true ]
+  grep -q "0 started" "$SBX-sbx-12/dequeue.out"
+}

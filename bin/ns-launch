@@ -91,6 +91,9 @@ rc=0
 wait || true
 # the conductor ended: let the next queued run take the slot
 if [ "$mode" != --triage ]; then
-  NS_QUEUE_EXCLUDE="$id" "$NS_HOME/bin/ns" dequeue >/dev/null 2>&1 || true
+  # clean environment: the ending run's token and ids must not reach other runs' conductors
+  mkdir -p "$(ns_config_dir)/logs/$id"
+  env -u GH_TOKEN -u NS_RUN_ID -u NS_LEDGER -u NS_PROJECT NS_QUEUE_EXCLUDE="$id" \
+    "$NS_HOME/bin/ns" dequeue >>"$(ns_config_dir)/logs/$id/dequeue.log" 2>&1 || true
 fi
 exit "$rc"

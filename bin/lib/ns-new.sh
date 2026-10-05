@@ -27,13 +27,20 @@ ns_new_help() {
 # ns_new_start <id> <wt> <ledger> <now>: under the queue lock, start the conductor or queue the run
 ns_new_start() {
   local id="$1" wt="$2" ledger="$3" now="$4" live
+  if ns_tmux_has "$id"; then
+    printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
+    return 0
+  fi
   live=$(ns_queue_live_count)
   if [ "$now" = false ] && [ "$live" -ge "$(ns_queue_max)" ]; then
+    "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true'
+    "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot"
     "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot"
-    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
+    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&-
     ns_queue_msg "$id" "$live"
     return 10
   fi
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.queued_for_slot = false'
   ns_tmux_start "$id" "$wt" "$NS_HOME/bin/ns-launch $id"
   printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
 }

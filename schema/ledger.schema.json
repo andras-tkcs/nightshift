@@ -34,6 +34,7 @@
     "release": { "type": ["string", "null"], "pattern": "^v[0-9][0-9A-Za-z._-]*$", "description": "Nightshift release tag the run started on (basename of NS_HOME); null for a dev checkout. Resume and workers use this release." },
     "feature_branch": { "$ref": "#/$defs/nullable_string", "description": "Code branch, set when created." },
     "stacked_on": { "$ref": "#/$defs/nullable_string", "description": "Run id of the open PR this run is stacked on, or main; set by ns-conductor stack-base." },
+    "queued_for_slot": { "type": "boolean", "description": "True while the run waits in the run queue (max_runs); set and cleared under the queue lock by ns new and ns resume." },
     "pr": { "$ref": "#/$defs/nullable_string", "description": "Pull request URL." },
     "created": { "$ref": "#/$defs/time", "description": "Creation time." },
     "updated": { "$ref": "#/$defs/time", "description": "Time of the last write." },

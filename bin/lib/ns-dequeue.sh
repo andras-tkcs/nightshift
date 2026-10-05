@@ -22,7 +22,7 @@ ns_dequeue_main() {
       continue
     fi
     rc=0
-    (ns_resume_one "$id") || rc=$?
+    (ns_resume_one "$id") >/dev/null || rc=$?
     if [ "$rc" -eq 0 ] && ns_tmux_has "$id"; then
       ledger=$(ns_run_ledger "$id")
       "$NS_HOME/bin/ns-ledger" event "$ledger" dequeued "started from the queue"

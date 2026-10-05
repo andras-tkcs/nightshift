@@ -30,21 +30,22 @@ ns_queue_live_count() {
 ns_queue_locked() {
   mkdir -p "$(ns_config_dir)"
   (
-    flock 9
+    flock -w "${NS_QUEUE_LOCK_WAIT:-120}" 9 || ns_die "queue lock busy: $(ns_config_dir)/queue.lock"
     "$@"
   ) 9>"$(ns_config_dir)/queue.lock"
 }
 
-# ns_queue_list: ids of queued runs (no gate, no live session), oldest first
+# ns_queue_list: ids of runs that wait for a slot (state queued, queued_for_slot set under the
+# lock, no gate, no live session), oldest first
 ns_queue_list() {
-  local id ledger st gate
+  local id ledger st gate mark
   while IFS= read -r id; do
     [ -n "$id" ] || continue
     ledger=$(ns_run_ledger "$id") || continue
     [ -f "$ledger" ] || continue
-    st=$("$NS_HOME/bin/ns-ledger" get "$ledger" '[.state, (.gate // "")] | @tsv' 2>/dev/null) || continue
-    IFS=$'\t' read -r st gate <<<"$st"
-    [ "$st" = queued ] && [ -z "$gate" ] || continue
+    st=$("$NS_HOME/bin/ns-ledger" get "$ledger" '[.state, (.gate // "-"), (.queued_for_slot // false)] | @tsv' 2>/dev/null) || continue
+    IFS=$'\t' read -r st gate mark <<<"$st"
+    [ "$st" = queued ] && [ "$gate" = - ] && [ "$mark" = true ] || continue
     ! ns_tmux_has "$id" || continue
     printf '%s\n' "$id"
   done < <(ns_runs_json | jq -r '[.[] | select(.archived | not)] | sort_by(.created) | .[].id')

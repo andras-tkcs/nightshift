@@ -103,7 +103,8 @@ ns_tmux_start() {
       args+=(-e "$v=${!v}")
     fi
   done
-  tmux new-session -d -s "$name" -c "$dir" "${args[@]}" "exec $cmd"
+  # 9>&-: a tmux server started here must not inherit the queue lock
+  tmux new-session -d -s "$name" -c "$dir" "${args[@]}" "exec $cmd" 9>&-
 }
 
 ns_tmux_has() { tmux has-session -t "=$1" 2>/dev/null; }
