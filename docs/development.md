@@ -39,6 +39,10 @@ Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take m
 
 The requirements are in [spec.md](spec.md).
 
+## Developing Nightshift with Nightshift
+
+A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. Nightshift enforces this for writes: a checkout outside `/opt/nightshift/` refuses to write the live run's ledger. Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
+
 ## Releasing
 
 Releases are tagged by the owner, never by an agent (ADR 0007).

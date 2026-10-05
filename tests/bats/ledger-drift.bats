@@ -53,19 +53,19 @@ commit_ledger() {
 
 @test "an unknown top-level key is read with a warning by ns ls, status and resume" {
   ns-ledger set "$LEDGER" '.state = "parked"'
-  printf 'stacked_on: ns-50\n' >>"$LEDGER"
+  printf 'wip_field: ns-50\n' >>"$LEDGER"
   commit_ledger
   run ns ls
   assert_success
-  assert_output_contains "ledger has unknown field stacked_on; kept"
+  assert_output_contains "ledger has unknown field wip_field; kept"
   assert_output_contains "sbx-12"
   run ns status sbx-12
   assert_success
-  assert_output_contains "ledger has unknown field stacked_on; kept"
+  assert_output_contains "ledger has unknown field wip_field; kept"
   run ns resume sbx-12
   assert_success
-  assert_output_contains "ledger has unknown field stacked_on; kept"
-  grep -q '^stacked_on: ns-50' "$LEDGER"
+  assert_output_contains "ledger has unknown field wip_field; kept"
+  grep -q '^wip_field: ns-50' "$LEDGER"
 }
 
 @test "a type error still fails and the message names the field" {
