@@ -131,3 +131,90 @@ EOF
   run git -C "$BARE" tag -l v0.1.1
   [ "$output" = "v0.1.1" ]
 }
+
+@test "ns tag refuses a tag that exists only on origin (ls-remote path)" {
+  # hide the tag from fetch --tags so only the ls-remote check can catch it
+  git -C "$REPO" tag -d v0.1.0 >/dev/null
+  git -C "$BARE" tag v0.1.2
+  mkdir -p "$BATS_TEST_TMPDIR/gitbin"
+  cat >"$BATS_TEST_TMPDIR/gitbin/git" <<'EOF2'
+#!/usr/bin/env bash
+args=()
+for a in "$@"; do
+  [ "$a" = "--tags" ] && continue
+  args+=("$a")
+done
+exec /usr/bin/git "${args[@]}"
+EOF2
+  chmod +x "$BATS_TEST_TMPDIR/gitbin/git"
+  PATH="$BATS_TEST_TMPDIR/gitbin:$PATH" run ns tag v0.1.2 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "exists"
+}
+
+@test "ns tag warns, but still tags, when gh is missing" {
+  mkdir -p "$BATS_TEST_TMPDIR/nogh"
+  local c p
+  for c in bash env git jq sort tail grep awk sed cat dirname basename mktemp rm mkdir tr head date uname readlink tmux flock; do
+    p=$(command -v "$c" 2>/dev/null) || continue
+    case "$p" in */gh-stub/*) continue ;; esac
+    ln -sf "$p" "$BATS_TEST_TMPDIR/nogh/$c"
+  done
+  PATH="$BATS_TEST_TMPDIR/nogh" run "$NS_REPO_ROOT/bin/ns" tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  assert_output_contains "gh is missing"
+  run git -C "$BARE" tag -l v0.1.1
+  [ "$output" = "v0.1.1" ]
+}
+
+# live_run <id>: register a project and a running run with a live tmux session.
+live_run() {
+  local fix="$BATS_TEST_TMPDIR/fixture"
+  mkdir -p "$fix/.claude"
+  cp "$PROFILE" "$fix/.claude/"
+  printf '# sandbox\n' >"$fix/README.md"
+  make_remote andras-tkcs/nightshift-sandbox "$fix"
+  ns project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
+  export TMUX_STUB_PANE_PID=$$
+  ns new "$1" --tier T1 --yes >&2
+  ns-ledger set "$(ls "$NS_CODING_DIR"/worktrees/*-"$1"/.nightshift/runs/"$1"/ledger.yaml)" '.state="running"'
+  mkdir -p "$NS_CONFIG_DIR/logs/$1"
+  : >"$NS_CONFIG_DIR/logs/$1/conductor.jsonl"
+}
+
+@test "ns tag warns about active Nightshift runs, but still tags" {
+  live_run sbx-12
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  assert_output_contains "runs are active"
+  assert_output_contains "sbx-12"
+  assert_output_contains "--upgrade"
+  run git -C "$BARE" tag -l v0.1.1
+  [ "$output" = "v0.1.1" ]
+}
+
+@test "ns tag prints no active-runs warning when no run is active" {
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  [[ "$output" != *"runs are active"* ]]
+}
+
+@test "ns tag accepts the next version with leading zeros" {
+  git -C "$REPO" tag -a v0.1.08 -m x
+  git -C "$REPO" push -q origin v0.1.08
+  run ns tag v0.1.10 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "next"
+  run ns tag v0.1.09 --repo "$REPO" --yes
+  assert_success
+}
+
+@test "ns tag removes the local tag when the push fails" {
+  printf '#!/bin/sh\nexit 1\n' >"$BARE/hooks/pre-receive"
+  chmod +x "$BARE/hooks/pre-receive"
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "push"
+  run git -C "$REPO" tag -l v0.1.1
+  [ -z "$output" ]
+}
