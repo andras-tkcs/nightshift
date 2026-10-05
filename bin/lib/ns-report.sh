@@ -40,11 +40,10 @@ ns_report_main() {
     [ -n "$path" ] && [ -d "$path" ] || ns_die "no ledger for $id: worktree $wt is gone and project $project has no checkout"
     git -C "$path" fetch -q origin "$branch" 2>/dev/null || true
     tmp="$(mktemp)"
-    # shellcheck disable=SC2064
-    trap "rm -f '$tmp'" RETURN
     git -C "$path" show "origin/$branch:$rel/ledger.yaml" >"$tmp" 2>/dev/null ||
-      ns_die "no ledger for $id: not in $wt or on origin/$branch"
-    json=$(ns_yaml_json "$tmp") || ns_die "ledger of $id on origin/$branch does not parse"
+      { rm -f "$tmp"; ns_die "no ledger for $id: not in $wt or on origin/$branch"; }
+    json=$(ns_yaml_json "$tmp") || { rm -f "$tmp"; ns_die "ledger of $id on origin/$branch does not parse"; }
+    rm -f "$tmp"
     cause=$(git -C "$path" show "origin/$branch:$rel/escalation.md" 2>/dev/null | ns_report_cause) || cause=""
     out="$(ns_config_dir)/reports/$id/run-report.md"
     mkdir -p "$(dirname "$out")"

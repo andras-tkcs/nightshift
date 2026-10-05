@@ -40,3 +40,17 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
   run ns report sbx-99
   assert_failure
 }
+
+@test "ns report ends planning at the first phase when there is no gate 1" {
+  python3 - "$RUNDIR/ledger.yaml" <<'P'
+import re, sys
+p = sys.argv[1]
+head, ev = open(p).read().split('events:\n', 1)
+items = [i for i in re.split(r'(?m)^(?=- time:)', ev) if i.strip()]
+items = [i for i in items if not re.search(r"type: (gate|approved)\n", i)]
+open(p, 'w').write(head + 'events:\n' + ''.join(items))
+P
+  run ns report sbx-12
+  assert_success
+  grep -qF '| planning | 2026-10-02 10:00 | 1h 11m |' "$RUNDIR/run-report.md"
+}

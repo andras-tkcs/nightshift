@@ -39,7 +39,10 @@ def minus($waits):
     | [$ev[. - 1].t, $ev[.].t] | minus($wi)[]]) as $dead
 | (.created | ep) as $t0
 | ($t0) as $start
-| (($waits | map(select(.gate == "1")) | .[0].s) // $end) as $plan_end
+# planning ends at gate 1, else at the first phase-start or review, else at the end
+| ([($waits | map(select(.gate == "1")) | .[0].s),
+    ($ev | map(select(.type == "phase-start" or .type == "review") | .t) | .[0]),
+    $end] | map(select(. != null)) | min) as $plan_end
 | def row($label; $s; $e; $own_wait):
     {label: $label, s: $s, e: ([$e, $s] | max)}
     | .wall = (.e - .s)
@@ -74,8 +77,8 @@ def minus($waits):
     "# Run report: \(.id | esc)",
     "",
     "- Project: \(.project | esc)",
-    "- Tier: \(.tier // "none")",
-    "- State: \(.state)",
+    "- Tier: \(.tier // "none" | esc)",
+    "- State: \(.state | esc)",
     "- Pull request: \(.pr // "none" | esc)",
     "- Times are UTC, built from the run ledger only.",
     "",
@@ -87,7 +90,7 @@ def minus($waits):
     "| Active time | \([$wall - $waiting - $deadsum, 0] | max | dur) |",
     "| Waiting for you | \($waiting | dur) |",
     "| Dead or stopped | \($deadsum | dur) |",
-    "| Budget | \($b.used) h of \(if $b.limit == null then "no limit" else "\($b.limit) h" end) |",
+    "| Budget | \(if $b == null then "none" else "\($b.used // 0) h of \(if $b.limit == null then "no limit" else "\($b.limit) h" end)" end) |",
     "| Review rounds | \($rounds) |",
     "| Escalations | \($nesc) |"
   ]
