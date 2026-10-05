@@ -192,7 +192,11 @@ PRS_TWO='[
 @test "stack-base records the profile's base branch, not main" {
   local clone
   clone=$(ns_project_path)
-  printf 'git:\n  base_branch: develop\n' >"$clone/.claude/project-profile.yaml"
+  # the profile is read from origin/main, so publish it there
+  printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\n  test: "true"\ngit:\n  base_branch: develop\nstacks: [python]\n' >"$clone/.claude/project-profile.yaml"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "base branch develop"
+  git -C "$clone" push -q origin HEAD:main
   pr_list '[]'
   run ns-conductor stack-base sbx-12
   assert_success

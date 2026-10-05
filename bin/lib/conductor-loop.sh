@@ -100,20 +100,33 @@ conductor_feature() {
 
 # conductor_stack_base <id>: print the base branch for the run's PR. With open PRs of other
 # runs it merges the top of the stack into the code branch (never a rebase), records
-# stacked_on and prints that branch; exit 6 on a conflict, the merge is left in progress.
+# stacked_on and prints that branch; exit 6 on a conflict (the merge is left in progress), exit 7
+# when the open run PRs form more than one chain.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
   prefix=$(jq -r .prefix <<<"$project")
   fixpat=$(jq -r '.git.fix_branch' <<<"$profile")
   featpat=$(jq -r '.git.feature_branch' <<<"$profile")
-  prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix") || ns_die "could not list the pull requests of $repo"
-  top=$(jq -c --arg me "$id" '[.[] | select(.run != $me)] | last // empty' <<<"$prs")
+  prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$(jq -r .path <<<"$project")") || ns_die "could not list the pull requests of $repo"
+  others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
+  closed=$(ns_stack_closed_heads "$repo")
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    printf 'warning: the base of %s (%s) is a PR closed without a merge: use ns stack drop\n' \
+      "$(jq -r --arg c "$c" '[.[] | select(.base == $c)][0].run' <<<"$others")" "$c" >&2
+  done < <(jq -r '.[].base' <<<"$others" | sort -u | grep -xFf <(printf '%s\n' "$closed") || true)
+  if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
+    tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')
+    printf 'more than one chain of open run PRs (tops: %s): choose a base by hand (gate 1.5)\n' "$tops" >&2
+    exit 7
+  fi
+  top=$(jq -c 'last // empty' <<<"$others")
   if [ -z "$top" ]; then
-    lg set "$ledger" '.stacked_on = "main"'
+    lg set "$ledger" ".stacked_on = $(jstr "$base")"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
     return 0
@@ -127,6 +140,9 @@ conductor_stack_base() {
     ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
   fi
   git -C "$dir" fetch -q origin "$head" || ns_die "could not fetch origin $head"
+  clash=$(comm -12 <(git -C "$dir" ls-files --others --exclude-standard | sort) \
+    <(git -C "$dir" diff --name-only "HEAD...origin/$head" | sort))
+  [ -z "$clash" ] || ns_die "untracked files in $dir would be overwritten by merging $head: $(tr '\n' ' ' <<<"$clash")"
   if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $head into $own (stacked on $stacked)" "origin/$head" 2>&1); then
     printf '%s\n' "$mout" >&2
     if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
