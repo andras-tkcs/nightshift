@@ -157,7 +157,6 @@ EOF2
   local c p
   for c in bash env git jq sort tail grep awk sed cat dirname basename mktemp rm mkdir tr head date uname readlink tmux flock; do
     p=$(command -v "$c" 2>/dev/null) || continue
-    case "$p" in */gh-stub/*) continue ;; esac
     ln -sf "$p" "$BATS_TEST_TMPDIR/nogh/$c"
   done
   PATH="$BATS_TEST_TMPDIR/nogh" run "$NS_REPO_ROOT/bin/ns" tag v0.1.1 --repo "$REPO" --yes

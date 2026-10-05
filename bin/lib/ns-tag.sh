@@ -43,7 +43,7 @@ ns_tag_warn_active_runs() {
     gate=$(jq -r '.gate // ""' <<<"$led")
     health=$(ns_run_health "$id" "$state" "$gate")
     [ "$health" != dead ] || continue
-    rel=$(jq -r '.release // "-"' <<<"$led")
+    rel=$(jq -r 'if (.release // "") == "" then "-" else .release end' <<<"$led")
     lines+=$(printf '\n  %s  %s  %s' "$id" "$state" "$rel")
   done < <(ns_runs_json | jq -c '.[] | select(.archived | not)' 2>/dev/null || true)
   [ -z "$lines" ] ||
