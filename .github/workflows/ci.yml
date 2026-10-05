@@ -6,12 +6,12 @@ on:
 permissions:
   contents: read
 jobs:
-  checks:
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        run: sudo apt-get update -q && sudo apt-get install -y -q bats parallel jq python3-yaml python3-jsonschema
+        run: sudo apt-get update -q && sudo apt-get install -y -q jq python3-yaml python3-jsonschema
       - name: Install shellcheck 0.11.0
         run: |
           set -euo pipefail
@@ -22,12 +22,24 @@ jobs:
           tar -xJf /tmp/shellcheck.tar.xz -C /tmp
           install -m 0755 /tmp/shellcheck-v0.11.0/shellcheck "$HOME/.local/bin/shellcheck"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Install Claude Code
-        run: curl -fsSL https://claude.ai/install.sh | bash && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: shellcheck
         run: tests/lint
+  bats:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q bats parallel jq python3-yaml python3-jsonschema
       - name: bats
         run: bats --jobs "$(nproc)" tests/bats
+  plugin-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q jq python3-yaml python3-jsonschema
+      - name: Install Claude Code
+        run: curl -fsSL https://claude.ai/install.sh | bash && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: plugin validate
         run: |
           claude plugin validate --strict .
@@ -35,3 +47,17 @@ jobs:
           claude plugin validate --strict plugins/ns-python
       - name: docs-check
         run: tests/docs-check --final
+  # Aggregate job: keeps the required status check context `checks`.
+  checks:
+    needs: [lint, bats, plugin-validate]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: All jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "a required job finished with: $r"; exit 1; }
+          done

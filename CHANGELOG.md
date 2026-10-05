@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
 - The bats suite runs in parallel: CI installs GNU `parallel` and runs `bats --jobs "$(nproc)"`, and CLAUDE.md and docs/development.md document `bats --jobs 2` for local runs (issue #102).
 
 ### Added
