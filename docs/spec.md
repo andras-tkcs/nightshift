@@ -131,7 +131,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | Command | Behavior |
 |---|---|
 | `ns project add owner/repo --prefix p [--sandbox]` | Register a project. If `~/Coding/<repo>` already exists **and** its `origin` is `owner/repo`, adopt it as the main checkout (no clone, nothing overwritten); if it exists with another origin, stop with an error; otherwise clone it. Then run the stacks' worktree setup, create `/srv/ns-space/<repo>/`, and add it to `~/.config/ns/projects.yaml`. If the repo has no profile on its base branch, start the onboarding run `<prefix>-onboard` (R-ONB). `--sandbox` marks the project as a test target (R-E2E). |
-| `ns new <prefix>-<issue>` / `ns new <prefix> "text"` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. |
+| `ns new <prefix>-<issue>` / `ns new <prefix> "text"` / `ns new <prefix> --from-desk <note.md>` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. `--from-desk` takes the task text from a desk note; the note is read as data and no file is written to the repo. |
 | `ns ls` | One line per run: id, tier, phase, state, waiting-on, age. |
 | `ns attach <id>` | Attach to the run's tmux session. |
 | `ns log <id> [-f] [--phase <p>] [--raw]` | Show the run's session logs as readable, wrapped text. |
@@ -144,6 +144,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns resume <id>` / `--all` | Restart parked/stopped runs from their ledgers. |
 | `ns publish <id> <file>…` | Copy gate documents to `/srv/ns-space/<repo>/runs/<id>/`, update `index.md`, send ntfy. |
 | `ns approve <id>` | Show the diff between the desk copies and the run's branch, ask, then commit the edited Markdown back with trailer `Approved-By: owner` and release the gate. |
+| `ns desk import <path.md> <repo path>` | Copy a desk note to `<repo path>` on a new branch cut from the base branch, push it and open a pull request; never merge it (owner only). |
 | `ns gc [--dry-run]` | Housekeeping (section 12). |
 | `ns rm <id> [--force] [--remote] [--dry-run] [--yes]` / `--all-stopped` (alias `ns purge`) | Remove a stopped, failed, parked or done run: worktrees, local branches, tmux session, desk folder (archived). Refuses live runs and unsaved work unless `--force`; remote branches and an open PR only with `--remote`. |
 | `ns doctor` | Check services, logins, tokens (expiry where readable), auto-mode availability, desk, tunnel, timers, disk (warn at 80 %). Non-zero exit if anything is red. |
@@ -224,7 +225,7 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 
 - **R-DSK-1** Layout: `/srv/ns-space/<repo>/index.md` and `/srv/ns-space/<repo>/runs/<id>/…`. Editable decisions are Markdown (`plan.md`, `adr-*.md`, `acceptance.md`, `manual-steps.md`, `escalation.md`). Read-only reports are HTML (`handoff.html`, `architecture.html`).
 - **R-DSK-2** HTML reports are self-contained: no external scripts, inline CSS, readable on a phone.
-- **R-DSK-3** `ns approve` is the only path from the desk back into git (R-CLI table).
+- **R-DSK-3** Two owner-run paths lead from the desk back into git: `ns approve` (gate documents of a run) and `ns desk import` (a desk note, by pull request only; Nightshift never merges it). Nothing else copies desk files into git (R-CLI table).
 - **R-DSK-4** On merge, `ns gc` moves `runs/<id>` to `archive/<yyyy-mm>/<id>` and deletes archives older than 90 days.
 - **R-NOT-1** `ns-notify "<text>" [url]` posts to `ntfy.sh/$NS_NTFY_TOPIC`. Messages contain the run id, the gate and a desk link, never code, findings or tokens.
 - **R-NOT-2** If `NS_HEALTHCHECK_URL` is set, `ns gc` pings it on success.

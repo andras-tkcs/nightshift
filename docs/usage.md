@@ -57,6 +57,7 @@ Running it again with the same repo and prefix prints `already registered` and e
 ```
 ns new <prefix>-<n> [--tier T0..T3] [--yes]
 ns new <prefix> "<text>" [--tier T0..T3] [--yes]
+ns new <prefix> --from-desk <path.md> [--tier T0..T3] [--yes]
 ns new <prefix>-onboard --onboard
 ```
 
@@ -66,6 +67,8 @@ ns new <prefix>-onboard --onboard
 
 If the run already exists, `ns new` prints `already running` and exits 0 when its tmux session is alive, and otherwise exits 1 and points to `ns resume`. A project whose base branch has no `.claude/project-profile.yaml` is refused until it has one: if the onboarding pull request is open, the message names it.
 
+`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
+
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
 ### ns stack
@@ -74,9 +77,9 @@ If the run already exists, `ns new` prints `already running` and exits 0 when it
 ns stack [project]
 ```
 
-`ns stack` lists the open pull requests of runs, bottom to top (`main <- a <- b`), by asking GitHub, so it needs no ledgers of other runs. A run PR is one whose head branch matches the project's `fix_branch` or `feature_branch` pattern. Columns: RUN, PR, BASE, CHECKS (`pass`, `fail`, `pending` or `none`), REVIEW (the review decision, `-` when none) and AGE. `project` is a prefix, name or `owner/repo`; without it every project is shown.
+`ns stack` lists the open pull requests of runs, bottom to top (`main <- a <- b`), by asking GitHub, so it needs no ledgers of other runs. A run PR is one whose head branch matches the project's `fix_branch` or `feature_branch` pattern and whose `plan/<run id>` branch exists on origin. When the PRs form more than one chain, each is printed under a `chain 1`, `chain 2` heading. A PR whose base branch belongs to a PR closed without a merge is marked `base closed`; use `ns stack drop`. Columns: RUN, PR, BASE, CHECKS (`pass`, `fail`, `pending` or `none`), REVIEW (the review decision, `-` when none) and AGE. `project` is a prefix, name or `owner/repo`; without it every project is shown.
 
-Stacking: before opening its PR a run asks `ns-conductor stack-base <id>`. When another run's PR is open, the run merges the top of the stack into its code branch (a merge, never a rebase), opens its PR against that branch and records `stacked_on` in its ledger (`ns status` shows a `stacked` line). With no open run PR it targets the base branch and records `main`. A merge conflict is resolved by the integrator, which reruns the checks; when that is not possible the run goes to gate 1.5 and opens no PR. Merge the PRs bottom to top.
+Stacking: before opening its PR a run asks `ns-conductor stack-base <id>`. When another run's PR is open, the run merges the top of the stack into its code branch (a merge, never a rebase), opens its PR against that branch and records `stacked_on` in its ledger (`ns status` shows a `stacked` line). With no open run PR it targets the base branch and records the base branch name. When more than one chain of run PRs is open, `stack-base` exits 7 and the run goes to gate 1.5 so the owner picks the base. A merge conflict is resolved by the integrator, which reruns the checks; when that is not possible the run goes to gate 1.5 and opens no PR. Merge the PRs bottom to top.
 
 ### ns ls
 
@@ -212,6 +215,14 @@ For a **closed** PR (not merged) it does the same except that it never deletes t
 Desk archive folders older than 90 days are deleted. A worktree with uncommitted or unpushed work is never touched: it is reported as `needs you: <path>: <reason>` and its run is kept whole, as are runs that are not `done` or whose PR is still open. Project `.claude/worktrees/*` holding work are reported too. On the 1st of the month, or with `--monthly`, the stacks' `gc.monthly` targets (for Python `~/.cache/pip`) are removed.
 
 Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed.
+
+### ns desk
+
+```
+ns desk import <path.md> <repo path>
+```
+
+`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request.
 
 ### ns publish
 
