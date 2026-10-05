@@ -1,0 +1,32 @@
+version: 1
+id: ns-99
+project: nightshift
+request:
+  issue: 99
+tier: T1
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-99
+feature_branch: null
+pr: null
+release: v0.1.5
+created: '2026-10-05T17:07:13Z'
+updated: '2026-10-05T17:07:15Z'
+budget:
+  used: 0
+  limit: 2
+  paused: false
+  since: '2026-10-05T17:07:15Z'
+phases: []
+events:
+- time: '2026-10-05T17:07:13Z'
+  type: created
+  note: run ns-99 created
+- time: '2026-10-05T17:07:14Z'
+  type: tier
+  note: T1 (owner, 2 h)
