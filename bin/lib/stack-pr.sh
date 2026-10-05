@@ -35,7 +35,8 @@ ns_stack_run_id() {
 # Depth is the number of PRs below it (following baseRefName); ties go by creation time.
 ns_stack_open_prs() {
   local repo="$1" fixpat="$2" featpat="$3" prefix="$4" path="${5:-}" prs rows="[]" row head rid plans
-  plans=$(git -C "$path" ls-remote --heads origin 'plan/*' 2>/dev/null | awk '{sub("refs/heads/", "", $2); print $2}') || plans=""
+  plans=$(git -C "$path" ls-remote --heads origin 'plan/*' 2>/dev/null) || return 1
+  plans=$(awk '{sub("refs/heads/", "", $2); print $2}' <<<"$plans")
   prs=$(gh pr list --repo "$repo" --state open --limit 100 \
     --json number,headRefName,baseRefName,createdAt,reviewDecision,statusCheckRollup) || return 1
   while IFS= read -r row; do

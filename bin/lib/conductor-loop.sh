@@ -104,7 +104,7 @@ conductor_feature() {
 # when the open run PRs form more than one chain.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
@@ -119,6 +119,16 @@ conductor_stack_base() {
     printf 'warning: the base of %s (%s) is a PR closed without a merge: use ns stack drop\n' \
       "$(jq -r --arg c "$c" '[.[] | select(.base == $c)][0].run' <<<"$others")" "$c" >&2
   done < <(jq -r '.[].base' <<<"$others" | sort -u | grep -xFf <(printf '%s\n' "$closed") || true)
+  own_on=$(lg get "$ledger" '.stacked_on // empty')
+  if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
+    while IFS= read -r c; do
+      [ -n "$c" ] || continue
+      if [ "$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$c" || true)" = "$own_on" ]; then
+        printf 'warning: %s is stacked on %s (%s), a PR closed without a merge: use ns stack drop\n' "$id" "$own_on" "$c" >&2
+        break
+      fi
+    done <<<"$closed"
+  fi
   if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
     tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')
     printf 'more than one chain of open run PRs (tops: %s): choose a base by hand (gate 1.5)\n' "$tops" >&2

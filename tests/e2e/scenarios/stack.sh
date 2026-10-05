@@ -5,7 +5,12 @@
 E2E_TIMEOUT=2700
 
 scenario_main() {
-  local first second
+  local first second leftovers
+  leftovers=$(gh pr list --repo "$E2E_REPO" --state open --json headRefName --jq '.[].headRefName' | grep -E '^(fix|feature)/' || true)
+  if [ -n "$leftovers" ]; then
+    e2e_log "open run PRs left in the sandbox, close them first: $(tr '\n' ' ' <<<"$leftovers")"
+    return 1
+  fi
   e2e_new_run "$E2E_PREFIX" "Fix the typo 'recieve' in README.md" --tier T0 --yes || return 1
   first="$E2E_ID"
   e2e_wait "$first" '.state == "done"' "$E2E_TIMEOUT" || return 1
