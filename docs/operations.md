@@ -47,6 +47,8 @@ ns resume --all
 
 ## A run that stopped without telling you
 
+Runs beyond `max_runs` (default 2, in `config.yaml`) wait as `queued`: `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position. They start by themselves when a conductor ends; `ns dequeue` starts them by hand and `ns new --now` skips the queue. After a reboot `ns resume --all` starts as many runs as `max_runs` allows and queues the rest.
+
 `ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to the log for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
 
 ## Cleanup: what `ns gc` drops
@@ -87,7 +89,7 @@ When a `needs you` line appears, go to that worktree, commit and push or discard
 
 ## Updates
 
-To cut a release, merge the pull request, then run `ns tag vX.Y.Z` in your dev clone as the owner (see [usage.md](usage.md#ns-tag)). It checks main, runs the project checks, pushes the tag and prints the upgrade command below.
+To cut a release, merge the pull request, then run `ns tag vX.Y.Z` in your dev clone as the owner (see [usage.md](usage.md#ns-tag)). It checks the base branch, runs the project checks, warns when runs are active (since the upgrade refuses then), pushes the tag and prints the upgrade command below.
 
 Nightshift runs from a release under `/opt/nightshift/<tag>`, not from your dev clone. Your dev clone `~/Coding/nightshift` is never involved in an update. To install a release or go back to an older one, as root:
 

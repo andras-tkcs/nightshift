@@ -30,6 +30,7 @@ ns_stop_main() {
   if ! ns_tmux_has "$id"; then
     ns_kill_teardown "$id" "$ledger" "stopped by the owner (no live conductor)"
     printf '%s stopped (it had no live conductor)\n' "$id"
+    "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
     return 0
   fi
   "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested="stopped"'

@@ -201,3 +201,17 @@ onboard_setup() {
   [ "$(cat "$LEDGER")" = "$ledger_before" ]
   [ ! -f "$TMUX_STUB_DIR/sbx-onboard" ]
 }
+
+@test "approve at max_runs queues the run: gate cleared, state queued, no session" {
+  gate_setup
+  printf 'max_runs: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  : >"$TMUX_STUB_DIR/oth-3"
+  printf '# Plan\n\nDo the other thing.\n' >"$DESK/plan.md"
+  run ns approve sbx-12 --yes
+  assert_success
+  assert_output_contains "queued sbx-12: 1 of 1 runs active"
+  [ "$(lget .state)" = queued ]
+  [ "$(lget '.gate // "none"')" = none ]
+  [ "$(lget .queued_for_slot)" = true ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}

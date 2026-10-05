@@ -38,6 +38,11 @@ case "$sub" in
       for e in "${envs[@]+"${envs[@]}"}"; do printf 'ENV %s\n' "$e"; done
       printf 'CMD %s\n' "${rest[*]:-}"
     } >"$dir/$name"
+    # TMUX_STUB_LEAK=<pidfile>: like a freshly forked tmux server, leave a daemon that inherits our fds
+    if [ -n "${TMUX_STUB_LEAK:-}" ]; then
+      setsid sleep 60 >/dev/null 2>&1 </dev/null &
+      echo $! >"$TMUX_STUB_LEAK"
+    fi
     ;;
   has-session)
     [ -n "$target" ] && [ -f "$dir/$target" ] || exit 1
