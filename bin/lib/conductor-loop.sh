@@ -184,7 +184,8 @@ conductor_note() {
   mkdir -p "$(dirname "$notes")"
   n=1
   if [ -f "$notes" ]; then
-    n=$(($(grep -c '^[0-9][0-9]*\. ' "$notes") + 1))
+    n=$(grep -c '^[0-9][0-9]*\. ' "$notes" || true)
+    n=$((n + 1))
   fi
   printf '%s. %s\n' "$n" "$text" >>"$notes"
   lg event "$ledger" note "note $n: ${text:0:80}"

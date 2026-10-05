@@ -418,6 +418,14 @@ mkphase() {
   [ "$(sed -n 3p "$RUNDIR/notes.md")" = "3. from a file" ]
 }
 
+@test "note numbers from 1 when notes.md has only a heading (ns-47)" {
+  printf '# Notes\n' >"$RUNDIR/notes.md"
+  run ns-conductor note sbx-12 "first"
+  assert_success
+  [ "$output" = "note 1" ]
+  [ "$(sed -n 2p "$RUNDIR/notes.md")" = "1. first" ]
+}
+
 @test "report --rerun regenerates the result record from origin and validates it (ns-47)" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null

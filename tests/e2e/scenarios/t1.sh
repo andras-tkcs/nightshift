@@ -12,14 +12,26 @@ scenario_main() {
   e2e_wait "$E2E_ID" '.state == "done"' "$E2E_TIMEOUT" || return 1
   e2e_assert "triage recommendation is in the ledger" e2e_triage_recorded "$E2E_ID" || return 1
   e2e_assert "ledger has a review event" e2e_ledger_has "$E2E_ID" 'any(.events[]; .type == "review")' || return 1
-  e2e_assert "ledger has a note event" e2e_ledger_has "$E2E_ID" 'any(.events[]; .type == "note")' || return 1
+  e2e_assert "notes.md, if the run wrote one, has matching ledger note events" t1_notes_match "$E2E_ID" || return 1
   e2e_assert "no classifier denial in the run logs" t1_no_denial "$E2E_ID" || return 1
   e2e_assert "PR is open against the base" e2e_pr_open_against_base "$E2E_ID" || return 1
   e2e_assert "first test commit fails alone, head passes" t1_tests_first || return 1
   e2e_assert "PR checks are green" e2e_pr_checks_green "$E2E_ID" 20 || return 1
 }
 
-# t1_no_denial <id>: no session log of the run mentions an auto-mode classifier denial
+# t1_notes_match <id>: a clean T1 run needs no follow-up note; if RUN/notes.md exists,
+# the ledger must have at least as many note events as numbered lines
+t1_notes_match() {
+  local notes lines
+  notes=$(find "$E2E_ROOT" -path "*/.nightshift/runs/$1/notes.md" 2>/dev/null | head -1)
+  [ -n "$notes" ] || return 0
+  lines=$(grep -c '^[0-9][0-9]*\. ' "$notes" || true)
+  [ "$lines" -eq 0 ] || e2e_ledger_has "$1" "[.events[] | select(.type == \"note\")] | length >= $lines"
+}
+
+# t1_no_denial <id>: no session log of the run mentions an auto-mode classifier denial.
+# The regex is a guess at the classifier's wording: the exact CLI string is not recorded
+# in this repo. Tighten it once a real denial message has been captured.
 t1_no_denial() {
   ! grep -rqiE 'denied by (the )?(auto mode )?classifier|classifier (denied|blocked)' \
     "${NS_CONFIG_DIR:-$HOME/.config/ns}/logs/$1" 2>/dev/null
