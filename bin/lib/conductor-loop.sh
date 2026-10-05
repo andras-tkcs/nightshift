@@ -123,14 +123,22 @@ conductor_stack_base() {
   dir=$(loop_code_wt)
   [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
   own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
-  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
-  lg checkpoint "$ledger"
+  if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
+    ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
+  fi
   git -C "$dir" fetch -q origin "$head" || ns_die "could not fetch origin $head"
   if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $head into $own (stacked on $stacked)" "origin/$head" 2>&1); then
     printf '%s\n' "$mout" >&2
-    printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$head" "$own" "$dir" >&2
-    exit 6
+    if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
+      lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+      lg checkpoint "$ledger"
+      printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$head" "$own" "$dir" >&2
+      exit 6
+    fi
+    ns_die "could not merge $head into $own in $dir"
   fi
+  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+  lg checkpoint "$ledger"
   printf '%s\n' "$head"
 }
 

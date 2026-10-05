@@ -46,11 +46,11 @@ ns_stack_open_prs() {
         createdAt: $r.createdAt, reviewDecision: ($r.reviewDecision // ""),
         statusCheckRollup: ($r.statusCheckRollup // [])}]' <<<"$rows")
   done < <(jq -c '.[]' <<<"$prs")
-  jq -c '. as $all
+  jq -c '. as $all | length as $max
     | def depth($p; $n): if $n <= 0 then 0
         else ([$all[] | select(.head == $p.base)] | first) as $b
           | if $b == null then 0 else 1 + depth($b; $n - 1) end end;
-    map(. + {depth: depth(.; length)}) | sort_by([.depth, .createdAt]) | map(del(.depth))' <<<"$rows"
+    map(. + {depth: depth(.; $max)}) | sort_by([.depth, .createdAt]) | map(del(.depth))' <<<"$rows"
 }
 
 # ns_stack_checks_state <statusCheckRollup json>: none | pending | fail | pass

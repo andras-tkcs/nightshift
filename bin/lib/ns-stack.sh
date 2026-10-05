@@ -5,6 +5,8 @@
 source "$NS_HOME/bin/lib/config.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/stack-pr.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/profile.sh"
 
 ns_stack_help() {
   printf 'usage: ns stack [project]\n\n'
@@ -38,8 +40,6 @@ ns_stack_main() {
     prefix=$(jq -r .prefix <<<"$p")
     path=$(jq -r .path <<<"$p")
     branch=$(jq -r '.branch // ""' <<<"$p")
-    # shellcheck source=/dev/null
-    source "$NS_HOME/bin/lib/profile.sh"
     prof=$(ns_profile_json "$path" "$prefix" "$branch" 2>/dev/null) || [ $? -eq 3 ] || ns_die "could not read the profile of $repo"
     fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
     featpat=$(jq -r '.git.feature_branch' <<<"$prof")
