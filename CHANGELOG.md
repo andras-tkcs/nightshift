@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ns-conductor checks` runs each check in a clean environment with no `NS_*` variables (issue #37), writes a non-zero `.rc` marker when the body dies or a check fails (issue #39), and reports a pytest exit 5 as `SKIP` instead of `FAIL`. `report` accepts a short head sha that is a prefix of the real head.
+- `ns-conductor merge` detects an already merged phase on long histories; the `git log | grep -q` pipe failed under pipefail (issue #40).
 - `ns stop` on a run with no live conductor (at a gate, or dead) now stops it at once instead of waiting for a checkpoint that never comes (ns-42).
 - `stream-view.py` survives malformed events and a closed stdout instead of killing the conductor's pipe (issue #43, #13).
 - The session stream view no longer truncates tool input at 120 characters; it wraps to the terminal width with a hanging indent and shows tool results as one short line (issue #44).

@@ -24,7 +24,7 @@ project: nightshift-sandbox
 prefix: sbx
 commands:
   setup: "true"
-  lint: "true"
+  lint: '${3:-true}'
   test: '$2'
 git: {}
 stacks: [python]
@@ -36,7 +36,7 @@ set_test_cmd() {
   local c="$BATS_TEST_TMPDIR/profile-clone"
   rm -rf "$c"
   git clone -q "$BARE" "$c"
-  write_profile_to "$c/.claude/project-profile.yaml" "$1"
+  write_profile_to "$c/.claude/project-profile.yaml" "$1" "${2:-true}"
   git -C "$c" commit -q -am "profile: test command"
   git -C "$c" push -q origin main
 }
@@ -185,6 +185,87 @@ mkphase() {
   assert_output_contains "no worktree for feature"
   [ -f "$rc" ]
   [ "$(cat "$rc")" -ne 0 ]
+}
+
+@test "checks run in a clean env: no NS_* variable reaches a check (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd 'test -z "${NS_RUN_ID:-}" && test -z "${NS_LEDGER:-}"'
+  NS_RUN_ID=sbx-12 NS_LEDGER="$LEDGER" run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_contains "PASS python test"
+}
+
+@test "checks: pytest exit 5 (no tests collected) is SKIP, not FAIL, and exits 0 (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd "exit 5"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_contains "SKIP python test"
+  assert_output_not_contains "FAIL"
+  [ "$(cat "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc")" = 0 ]
+}
+
+@test "checks: a python lint command exiting 5 is FAIL, not SKIP (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd "true" "exit 5"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  assert_output_contains "FAIL python lint"
+  assert_output_not_contains "SKIP"
+}
+
+@test "checks: a die in the body and a failing check both leave a non-zero marker (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  rc="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc"
+  set_test_cmd "exit 3"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  [ "$(cat "$rc")" = 1 ]
+  git -C "$WT" worktree remove --force "$FWT"
+  run ns-conductor checks sbx-12 feature
+  assert_failure
+  [ "$(cat "$rc")" -ne 0 ]
+}
+
+@test "report accepts a short sha prefix of the real head and rejects a non-prefix (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  head=$(remote_sha feature/12--p1-alpha)
+  mkdir -p "$NS_CONFIG_DIR/logs/sbx-12"
+  log="$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl"
+  sed "s/HEAD_PLACEHOLDER/${head:0:7}/" "$NS_REPO_ROOT/tests/fixtures/conductor/report-done.jsonl" >"$log"
+  run ns-conductor report sbx-12 p1-alpha
+  assert_success
+  sed "s/HEAD_PLACEHOLDER/${head:0:6}/" "$NS_REPO_ROOT/tests/fixtures/conductor/report-done.jsonl" >"$log"
+  run ns-conductor report sbx-12 p1-alpha
+  assert_failure 1
+  assert_output_contains "head mismatch"
+  sed "s/HEAD_PLACEHOLDER/deadbee/" "$NS_REPO_ROOT/tests/fixtures/conductor/report-done.jsonl" >"$log"
+  run ns-conductor report sbx-12 p1-alpha
+  assert_failure 1
+  assert_output_contains "head mismatch"
+}
+
+@test "merge of an already merged phase with a long history says already merged (ns-45)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  # a commit with a huge message, older than the merge: git log keeps writing after grep -q exits
+  head -c 400000 /dev/zero | tr '\0' 'x' | fold -w 100 >"$BATS_TEST_TMPDIR/bigmsg"
+  git -C "$FWT" commit -q --allow-empty -F "$BATS_TEST_TMPDIR/bigmsg"
+  git -C "$FWT" push -q origin HEAD:feature/12
+  mkphase p1-alpha a.txt alpha
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_success
+  head=$(remote_sha feature/12)
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_success
+  [ "$output" = "already merged" ]
+  [ "$(remote_sha feature/12)" = "$head" ]
 }
 
 @test "report exits 0 for a matching done report, 1 for a head mismatch and for blocked" {
