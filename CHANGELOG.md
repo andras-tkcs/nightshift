@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stacked PRs, follow-ups: a run PR needs `plan/<run id>` on origin and `{n}` matches digits only; `stacked_on` records the profile base branch; `stack-base` refuses to merge over untracked files and exits 7 (gate 1.5) when open run PRs form more than one chain; `ns stack` prints each chain and marks a PR whose base was closed unmerged (`base closed`), and `stack-base` warns about it; new `stack` e2e scenario (issue #84).
 - `ns tag` warns when Nightshift runs are active, since `bootstrap.sh --upgrade` refuses while they are, and its docs name the profile's base branch instead of `main` (issue #80).
 
+### Fixed
+
+- A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
+
 ## [0.1.5] - 2026-10-05
 
 ### Added
