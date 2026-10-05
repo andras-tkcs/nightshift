@@ -27,6 +27,7 @@ run_field() { # <id> <jq filter on the ledger>
 }
 
 @test "text runs get x1, x2; issue runs the number" {
+  printf 'max_runs: 5\n' >"$NS_CONFIG_DIR/config.yaml"
   run ns new sbx "fix the thing" --tier T1 --yes
   assert_success
   assert_output_contains "started sbx-x1 in tmux session sbx-x1: ns attach sbx-x1"
