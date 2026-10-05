@@ -222,7 +222,7 @@ Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove .
 ns desk import <path.md> <repo path>
 ```
 
-`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it.
+`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request.
 
 ### ns publish
 
