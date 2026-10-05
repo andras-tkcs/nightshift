@@ -19,6 +19,11 @@ ns_desk_help() {
   printf 'To start a run from a note without touching the repo, use ns new --from-desk.\n'
 }
 
+ns_desk_cleanup() {
+  git -C "$1" worktree remove --force "$2" 2>/dev/null || true
+  git -C "$1" branch -D "$3" >/dev/null 2>&1 || true
+}
+
 ns_desk_main() {
   [ "${1:-}" = import ] || ns_usage "$NS_DESK_USAGE"
   shift
@@ -48,6 +53,7 @@ ns_desk_main() {
   branch=$(jq -r '.branch // ""' <<<"$project")
   base=$(ns_profile_json "$path" "$prefix" "$branch" 2>/dev/null | jq -r '.git.base_branch // "main"') || base=main
   [ -n "$base" ] || base=main
+  ns_has_token "$(cat "$src")" && ns_die "$note: looks like it contains a token; remove it first"
   ns_token_export "${repo%%/*}"
 
   br="nightshift/desk-$(basename "$rel" | tr -c 'A-Za-z0-9\n' '-' | sed 's/-*$//')-$(date +%s)-$RANDOM"
@@ -61,16 +67,18 @@ ns_desk_main() {
   # shellcheck disable=SC2016
   printf 'Adds the desk note `%s` as `%s`. Review it, then merge.\n' "$sub" "$rel" >"$body"
   git -C "$pr_wt" add -f -- "$rel"
-  git -C "$pr_wt" commit -q -m "ns: import desk note $rel" -m "Approved-By: owner"
+  git -C "$pr_wt" commit -q -m "ns: import desk note $rel"
   if ! git -C "$pr_wt" push -q -u origin "$br"; then
     rm -f "$body"
+    ns_desk_cleanup "$path" "$pr_wt" "$br"
     ns_die "could not push $br"
   fi
-  if ! url=$(gh pr create --base "$base" --head "$br" --title "Add $rel from the desk" --body-file "$body"); then
+  if ! url=$(gh pr create --repo "$repo" --base "$base" --head "$br" --title "Add $rel from the desk" --body-file "$body"); then
     rm -f "$body"
+    ns_desk_cleanup "$path" "$pr_wt" "$br"
     ns_die "gh pr create failed"
   fi
   rm -f "$body"
-  git -C "$path" worktree remove --force "$pr_wt"
+  ns_desk_cleanup "$path" "$pr_wt" "$br"
   printf 'opened %s (not merged: merge it on GitHub)\n' "$url"
 }

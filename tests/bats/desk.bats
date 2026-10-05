@@ -330,7 +330,7 @@ published() {
   printf '# Idea\n' >"$DESK/notes/idea.md"
   run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
   assert_success
-  grep -q 'pr create' "$GH_STUB_LOG"
+  grep -q "pr create --repo andras-tkcs/nightshift-sandbox" "$GH_STUB_LOG"
   ! grep -q 'pr merge' "$GH_STUB_LOG"
   remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
   br=$(git -C "$remote" for-each-ref --format='%(refname:short)' refs/heads | grep -v '^main$' | grep -v '^plan/' | head -1)

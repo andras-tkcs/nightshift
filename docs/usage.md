@@ -216,13 +216,15 @@ Desk archive folders older than 90 days are deleted. A worktree with uncommitted
 
 Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed.
 
-### ns publish
+### ns desk
 
 ```
 ns desk import <path.md> <repo path>
 ```
 
 `ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it.
+
+### ns publish
 
 ```
 ns publish <id> <file>[:<name>]...
