@@ -1,0 +1,6 @@
+project: nightshift-sandbox
+prefix: sbx
+commands:
+  setup: "true"
+git: {}
+stacks: [python]
