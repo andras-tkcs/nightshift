@@ -19,6 +19,7 @@ ns_tag_next_ok() {
   local t="${1#v}" l="${2#v}" tm tn tp lm ln lp
   IFS=. read -r tm tn tp <<<"$t"
   IFS=. read -r lm ln lp <<<"$l"
+  tm=$((10#$tm)) tn=$((10#$tn)) tp=$((10#$tp)) lm=$((10#$lm)) ln=$((10#$ln)) lp=$((10#$lp))
   [ "$tm" = "$lm" ] && [ "$tn" = "$ln" ] && [ "$tp" = "$((lp + 1))" ] && return 0
   [ "$tm" = "$lm" ] && [ "$tn" = "$((ln + 1))" ] && [ "$tp" = 0 ] && return 0
   [ "$tm" = "$((lm + 1))" ] && [ "$tn" = 0 ] && [ "$tp" = 0 ] && return 0
@@ -104,8 +105,8 @@ ns_tag_main() {
   fi
 
   local msg titles
-  titles=$(git -C "$repo" log --first-parent --format='%s%n%b' ${last:+"$last..HEAD"} |
-    awk '/^Merge pull request/ {m=1; next} m && NF {print "- " $0; m=0; next} {m=0}' || true)
+  titles=$(git -C "$repo" log --first-parent --format='%s%x1f%b%x1e' ${last:+"$last..HEAD"} |
+    awk 'BEGIN {RS="\036"; FS="\037"} $1 ~ /^\n?Merge pull request/ {n=split($2, a, "\n"); for (i=1;i<=n;i++) if (a[i] ~ /[^[:space:]]/) {print "- " a[i]; break}}' || true)
   msg="Release $tag"
   [ -z "$titles" ] || msg="$msg"$'\n\n'"$titles"
 
@@ -116,7 +117,10 @@ ns_tag_main() {
     }
   fi
   git -C "$repo" tag -a "$tag" -m "$msg"
-  git -C "$repo" push -q origin "$tag"
+  git -C "$repo" push -q origin "$tag" || {
+    git -C "$repo" tag -d "$tag" >/dev/null
+    ns_die "push of $tag failed: local tag removed"
+  }
   printf 'tagged %s and pushed it to origin\n' "$tag"
   printf 'upgrade the server as root:\n  /opt/nightshift/current/bin/bootstrap.sh --upgrade %s\n' "$tag"
 }
