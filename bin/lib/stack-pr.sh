@@ -8,7 +8,7 @@ ns_stack_pattern_re() {
   local pat="$1" prefix="$2" re
   re=$(printf '%s' "$pat" | sed 's/[][\.*^$+?()|]/\\&/g')
   re=${re//\{slug\}/($prefix-[0-9a-z]+)}
-  re=${re//\{n\}/([0-9a-z]+)}
+  re=${re//\{n\}/([0-9]+)}
   printf '^%s$\n' "$re"
 }
 
@@ -30,17 +30,20 @@ ns_stack_run_id() {
   return 1
 }
 
-# ns_stack_open_prs <repo> <fix pattern> <feature pattern> <prefix>: JSON array of the open
-# run PRs, bottom to top: {run, number, head, base, createdAt, reviewDecision, statusCheckRollup}.
+# ns_stack_open_prs <repo> <fix pattern> <feature pattern> <prefix> <clone path>: JSON array of
+# the open run PRs, bottom to top (a PR counts only when plan/<run id> exists on origin): {run, number, head, base, createdAt, reviewDecision, statusCheckRollup}.
 # Depth is the number of PRs below it (following baseRefName); ties go by creation time.
 ns_stack_open_prs() {
-  local repo="$1" fixpat="$2" featpat="$3" prefix="$4" prs rows="[]" row head rid
+  local repo="$1" fixpat="$2" featpat="$3" prefix="$4" path="${5:-}" prs rows="[]" row head rid plans
+  plans=$(git -C "$path" ls-remote --heads origin 'plan/*' 2>/dev/null) || return 1
+  plans=$(awk '{sub("refs/heads/", "", $2); print $2}' <<<"$plans")
   prs=$(gh pr list --repo "$repo" --state open --limit 100 \
     --json number,headRefName,baseRefName,createdAt,reviewDecision,statusCheckRollup) || return 1
   while IFS= read -r row; do
     [ -n "$row" ] || continue
     head=$(jq -r .headRefName <<<"$row")
     rid=$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$head") || continue
+    grep -qxF "plan/$rid" <<<"$plans" || continue
     rows=$(jq -c --argjson r "$row" --arg rid "$rid" \
       '. + [{run: $rid, number: $r.number, head: $r.headRefName, base: $r.baseRefName,
         createdAt: $r.createdAt, reviewDecision: ($r.reviewDecision // ""),
@@ -61,4 +64,22 @@ ns_stack_checks_state() {
     elif any(.[]; ((.status // "COMPLETED") | ascii_upcase) != "COMPLETED"
       or ((.state // "") | ascii_upcase) == "PENDING") then "pending"
     else "pass" end' <<<"$1"
+}
+
+# ns_stack_chains <open prs json>: JSON array of chains, each an array of PRs bottom to top.
+# A chain starts at a PR whose base is not the head of another run PR.
+ns_stack_chains() {
+  jq -c '. as $all | length as $max
+    | def root($p; $n): if $n <= 0 then $p.head
+        else ([$all[] | select(.head == $p.base)] | first) as $b
+          | if $b == null then $p.head else root($b; $n - 1) end end;
+    map(. + {root: root(.; $max)}) as $m
+    | (reduce $m[] as $r ([]; if any(.[]; . == $r.root) then . else . + [$r.root] end)) as $roots
+    | [$roots[] as $x | [$m[] | select(.root == $x) | del(.root)]]' <<<"$1"
+}
+
+# ns_stack_closed_heads <repo>: print the head branches of PRs closed without a merge
+ns_stack_closed_heads() {
+  gh pr list --repo "$1" --state closed --limit 100 --json number,headRefName,state,mergedAt 2>/dev/null \
+    | jq -r '.[] | select((.state // "") == "CLOSED" and .mergedAt == null) | .headRefName' 2>/dev/null || true
 }
