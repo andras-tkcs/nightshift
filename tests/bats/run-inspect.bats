@@ -139,3 +139,13 @@ ledger_of() { printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$SBX-$1" "$1"; }
   assert_success
   [ "$output" = "sbx-12 is already stopped" ]
 }
+
+@test "ns status prints the escalation question at gate 1.5 (ns-47)" {
+  ns new sbx-12 --tier T2 --yes >/dev/null
+  ns-ledger state "$(ledger_of sbx-12)" waiting --gate 1.5
+  printf '# Escalation\n\n## Question\n\nShould the beta phase drop the cache?\n\n## Options\n\n- a\n' \
+    >"$SBX-sbx-12/.nightshift/runs/sbx-12/escalation.md"
+  run ns status sbx-12
+  assert_success
+  assert_output_contains "question  Should the beta phase drop the cache?"
+}

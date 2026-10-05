@@ -158,3 +158,10 @@ ns_secs_fmt() {
     printf '%sm\n' $((s / 60))
   fi
 }
+
+# ns_escalation_question <escalation.md>: the "## Question" section as one line, at most 200 chars
+ns_escalation_question() {
+  local q
+  q=$(awk '/^## /{f = ($0 ~ /^## Question[[:space:]]*$/); next} f' "$1" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  printf '%s\n' "${q:0:200}"
+}
