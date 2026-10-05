@@ -131,7 +131,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | Command | Behavior |
 |---|---|
 | `ns project add owner/repo --prefix p [--sandbox]` | Register a project. If `~/Coding/<repo>` already exists **and** its `origin` is `owner/repo`, adopt it as the main checkout (no clone, nothing overwritten); if it exists with another origin, stop with an error; otherwise clone it. Then run the stacks' worktree setup, create `/srv/ns-space/<repo>/`, and add it to `~/.config/ns/projects.yaml`. If the repo has no profile on its base branch, start the onboarding run `<prefix>-onboard` (R-ONB). `--sandbox` marks the project as a test target (R-E2E). |
-| `ns new <prefix>-<issue>` / `ns new <prefix> "text"` / `ns new <prefix> --from-desk <note.md>` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. `--from-desk` takes the task text from a desk note; the note is read as data and no file is written to the repo. |
+| `ns new <prefix>-<issue>` / `ns new <prefix> "text"` / `ns new <prefix> --from-desk <note.md>` | Create a run, start a tmux session named after the run, run `/ns:run` in it, set `GH_TOKEN` from the project's owner token. `--from-desk` takes the task text from a desk note; the note must lie inside the desk directory (unless `--allow-outside`), is refused if it holds a token, is read as data and no file is written to the repo. |
 | `ns ls` | One line per run: id, tier, phase, state, waiting-on, age. |
 | `ns attach <id>` | Attach to the run's tmux session. |
 | `ns log <id> [-f] [--phase <p>] [--raw]` | Show the run's session logs as readable, wrapped text. |

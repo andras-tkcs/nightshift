@@ -12,17 +12,18 @@ source "$NS_HOME/bin/lib/profile.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/queue.sh"
 
-NS_NEW_USAGE="ns new <prefix>-<n> | <prefix> \"<text>\" | <prefix>-onboard --onboard | <prefix> --from-desk <path.md> [--tier T0..T3] [--yes]"
+NS_NEW_USAGE="ns new <prefix>-<n> | <prefix> \"<text>\" | <prefix>-onboard --onboard | <prefix> --from-desk <path.md> [--tier T0..T3] [--yes] [--allow-outside]"
 
 ns_new_help() {
   printf 'usage: ns new <prefix>-<n> [--tier T0..T3] [--yes] [--now]\n'
   printf '       ns new <prefix> "<text>" [--tier T0..T3] [--yes] [--now]\n'
-  printf '       ns new <prefix> --from-desk <path.md> [--tier T0..T3] [--yes] [--now]\n'
+  printf '       ns new <prefix> --from-desk <path.md> [--allow-outside] [--tier T0..T3] [--yes] [--now]\n'
   printf '       ns new <prefix>-onboard --onboard\n\n'
   printf 'Create a run: worktree on plan/<id>, ledger, then a tmux session running the\n'
   printf 'conductor. Without --tier the conductor triages first and asks for the tier\n'
   printf '(--yes takes its recommendation). --from-desk uses a desk note (absolute, or\n'
-  printf 'relative to the desk directory) as the request; nothing is added to the repo.\n'
+  printf 'relative to the desk directory, and inside it unless --allow-outside) as the request; a\n'
+  printf 'note that looks like it holds a token is refused; nothing is added to the repo.\n'
   printf 'At max_runs live conductors the run waits in the queue (ns dequeue); --now starts it anyway.\n'
 }
 
@@ -48,7 +49,7 @@ ns_new_start() {
 }
 
 ns_new_main() {
-  local arg="" text="" tier="" yes=false onboard=false now=false desk_file=""
+  local arg="" text="" tier="" yes=false onboard=false now=false desk_file="" allow_outside=false
   local prefix n id project profile rc=0 path pname repo branch base plan_branch wt ledger hours
   local ans rec src
   while [ $# -gt 0 ]; do
@@ -68,6 +69,10 @@ ns_new_main() {
         ;;
       --onboard)
         onboard=true
+        shift
+        ;;
+      --allow-outside)
+        allow_outside=true
         shift
         ;;
       --from-desk)
@@ -96,8 +101,18 @@ ns_new_main() {
       *) desk_file="$(ns_desk_dir)/$desk_file" ;;
     esac
     [ -f "$desk_file" ] || ns_die "$desk_file: no such desk note"
-    text=$(cat "$desk_file")
+    local real desk_real
+    real=$(realpath -- "$desk_file") || ns_die "$desk_file: cannot resolve the path"
+    desk_real=$(realpath -m -- "$(ns_desk_dir)")
+    if [ "$allow_outside" = false ]; then
+      case "$real" in
+        "$desk_real"/*) ;;
+        *) ns_die "$desk_file: outside the desk directory $desk_real; pass --allow-outside to use it anyway" ;;
+      esac
+    fi
+    text=$(cat "$real")
     [[ $text =~ [^[:space:]] ]] || ns_die "$desk_file: the desk note is empty"
+    ! ns_has_token "$text" || ns_die "$desk_file: looks like it contains a token; remove it first"
   fi
   if [ -n "$tier" ] && [[ ! $tier =~ ^T[0-3]$ ]]; then
     ns_usage "$NS_NEW_USAGE"

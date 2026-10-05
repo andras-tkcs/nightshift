@@ -212,8 +212,9 @@ ns_run_ledger_of() {
 }
 
 @test "ns new --from-desk accepts an absolute path" {
-  printf 'absolute note\n' >"$BATS_TEST_TMPDIR/n.md"
-  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox"
+  printf 'absolute note\n' >"$NS_DESK_DIR/nightshift-sandbox/abs.md"
+  run ns new sbx --from-desk "$NS_DESK_DIR/nightshift-sandbox/abs.md" --tier T1 --yes
   assert_success
   [ "$(run_field sbx-x1 .request.text)" = "absolute note" ]
 }

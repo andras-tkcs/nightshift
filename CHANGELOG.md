@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
+
 ### Added
 
 - `max_runs` (config, default 2) limits live run conductors: `ns new`, `ns resume`, `ns resume --all` and `ns approve` queue a run past the limit, the new `ns dequeue` starts queued runs oldest first when a conductor ends, `ns new --now` skips the limit, `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position (issue #75).
