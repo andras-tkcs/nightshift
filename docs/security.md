@@ -23,13 +23,14 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 | Admin tokens for `ns-gh` | typed into `GH_TOKEN` as root for one run, never stored | root, for 7 days at most |
 | Claude login | `~/.claude` | `ns` |
 | ntfy topic, desk URL, health-check URL | `~/.config/ns/env`, mode 600 | `ns` |
+| ntfy token for `ns-notify` (`tk_` and 29 letters or digits; write-only on the one topic) | `~/.config/ns/tokens/ntfy`, mode 600 (`ns-notify` refuses another mode) | `ns`; it goes only to curl on stdin for `NS_NTFY_URL`, never to GitHub (`ns doctor` skips it in the GitHub token check), argv, logs or output |
 | Cloudflare tunnel token | the `cloudflared` service on ns-main | root |
 | The release | `/opt/nightshift/<tag>`, owned by root | read-only for `ns` |
 | The desk | `/srv/ns-space` (owner `ns`, group `caddy`, mode 2750) | `ns`, the web server; reached through Access |
 | Ledgers | the run's branch `plan/<id>` in git | whoever can read the repository |
 | QA test credentials | only on the self-hosted QA runner, never on ns-main | not ns-main |
 
-Nothing prints a token: `ns doctor` shows only file modes and expiry dates, `ns publish` and `ns-notify` refuse anything that looks like a token, and secrets are read with hidden input.
+Nothing prints a token: `ns doctor` shows only file modes and expiry dates and sends only the `tokens/<owner>` files of registered project owners to GitHub, `ns publish` and `ns-notify` refuse anything that looks like a token, and secrets are read with hidden input.
 
 ## Token scopes
 

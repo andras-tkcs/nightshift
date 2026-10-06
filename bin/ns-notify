@@ -28,17 +28,26 @@ args=(-sS -m 10 -o /dev/null -w '%{http_code}' -H "Title: Nightshift")
 [ -z "$url" ] || args+=(-H "Click: $url")
 args+=(--data-raw "$text")
 endpoint="${NS_NTFY_URL:-https://ntfy.sh}/$NS_NTFY_TOPIC"
-token_file="$(ns_config_dir)/tokens/ntfy"
-token=""
-[ ! -r "$token_file" ] || token="$(tr -d '[:space:]' <"$token_file")"
-# The token goes to curl as a config on stdin, never in argv.
+# Dies on a token file that is not mode 600 or not an ntfy token.
+token="$(ns_ntfy_token)"
+errfile="$(mktemp)"
+trap 'rm -f "$errfile"' EXIT
+# The token goes to curl as a config on stdin, never in argv. curl's stderr goes to a
+# file so its error line can be shown after ours; it never holds the token.
+rc=0
 if [ -n "$token" ]; then
   args+=(-K - "$endpoint")
-  code="$(printf 'header = "Authorization: Bearer %s"\n' "$token" | curl "${args[@]}" 2>/dev/null)" ||
-    ns_die "could not reach ntfy"
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$token" | curl "${args[@]}" 2>"$errfile")" || rc=$?
 else
   args+=("$endpoint")
-  code="$(curl "${args[@]}" 2>/dev/null </dev/null)" || ns_die "could not reach ntfy"
+  code="$(curl "${args[@]}" 2>"$errfile" </dev/null)" || rc=$?
+fi
+if [ "$rc" -ne 0 ]; then
+  printf 'ns-notify: could not reach ntfy\n' >&2
+  reason="$(grep -m1 . "$errfile" || true)"
+  [ -z "$token" ] || reason="${reason//"$token"/[token]}"
+  [ -z "$reason" ] || printf '%s\n' "$reason" >&2
+  exit 1
 fi
 case "$code" in
   2??) ;;

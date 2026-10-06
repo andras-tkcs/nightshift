@@ -94,6 +94,24 @@ ns_has_token() {
   printf '%s' "$1" | grep -Eq '(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})'
 }
 
+# ns_ntfy_token: prints the ntfy token from tokens/ntfy, or nothing if there is no such file.
+# Dies, never printing the token, if the file is not mode 600 (the ns_token_export message)
+# or its first line is not an ntfy token, so the token is safe inside a quoted curl config.
+ns_ntfy_token() {
+  local file mode tok
+  file="$(ns_config_dir)/tokens/ntfy"
+  [ -f "$file" ] || return 0
+  mode=$(stat -c %a "$file")
+  [ "$mode" = 600 ] || ns_die "token file $file must be mode 600"
+  tok=""
+  IFS= read -r tok <"$file" || true
+  tok="${tok#"${tok%%[![:space:]]*}"}"
+  tok="${tok%"${tok##*[![:space:]]}"}"
+  [[ $tok =~ ^tk_[A-Za-z0-9]{29}$ ]] ||
+    ns_die "token file $file does not hold an ntfy token (tk_ and 29 letters or digits)"
+  printf '%s\n' "$tok"
+}
+
 ns_plugin_args() {
   local d
   local -a dirs=()
