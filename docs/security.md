@@ -64,21 +64,29 @@ Its limits: it is a seatbelt, not a wall (ADR 0006). When it cannot understand i
 
 ## Live-ledger guard
 
-A Nightshift command from a checkout must not write the ledger of a live run (`docs/ledger.md`, "Schema drift and live runs"). The guard is a seatbelt against running work-in-progress code on a real run by mistake, not a wall: an agent that runs as `ns` can still edit the YAML file directly, which bypasses the lock and the validation (and which `docs/ledger.md` forbids).
+A Nightshift command from a checkout must not write the ledger of a live run (`docs/ledger.md`, "Schema drift and live runs"). `CLAUDE.md`, "Developing Nightshift with Nightshift", says to run new `bin/` code only against test fixtures or temp ledgers. The guard is a seatbelt for that rule: it catches the accidental case, where a checkout's `bin/ns-ledger` is run on the run's own `$NS_LEDGER` or inherits the run's environment. It is not a boundary. An agent running as `ns` can always edit the YAML file directly, which `docs/ledger.md` forbids.
 
 What it trusts:
 
-- The running script's own location: bash's `BASH_SOURCE` of the outermost script, resolved with `readlink -f`. The environment cannot change it.
-- The `release` field of the ledger file on disk, which the release that started the run wrote at `ns-ledger init`.
-- The release root `${NS_OPT:-/opt/nightshift}`, together with the rule that the release's real directory is named after its tag. Pointing `NS_OPT` at a directory with a link `vX.Y.Z` to a checkout does not pass, because the link resolves to the checkout's own name; it passes only for a real directory named `vX.Y.Z`, which is a release copy.
-- For a run launched from a checkout (`release: null`), `NS_RUN_HOME`. Such runs are dev runs (for example end to end tests), and there a command can name a different checkout as `NS_RUN_HOME` and pass.
-- `NS_RUN_ID` and `NS_LEDGER` to tell which ledger is live. A command started with them unset is not checked.
+- The running script's own location: the outermost `BASH_SOURCE`, resolved with `readlink -f` when `ledger.sh` is sourced.
+- The `release` field of the ledger file on disk, written by the release that started the run.
+- `NS_OPT` (default `/opt/nightshift`) as the release root, together with the rule that the release's resolved directory is named after its tag.
+- `NS_RUN_ID` and `NS_LEDGER` to tell which ledger is live. A command started with them unset is not checked (issue #128).
+- `NS_RUN_HOME`, but only for a run launched from a checkout (`release: null`). For such runs, naming another checkout as `NS_RUN_HOME` passes.
 
 What it does not trust:
 
-- `NS_HOME`: it must resolve to the same home as the script; a checkout's script with the release's `NS_HOME`, or the release's script with a checkout's `NS_HOME`, is refused.
-- `NS_RUN_HOME` for a run whose ledger records a release: setting it, together with `NS_HOME`, to a checkout does not make that checkout the release.
-- A symlink in front of a checkout, in `PATH`, in `NS_OPT` or in `NS_HOME`: all paths are resolved first.
+- `NS_HOME`: it must resolve to the same home as the script.
+- `NS_RUN_HOME` for a run whose ledger records a release.
+- A symlink in `PATH`, in `NS_OPT` or in `NS_HOME`: every path is resolved first, so a link named `vX.Y.Z` that points at a checkout fails.
+- Exported shell functions named after the tools it calls (`readlink`, `sed`, `dirname`, `basename`, `printf`): it calls them through `command` and uses `[[ ]]`.
+
+What gets through, and why that is accepted (each one is a deliberate act, not an accident):
+
+- A copy or a `git worktree` of a checkout placed under a fake `NS_OPT` in a directory named after the run's release tag. That directory looks exactly like a release.
+- A `PATH` that puts shims of `readlink`, `sed` or `python3` first, a `BASH_ENV` script, or exported functions named after bash builtins or `command` itself.
+- A script that changes directory before it sources `ledger.sh` and was started with a relative path, because its own location is then resolved against the wrong directory. Nightshift's scripts source their libraries first.
+- Writing a ledger without `ns-ledger`, for example `python3 <checkout>/bin/lib/nsyaml.py from-json <ledger>`, `sed -i` or an editor. These have no guard at all.
 
 ## Untrusted text
 

@@ -127,3 +127,14 @@ unchanged() {
   assert_output_contains "live run sbx-12"
   unchanged
 }
+
+@test "known limit: a copy of the checkout under a fake NS_OPT named after the tag passes" {
+  # The guard is a seatbelt against the accidental case (docs/security.md). A deliberate copy or
+  # worktree placed at <fake NS_OPT>/<tag> looks like the release; this pins the documented limit.
+  fake="$BATS_TEST_TMPDIR/opt2"
+  mkdir -p "$fake/v9.9.9"
+  cp -r "$CHECKOUT/bin" "$CHECKOUT/schema" "$fake/v9.9.9"/
+  run env NS_OPT="$fake" NS_RUN_ID=sbx-12 NS_LEDGER="$L" NS_HOME="$fake/v9.9.9" \
+    "$fake/v9.9.9/bin/ns-ledger" set "$L" '.step = "phases"'
+  assert_success
+}

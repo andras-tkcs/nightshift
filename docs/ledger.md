@@ -168,7 +168,7 @@ While `NS_RUN_ID` is set, the ledger that `NS_LEDGER` names belongs to a live ru
 - for a run launched from a checkout (`release: null`): `NS_RUN_HOME`, which `ns-launch` exports, resolved;
 - without either: any home under the resolved `${NS_OPT:-/opt/nightshift}/`.
 
-Symlinks (`/opt/nightshift/current`, a symlinked `NS_OPT`, `~/.local/bin/ns-ledger`) are resolved on both sides. The refusal reads `refusing to write <ledger>: it belongs to live run <id> and this command runs from <dir> (NS_HOME=<home>), not from the home that launched it (<home>/bin); test new code against a temp ledger`. Any other ledger (a test fixture or temp file) can still be written. What this check trusts is in `docs/security.md`, section "Live-ledger guard".
+Symlinks (`/opt/nightshift/current`, a symlinked `NS_OPT`, `~/.local/bin/ns-ledger`) are resolved on both sides. This is intended: in a run pinned to an older release, an explicit `/usr/local/bin/ns-ledger` or `~/.local/bin/ns-ledger` (which goes to `/opt/nightshift/current`, a newer release) is refused for the live ledger. Inside a run, use `ns-ledger` from `PATH`, where `ns-launch` puts the run's release first. The refusal reads `refusing to write <ledger>: it belongs to live run <id> and this command runs from <dir> (NS_HOME=<home>), not from the home that launched it (<home>/bin); test new code against a temp ledger`. Any other ledger (a test fixture or temp file) can still be written. The check is a seatbelt against running a checkout on a live run by mistake, not a boundary. What it trusts, and what gets past it, is in `docs/security.md`, section "Live-ledger guard".
 
 ## Recovery
 

@@ -39,17 +39,23 @@ ns_ledger_error() {
   return 1
 }
 
+# The guard below runs external tools through `command` and uses [[ ]] and parameter expansion
+# instead of test, dirname and basename, so exported shell functions named after them (export -f)
+# cannot change its answer. PATH shims and BASH_ENV are outside it (docs/security.md).
+
 # NS_LEDGER_SELF_BIN: the resolved bin directory of the script that is running (the outermost
-# file bash is executing), taken from bash itself and never from the environment.
+# file bash is executing), taken from bash itself and never from the environment. It is computed
+# when this file is sourced, before the script can change directory.
 NS_LEDGER_SELF_BIN=""
 ns_ledger_self_bin() {
-  local i src=""
+  local i src="" real
   for ((i = ${#BASH_SOURCE[@]} - 1; i >= 0; i--)); do
     src="${BASH_SOURCE[$i]}"
-    [ -z "$src" ] || break
+    [[ -z $src ]] || break
   done
-  [ -n "$src" ] || src="$0"
-  dirname "$(readlink -f "$src")"
+  [[ -n $src ]] || src="$0"
+  real="$(command readlink -f -- "$src")"
+  command printf '%s\n' "${real%/*}"
 }
 NS_LEDGER_SELF_BIN="$(ns_ledger_self_bin)"
 
@@ -57,48 +63,50 @@ NS_LEDGER_SELF_BIN="$(ns_ledger_self_bin)"
 # Read with sed, not Python, so it also works on a ledger that does not parse.
 ns_ledger_release() {
   local rel
-  [ -f "$1" ] || return 0
-  rel="$(sed -n -e "s/^release: *['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\} *\$/\1/p" "$1" | head -n1)"
+  [[ -f $1 ]] || return 0
+  rel="$(command sed -n -e "s/^release: *['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\} *\$/\1/p" -- "$1" | command head -n1)"
   if [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]]; then
-    printf '%s\n' "$rel"
+    command printf '%s\n' "$rel"
   fi
 }
 
+# ns_ledger_resolve <path>: the path with every symlink resolved (missing parts allowed).
+ns_ledger_resolve() {
+  command readlink -m -- "$1"
+}
+
 # ns_ledger_guard <ledger>: refuse to write a live run's ledger from a dev checkout.
+# A seatbelt against the accidental case, not a boundary: see docs/security.md.
 # NS_RUN_ID and NS_LEDGER mark the live run's ledger. Only the home that launched the run may
 # write it, and the check is made on the running script's own resolved directory
 # (NS_LEDGER_SELF_BIN), which must be <home>/bin and match the resolved NS_HOME:
 # - the ledger records a release (it was started from an installed release): the home is
 #   ${NS_OPT:-/opt/nightshift}/<release>, resolved, and its real directory is named <release>;
-#   NS_RUN_HOME is not trusted for this;
+#   NS_RUN_HOME is not used for this;
 # - no release (a run launched from a checkout): the home is NS_RUN_HOME, resolved;
 # - neither: any home under the resolved ${NS_OPT:-/opt/nightshift}.
-# See docs/ledger.md and docs/security.md for what this trusts.
 ns_ledger_guard() {
-  local ledger="$1" live self home opt rel want=""
-  [ -n "${NS_RUN_ID:-}" ] && [ -n "${NS_LEDGER:-}" ] || return 0
-  live="$(readlink -f "$NS_LEDGER" 2>/dev/null || printf '%s' "$NS_LEDGER")"
-  [ "$(readlink -f "$ledger" 2>/dev/null || printf '%s' "$ledger")" = "$live" ] || return 0
+  local ledger="$1" self home opt rel want=""
+  [[ -n ${NS_RUN_ID:-} && -n ${NS_LEDGER:-} ]] || return 0
+  [[ "$(ns_ledger_resolve "$ledger")" == "$(ns_ledger_resolve "$NS_LEDGER")" ]] || return 0
   self="$NS_LEDGER_SELF_BIN"
-  home="$(readlink -m "$NS_HOME")"
-  opt="$(readlink -m "${NS_OPT:-/opt/nightshift}")"
+  home="$(ns_ledger_resolve "$NS_HOME")"
+  opt="$(ns_ledger_resolve "${NS_OPT:-/opt/nightshift}")"
   rel="$(ns_ledger_release "$ledger")"
-  if [ -n "$rel" ]; then
-    want="$(readlink -m "$opt/$rel")"
-    if [ "$self" = "$home/bin" ] && [ "$home" = "$want" ] && [ "$(basename "$want")" = "$rel" ]; then
+  if [[ -n $rel ]]; then
+    want="$(ns_ledger_resolve "$opt/$rel")"
+    if [[ $self == "$home/bin" && $home == "$want" && ${want##*/} == "$rel" ]]; then
       return 0
     fi
-  elif [ -n "${NS_RUN_HOME:-}" ]; then
-    want="$(readlink -m "$NS_RUN_HOME")"
-    if [ "$self" = "$home/bin" ] && [ "$home" = "$want" ]; then
+  elif [[ -n ${NS_RUN_HOME:-} ]]; then
+    want="$(ns_ledger_resolve "$NS_RUN_HOME")"
+    if [[ $self == "$home/bin" && $home == "$want" ]]; then
       return 0
     fi
   else
     want="$opt/<release>"
-    if [ "$self" = "$home/bin" ]; then
-      case "$home/" in
-        "$opt"/*) return 0 ;;
-      esac
+    if [[ $self == "$home/bin" && $home/ == "$opt"/* ]]; then
+      return 0
     fi
   fi
   ns_die "refusing to write $ledger: it belongs to live run $NS_RUN_ID and this command runs from $self (NS_HOME=$NS_HOME), not from the home that launched it ($want/bin); test new code against a temp ledger"
