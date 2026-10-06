@@ -63,18 +63,32 @@ ns_run_ledger() {
   printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$wt" "$1"
 }
 
+# ns_origin_has_branch <checkout> <branch>: 0 when origin has exactly refs/heads/<branch>,
+# 2 when it does not, 1 when origin could not be asked
+ns_origin_has_branch() {
+  local out
+  out=$(git -C "$1" ls-remote origin "refs/heads/$2" 2>/dev/null) || return 1
+  awk -v r="refs/heads/$2" '$2 == r { f = 1 } END { exit !f }' <<<"$out" || return 2
+}
+
 # ns_run_origin_ledger <run-json> <out-file>: fetch the run's plan branch and write its ledger
-# from origin/<plan branch> to out-file; prints the project checkout path. Returns 2 when the
-# project has no checkout, 1 when the ledger is not on origin.
+# from origin/<plan branch> to out-file; prints the project checkout path. Returns 1 when the
+# branch or the ledger is not on origin, 2 when the project has no checkout, 3 when origin
+# could not be asked or fetched, 4 when the run id or plan branch is not valid.
 ns_run_origin_ledger() {
-  local entry="$1" out="$2" id path branch
+  local entry="$1" out="$2" id path branch rc=0
   id=$(jq -r .id <<<"$entry")
   branch=$(jq -r '.branch // ""' <<<"$entry")
+  ns_run_parse_id "$id" >/dev/null || return 4
+  case "$branch" in -*) return 4 ;; esac
   path=$(ns_project_by_name "$(jq -r .project <<<"$entry")" | jq -r '.path // empty') || path=""
   [ -n "$path" ] && [ -d "$path" ] || return 2
   [ -n "$branch" ] || return 1
-  git -C "$path" fetch -q origin "$branch" 2>/dev/null || true
-  git -C "$path" show "origin/$branch:.nightshift/runs/$id/ledger.yaml" >"$out" 2>/dev/null || return 1
+  ns_origin_has_branch "$path" "$branch" || rc=$?
+  [ "$rc" != 2 ] || return 1
+  [ "$rc" = 0 ] || return 3
+  git -C "$path" fetch -q origin "refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null || return 3
+  git -C "$path" show "refs/remotes/origin/$branch:.nightshift/runs/$id/ledger.yaml" >"$out" 2>/dev/null || return 1
   printf '%s\n' "$path"
 }
 

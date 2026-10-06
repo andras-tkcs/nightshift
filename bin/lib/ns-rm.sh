@@ -25,12 +25,6 @@ RM_REMOTE=0
 RM_FORGET=0
 RM_YES=0
 
-# rm_on_origin <checkout> <branch>: 0 when the branch is on origin, 2 when it is not, else
-# origin could not be asked
-rm_on_origin() {
-  git -C "$1" ls-remote --exit-code --heads origin "$2" >/dev/null 2>&1
-}
-
 # rm_inner <run-json>: the owner token is already exported
 rm_inner() {
   local tmp rc=0
@@ -54,22 +48,39 @@ rm_one() {
   }
   path=$(jq -r .path <<<"$proj")
   ledger="$base/.nightshift/runs/$id/ledger.yaml"
+  # check: the ledger's state decides; an archived run whose worktree is gone was already
+  # removable when it was archived (its ledger on origin may hold an older state)
+  local check=1
   if [ -z "$base" ] || [ ! -f "$ledger" ]; then
     # the worktree is gone (an earlier ns rm): the ledger on origin/<plan> names the branches
     orc=0
     ns_run_origin_ledger "$run" "$tmp" >/dev/null || orc=$?
-    if [ "$orc" = 0 ]; then
-      ledger=$tmp
-      printf '%s: worktree is gone, read the ledger from origin/%s\n' "$id" "$plan"
-    elif [ "$archived" = true ]; then
-      ledger=""
-    else
+    case "$orc" in
+      0)
+        ledger=$tmp
+        printf '%s: worktree is gone, read the ledger from origin/%s\n' "$id" "$plan"
+        ;;
+      3)
+        if [ "$RM_REMOTE" = 2 ] || [ "$RM_FORGET" = 1 ]; then
+          ns_warn "$id: cannot fetch origin/$plan to read the ledger; kept the run"
+          return 1
+        fi
+        ledger=""
+        ;;
+      4)
+        ns_warn "$id: run id or plan branch '$plan' is not valid; kept the run"
+        return 1
+        ;;
+      *) ledger="" ;;
+    esac
+    if [ "$archived" = true ]; then
+      check=0
+    elif [ -z "$ledger" ]; then
       ns_warn "$id: no ledger (worktree missing, none on origin/$plan), nothing to remove safely"
       return 1
     fi
   fi
-  # an archived run was already removable when it was archived
-  if [ "$archived" != true ]; then
+  if [ "$check" = 1 ]; then
     state=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.state // ""')
     case "$state" in
       stopped | failed | parked | done) ;;
@@ -79,11 +90,16 @@ rm_one() {
         ;;
     esac
   fi
+  # an archived run with a live session was resumed
+  if [ "$archived" = true ] && ns_tmux_has "$id"; then
+    ns_warn "$id is archived but its tmux session is alive (resumed?): stop it first (ns stop $id, or ns kill $id)"
+    return 1
+  fi
 
   # --forget without --remote: the entry goes only once plan/<id> is gone from origin
   if [ "$RM_FORGET" = 1 ] && [ "$RM_REMOTE" != 2 ] && [ -n "$plan" ]; then
     orc=0
-    rm_on_origin "$path" "$plan" || orc=$?
+    ns_origin_has_branch "$path" "$plan" || orc=$?
     if [ "$orc" = 0 ]; then
       ns_warn "$id: $plan is still on origin: add --remote to delete it (ns rm $id --forget --remote), or keep the run"
       return 1
@@ -126,6 +142,7 @@ rm_one() {
       fi
     fi
   fi
+  local errs=$GC_ERRORS needs=$GC_NEEDS
   gc_cleanup_run "$run" "$proj" "$RM_REMOTE" "$RM_FORCE" "$ledger" || rc=$?
   [ "$rc" = 0 ] || return "$rc"
 
@@ -134,13 +151,22 @@ rm_one() {
     printf 'would forget %s (drop it from runs.yaml so the id can be reused)\n' "$id"
     return 0
   fi
-  if [ -n "$plan" ]; then
+  # forget only a run that is gone everywhere: no failed step, no worktree, no plan branch
+  local left=""
+  if [ "$GC_ERRORS" != "$errs" ] || [ "$GC_NEEDS" != "$needs" ]; then
+    left="the removal did not finish"
+  elif [ -n "$base" ] && [ -e "$base" ]; then
+    left="worktree $base is still there"
+  elif [ -n "$plan" ] && git -C "$path" show-ref -q --verify "refs/heads/$plan"; then
+    left="local branch $plan is still there"
+  elif [ -n "$plan" ]; then
     orc=0
-    rm_on_origin "$path" "$plan" || orc=$?
-    if [ "$orc" != 2 ]; then
-      ns_warn "$id: $plan may still be on origin; kept the run in runs.yaml"
-      return 1
-    fi
+    ns_origin_has_branch "$path" "$plan" || orc=$?
+    [ "$orc" = 2 ] || left="$plan may still be on origin"
+  fi
+  if [ -n "$left" ]; then
+    ns_warn "$id: $left; kept the run in runs.yaml"
+    return 1
   fi
   ns_runs_json | jq -c --arg id "$id" 'map(select(.id != $id))' | ns_runs_write
   printf 'forgot %s: ns new %s can start it again\n' "$id" "$id"

@@ -42,6 +42,8 @@ ns_report_main() {
     if [ "$orc" != 0 ]; then
       rm -f "$tmp"
       [ "$orc" != 2 ] || ns_die "no ledger for $id: worktree $wt is gone and project $project has no checkout"
+      [ "$orc" != 3 ] || ns_die "no ledger for $id: worktree $wt is gone and origin/$branch cannot be fetched"
+      [ "$orc" != 4 ] || ns_die "no ledger for $id: run id or plan branch $branch is not valid"
       ns_die "no ledger for $id: not in $wt or on origin/$branch"
     fi
     json=$(ns_yaml_json "$tmp") || { rm -f "$tmp"; ns_die "ledger of $id on origin/$branch does not parse"; }

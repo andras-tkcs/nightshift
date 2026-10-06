@@ -144,7 +144,7 @@ ns_new_main() {
   # 2. already known?
   if [ -n "$id" ] && known=$(ns_run_get "$id"); then
     if [ "$(jq -r '.archived // false' <<<"$known")" = true ]; then
-      ns_die "run $id is archived (removed by ns rm or ns gc; it stays in ns ls --all): to start $id again, free the id with ns rm $id --forget --remote (deletes $(jq -r '.branch // "its plan branch"' <<<"$known") on origin), then ns new $id"
+      ns_die "run $id is archived (removed by ns rm or ns gc; it stays in ns ls --all): to start $id again, free the id with ns rm $id --forget --remote, which deletes $(jq -r '.branch // "its plan branch"' <<<"$known") and the run's feature and phase branches on origin and closes an open PR (see what it would do with ns rm $id --forget --remote --dry-run first), then ns new $id"
     fi
     if ns_tmux_has "$id"; then
       printf '%s is already running: ns attach %s\n' "$id" "$id"
