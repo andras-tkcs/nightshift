@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- No tmux server started by `ns` keeps a `GH_TOKEN` (bats-tested for `ns new`, `ns resume`, `ns up` and `ns dequeue`); the ledger push of a run that `ns dequeue` starts gets that run's owner token in the push's environment only; `logs/` and `logs/<id>/` are created (or set) mode 700 and `dequeue.log` mode 600; a symlinked `queue.lock` is never truncated (issue #96).
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed
 
+- `ns resume --all` no longer restarts runs that are `stopped` (by `ns stop`, `ns kill` or a declined triage): it names them and `ns resume <id>` restarts them; parked and crashed runs are resumed as before (issue #96).
 - `ns stack` and `ns-conductor stack-base` treat a base as closed only when the closed PR was closed at or after the dependent PR was created and no open PR has that head name; a fork of run PRs is now several chains (`stack-base` exits 7); the stack e2e scenario only counts open PRs of runs with a `plan/<run id>` branch as leftovers (issue #97).
 
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ns resume` and `ns dequeue` roll a run back to its previous state and queue mark when the `resumed` event, the ledger push or the tmux start fails after the ledger was set to `running` (before, the run stayed `running` with no session, or lost its place in the queue), and a failed ledger write while phases are reconciled stops the resume (issue #96).
 - A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
 
 ## [0.1.5] - 2026-10-05
