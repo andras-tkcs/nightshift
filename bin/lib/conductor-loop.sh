@@ -55,6 +55,7 @@ conductor_fix_branch() {
   [ $# -eq 1 ] || ns_usage "ns-conductor fix-branch <id>"
   local base branch dir CREATED=0
   load_run "$1"
+  budget_guard fix-branch || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   branch=$(ns_branch_name "$(jq -r '.git.fix_branch' <<<"$profile")" "$id")
   dir=$(ns_run_worktree_path "$profile" "$id--fix")
@@ -106,6 +107,7 @@ conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
   local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist
   load_run "$1"
+  budget_guard stack-base || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
   prefix=$(jq -r .prefix <<<"$project")
@@ -183,16 +185,20 @@ loop_phase_wt() {
   fi
 }
 
-# loop_checks <phase|feature>: run the profile's checks, with the run context loaded.
+# loop_checks <phase|feature> [--budget]: run the profile's checks, with the run context loaded;
+# with --budget the budget check runs first (exit 4 when the budget is used up).
 # Removes <target>.checks.rc at the start and writes the exit code there last
 # (tmp + mv), on every return path, so callers can wait for the file.
 loop_checks() {
-  local target="$1" rc=0 rcf tmp
+  local target="$1" budget="${2:-}" rc=0 rcf tmp
   rcf="$logdir/$target.checks.rc"
   ns_private_dir "$logdir"
   rm -f "$rcf"
   # subshell: an ns_die (exit) in the body must not skip the marker
-  ( loop_checks_body "$target" ) || rc=$?
+  (
+    [ -z "$budget" ] || budget_guard checks || exit
+    loop_checks_body "$target"
+  ) || rc=$?
   tmp="$rcf.tmp.$$"
   printf '%s\n' "$rc" >"$tmp"
   mv -f "$tmp" "$rcf"
@@ -241,7 +247,7 @@ conductor_checks() {
   [ $# -eq 2 ] || ns_usage "ns-conductor checks <id> <phase|feature>"
   [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "ns-conductor checks <id> <phase|feature>"
   load_run "$1"
-  loop_checks "$2"
+  loop_checks "$2" --budget
 }
 
 conductor_note() {
@@ -330,6 +336,7 @@ conductor_review_round() {
   valid_phase_id "$2" || ns_usage "ns-conductor review-round <id> <phase>"
   local phase="$2" tier max n
   load_run "$1"
+  budget_guard review-round || return
   tier=$(loop_tier)
   max=$(jq -r --arg t "$tier" '.budgets[$t].review_rounds // 3' <<<"$profile")
   phase_update "$phase" '.review_rounds += 1'

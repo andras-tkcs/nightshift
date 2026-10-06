@@ -192,6 +192,7 @@ EOF
   assert_output_contains "budget"
   assert_output_contains "gate 1.5"
   assert_escalated sbx-10
+  [ "$(cat "$NS_CONFIG_DIR/logs/sbx-10/feature.checks.rc")" = 4 ]
 }
 
 @test "T0: should-stop escalates at gate 1.5 and exits 4; under budget it exits 1" {

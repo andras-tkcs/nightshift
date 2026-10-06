@@ -35,6 +35,7 @@ usage() {
   printf '  check-auto\n'
   printf '  should-stop   <id>\n'
   printf '  park          <id>\n'
+  printf '  budget-check  <id>\n'
   if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ] && declare -F conductor_loop_usage >/dev/null; then
     conductor_loop_usage
   fi
@@ -76,6 +77,65 @@ phase_update() {
   pj=$(jstr "$p")
   tj=$(jstr "$title")
   lg set "$ledger" "if any(.phases[]; .id == $pj) then .phases |= map(if .id == $pj then ($upd) else . end) else .phases += [{id: $pj, title: $tj, state: \"pending\", branch: null, worktree: null, attempts: 0, review_rounds: 0} | ($upd)] end"
+}
+
+# ---------------------------------------------------------------------------
+# budget (R-BUD-1)
+
+# budget_guard <subcommand>: the one budget check of every tier, with the run context loaded.
+# Checkpoints the ledger, so budget.used counts up to now. Returns 0 while the run may go on. A
+# running run with no open gate whose wall-clock budget is used up (used >= limit) has its
+# workers stopped, gets RUN/escalation.md (with a budget_hours line for the owner's answer),
+# gate 1.5 (published, which notifies) and a budget event; then it returns 4. A run that already
+# waits at gate 1.5 over its budget, or is in any other state over it, returns 4 without
+# escalating (again).
+budget_guard() {
+  local by="$1" cur used limit step tier rel esc
+  lg checkpoint "$ledger"
+  lg budget-exceeded "$ledger" || return 0
+  cur=$(lg get "$ledger" '[.state, (.gate // "-")] | @tsv')
+  if [ "$cur" = "waiting"$'\t'"1.5" ]; then
+    printf 'budget exceeded: %s waits at gate 1.5 for the owner; end this session now\n' "$id"
+    return 4
+  fi
+  if [ "$cur" != "running"$'\t'"-" ]; then
+    printf 'budget exceeded (state %s, gate %s); nothing escalated\n' "${cur%%$'\t'*}" "${cur#*$'\t'}"
+    return 4
+  fi
+  IFS=$'\t' read -r used limit step tier < <(lg get "$ledger" '[.budget.used, .budget.limit, .step, (.tier // "-")] | @tsv')
+  stop_workers "$id"
+  lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
+  rel=".nightshift/runs/$id/escalation.md"
+  esc="$wt/$rel"
+  mkdir -p "$(dirname "$esc")"
+  cat >"$esc" <<ESC
+# Budget exceeded
+
+Run $id ($tier) used $used h of its $limit h wall-clock budget at step \`$step\`. The deterministic budget check in \`ns-conductor $by\` stopped its workers and escalated the run here (R-BUD-1).
+
+## Question
+
+Give the run more time, or stop it? To continue, raise \`budget_hours\` below to the new limit in hours (above $used), then run \`ns approve $id\`. To end the run, run \`ns stop $id\` instead.
+
+## Owner's answer
+
+budget_hours: $limit
+ESC
+  if ! { git -C "$wt" add -f -- "$rel" && git -C "$wt" commit -q -m "ns: budget escalation for $id" -- "$rel"; } >/dev/null 2>&1; then
+    ns_warn "could not commit $rel"
+  fi
+  lg event "$ledger" budget "budget used up: $used h of $limit h (ns-conductor $by)"
+  lg state "$ledger" waiting --gate 1.5 --note "budget used up"
+  lg checkpoint "$ledger" --push
+  "$NS_HOME/bin/ns" publish "$id" RUN/escalation.md >&2 || ns_warn "could not publish RUN/escalation.md"
+  printf 'budget exceeded: %s h of %s h; escalated at gate 1.5 (RUN/escalation.md); end this session now\n' "$used" "$limit"
+  return 4
+}
+
+conductor_budget_check() {
+  [ $# -eq 1 ] || ns_usage "ns-conductor budget-check <id>"
+  load_run "$1"
+  budget_guard budget-check
 }
 
 valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }
@@ -158,10 +218,7 @@ conductor_start() {
     return 3
   fi
   # 2. budget
-  if lg budget-exceeded "$ledger"; then
-    printf 'budget exceeded\n'
-    return 4
-  fi
+  budget_guard start || return
   # 3. auto mode
   mode="${NS_WORKER_MODE:-$(ns_config_get worker_mode auto)}"
   if [ "$mode" = auto ] && ! auto_mode_fresh; then
@@ -416,7 +473,9 @@ conductor_stop() {
 conductor_should_stop() {
   [ $# -eq 1 ] || ns_usage "ns-conductor should-stop <id>"
   load_run "$1"
-  [ -n "$(lg get "$ledger" '.stop_requested // empty')" ]
+  [ -z "$(lg get "$ledger" '.stop_requested // empty')" ] || return 0
+  budget_guard should-stop || return
+  return 1
 }
 
 conductor_park() {
@@ -425,6 +484,8 @@ conductor_park() {
   load_run "$1"
   sr=$(lg get "$ledger" '.stop_requested // empty')
   [ -n "$sr" ] || sr=parked
+  # an open gate (a budget escalation, for example) stays open: the run keeps waiting there
+  [ -z "$(lg get "$ledger" '.gate // empty')" ] || sr=waiting
   stop_workers "$1"
   lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
   lg state "$ledger" "$sr" --note "conductor ended its session"
@@ -454,6 +515,7 @@ main() {
       ;;
     should-stop) conductor_should_stop "$@" ;;
     park) conductor_park "$@" ;;
+    budget-check) conductor_budget_check "$@" ;;
     *)
       # later subcommands live in conductor-loop.sh (phase p16): it defines
       # conductor_loop_dispatch <subcommand> [args], which returns 64 for an unknown one

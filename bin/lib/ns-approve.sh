@@ -196,7 +196,19 @@ ns_approve_main() {
   fi
   git -C "$wt" commit -q --allow-empty -m "ns: approve $id gate $gate" -m "Approved-By: owner"
 
-  # 6. release the gate
+  # 6. a budget escalation: the owner's budget_hours line is the new limit (R-BUD-1)
+  local esc hours
+  esc="$wt/.nightshift/runs/$id/escalation.md"
+  if [ "$gate" = 1.5 ] && [ -f "$esc" ]; then
+    hours=$(sed -n 's/^budget_hours:[[:space:]]*\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\}\)[[:space:]]*$/\1/p' "$esc" | tail -n 1)
+    if [ -n "$hours" ] && [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" ".budget.limit == $hours")" != true ]; then
+      "$NS_HOME/bin/ns-ledger" set "$ledger" ".budget.limit = $hours"
+      "$NS_HOME/bin/ns-ledger" event "$ledger" budget "owner set the budget to $hours h"
+      printf 'budget of %s: %s h\n' "$id" "$hours"
+    fi
+  fi
+
+  # 7. release the gate
   "$NS_HOME/bin/ns-ledger" set "$ledger" '.gate=null | .state="queued"'
   "$NS_HOME/bin/ns-ledger" event "$ledger" approved "gate $gate"
   "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push
