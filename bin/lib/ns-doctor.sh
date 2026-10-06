@@ -124,7 +124,7 @@ doc_ntfy() {
   if out=$("$NS_HOME/bin/ns-notify" "ns doctor: test publish" 2>&1); then
     doc_ok "token ntfy" "mode 600, test publish to $url ok"
   else
-    doc_fail "token ntfy" "test publish failed: $(printf '%s' "$out" | tr '\n' ' ' | sed 's/ $//')"
+    doc_fail "token ntfy" "test publish failed: $(printf '%s\n' "$out" | awk 'NF { printf "%s%s", s, $0; s = "; " }')"
   fi
 }
 
