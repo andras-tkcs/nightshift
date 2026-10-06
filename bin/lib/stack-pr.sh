@@ -30,6 +30,24 @@ ns_stack_run_id() {
   return 1
 }
 
+# ns_stack_gh_open <repo>: JSON array of every open PR of the repo, all pages (GraphQL, 100 per page), in the
+# shape of `gh pr list --json number,headRefName,baseRefName,createdAt,reviewDecision,statusCheckRollup`.
+# The rollup holds the check runs and status contexts of the head commit.
+ns_stack_gh_open() {
+  local out
+  # shellcheck disable=SC2016
+  out=$(gh api graphql --paginate -f owner="${1%%/*}" -f name="${1#*/}" -f query='query OpenRunPRs($owner: String!, $name: String!, $endCursor: String) {
+  repository(owner: $owner, name: $name) { pullRequests(states: OPEN, first: 100, after: $endCursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes { number headRefName baseRefName createdAt reviewDecision
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+        __typename ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } } } } } }' \
+    --jq '.data.repository.pullRequests.nodes[] | {number, headRefName, baseRefName, createdAt,
+      reviewDecision: (.reviewDecision // ""),
+      statusCheckRollup: [.commits.nodes[]?.commit.statusCheckRollup.contexts.nodes[]?]}') || return 1
+  jq -sc . <<<"$out"
+}
+
 # ns_stack_open_prs <repo> <fix pattern> <feature pattern> <prefix> <clone path>: JSON array of
 # the open run PRs, bottom to top (a PR counts only when plan/<run id> exists on origin): {run, number, head, base, createdAt, reviewDecision, statusCheckRollup}.
 # Depth is the number of PRs below it (following baseRefName); ties go by creation time.
@@ -37,8 +55,7 @@ ns_stack_open_prs() {
   local repo="$1" fixpat="$2" featpat="$3" prefix="$4" path="${5:-}" prs rows="[]" row head rid plans
   plans=$(git -C "$path" ls-remote --heads origin 'plan/*' 2>/dev/null) || return 1
   plans=$(awk '{sub("refs/heads/", "", $2); print $2}' <<<"$plans")
-  prs=$(gh pr list --repo "$repo" --state open --limit 100 \
-    --json number,headRefName,baseRefName,createdAt,reviewDecision,statusCheckRollup) || return 1
+  prs=$(ns_stack_gh_open "$repo") || return 1
   while IFS= read -r row; do
     [ -n "$row" ] || continue
     head=$(jq -r .headRefName <<<"$row")
@@ -101,23 +118,45 @@ ns_stack_chains() {
   printf '%s\n' "$out"
 }
 
-# ns_stack_closed_list <repo>: JSON array of the PRs closed without a merge (number, headRefName, closedAt)
+# ns_stack_closed_list <repo> [since]: JSON array of the PRs closed without a merge (number, headRefName,
+# closedAt), all pages of a GitHub search (at most 1000 results); with since (UTC time) only those closed then or later
 ns_stack_closed_list() {
-  gh pr list --repo "$1" --state closed --limit 100 --json number,headRefName,state,mergedAt,closedAt 2>/dev/null \
-    | jq -c '[.[] | select((.state // "") == "CLOSED" and .mergedAt == null)
-        | {number, headRefName, closedAt: (.closedAt // "9999")}]' 2>/dev/null || printf '[]\n'
+  local q="repo:$1 is:pr is:closed is:unmerged" out
+  [ -z "${2:-}" ] || q="$q closed:>=$2"
+  # shellcheck disable=SC2016
+  out=$(gh api graphql --paginate -f q="$q" -f query='query ClosedRunPRs($q: String!, $endCursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor }
+    nodes { ... on PullRequest { number headRefName state mergedAt closedAt } } } }' \
+    --jq '.data.search.nodes[]' 2>/dev/null) || {
+    printf '[]\n'
+    return 0
+  }
+  jq -sc '[.[] | select((.state // "") == "CLOSED" and .mergedAt == null)
+    | {number, headRefName, closedAt: (.closedAt // "9999")}]' <<<"$out" 2>/dev/null || printf '[]\n'
+}
+
+# ns_stack_closed_candidates <open prs json> [base branch]: JSON array of the bases of the open run PRs that
+# could be a PR closed without a merge: not the base branch, and no open PR has that head (a reused name)
+ns_stack_closed_candidates() {
+  jq -c --arg b "${2:-}" '. as $all | [.[] | .base | select(. != $b)
+    | select(. as $x | any($all[]; .head == $x) | not)] | unique' <<<"$1" 2>/dev/null || printf '[]\n'
+}
+
+# ns_stack_closed_since <open prs json> <candidates json>: the earliest creation time of a PR on a candidate base
+ns_stack_closed_since() {
+  jq -r --argjson c "$2" '[.[] | select(.base as $b | any($c[]; . == $b)) | .createdAt] | min // empty' <<<"$1"
 }
 
 # ns_stack_closed_heads <repo> <open prs json> [base branch] [closed list json]: print the bases of the
 # open run PRs that are a PR closed without a merge. A base counts when it is not the base branch, no open
 # PR has that head (a reused name) and a closed unmerged PR has that head and was closed at or after the
-# dependent PR was created. The closed list is fetched when not given.
+# dependent PR was created. When not given, the closed list is fetched from the time the earliest such
+# dependent PR was created on.
 ns_stack_closed_heads() {
   local repo="$1" prs="$2" basebr="${3:-}" cl="${4:-}" cands
-  cands=$(jq -c --arg b "$basebr" '. as $all | [.[] | .base | select(. != $b)
-    | select(. as $x | any($all[]; .head == $x) | not)] | unique' <<<"$prs" 2>/dev/null || printf '[]')
+  cands=$(ns_stack_closed_candidates "$prs" "$basebr")
   [ "$cands" != '[]' ] || return 0
-  [ -n "$cl" ] || cl=$(ns_stack_closed_list "$repo")
+  [ -n "$cl" ] || cl=$(ns_stack_closed_list "$repo" "$(ns_stack_closed_since "$prs" "$cands")")
   jq -r --argjson prs "$prs" --argjson cands "$cands" '. as $cl
     | $prs | [.[] | . as $p | select(any($cands[]; . == $p.base))
         | select(any($cl[]; .headRefName == $p.base and .closedAt >= $p.createdAt)) | .base]
