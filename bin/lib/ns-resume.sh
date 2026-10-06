@@ -135,7 +135,11 @@ ns_resume_start() {
     fi
     mark=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false') || return 1
   fi
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running"' || return 1
+  # the budget clock restarts now: the gap since the last checkpoint (a crash, a park, the queue, a
+  # stop) is not budget used (#9). ns-ledger set restarts it for any other state; a crashed run was
+  # already running, so set since here too
+  # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running" | .budget.since = $now' || return 1
   if ! "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state" ||
     ! ns_resume_push "$id" "$ledger" ||
     ! NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"; then
