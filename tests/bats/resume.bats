@@ -126,6 +126,19 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   lget '.events[].note' | grep -q 'reconciled p1-alpha as merged'
 }
 
+@test "a queued phase becomes pending on resume, so the new conductor schedules it (#10 review)" {
+  git -C "$WT" branch feature/12 origin/main
+  git -C "$WT" push -q origin feature/12
+  ns-ledger set "$LEDGER" '.state="parked" | .feature_branch="feature/12" | .phases=[
+    {id:"p1-alpha",title:"a",state:"queued",branch:null,worktree:null,attempts:0,review_rounds:0},
+    {id:"p2-beta",title:"b",state:"review",branch:null,worktree:null,attempts:1,review_rounds:0}]'
+  run ns resume sbx-12
+  assert_success
+  [ "$(lget '.phases[0].state')" = pending ]
+  [ "$(lget '.phases[1].state')" = review ]
+  lget '.events[].note' | grep -q 'reconciled p1-alpha as pending: queued for a pool slot'
+}
+
 @test "the reconcile reads the trailer from the profile of the project's --branch (#14)" {
   # the profile on e2e/x sets a custom phase trailer; main keeps the default
   git -C "$WT" worktree add -q -b e2e/x "$BATS_TEST_TMPDIR/branchwt" origin/main
