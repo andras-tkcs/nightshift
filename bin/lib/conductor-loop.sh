@@ -104,7 +104,7 @@ conductor_feature() {
 # when the open run PRs form more than one chain.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
@@ -116,18 +116,28 @@ conductor_stack_base() {
   prs=$(ns_stack_on_base "$prs" "$base" "$fixpat" "$featpat" "$prefix")
   others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
   own_on=$(lg get "$ledger" '.stacked_on // empty')
+  # the run has no PR yet: fall back to the time the run was created
+  own_created=$(jq -r --arg me "$id" '[.[] | select(.run == $me) | .createdAt][0] // empty' <<<"$prs")
+  [ -n "$own_created" ] || own_created=$(lg get "$ledger" '.created // empty')
+  # the closed list is only needed for a base that may be a closed PR, or for a run stacked on another run;
+  # the candidates come from the full list, so this run's own open PR hides a reused head name
+  cands=$(ns_stack_closed_candidates "$prs" "$base")
   clist="[]"
-  if [ "$others" != "[]" ] || { [ -n "$own_on" ] && [ "$own_on" != "$base" ]; }; then clist=$(ns_stack_closed_list "$repo"); fi
-  closed=$(ns_stack_closed_heads "$repo" "$others" "$base" "$clist")
+  if [ "$cands" != "[]" ] || { [ -n "$own_on" ] && [ "$own_on" != "$base" ]; }; then
+    since=$(ns_stack_closed_since "$prs" "$cands")
+    if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
+      since=$( { [ -z "$since" ] || printf '%s\n' "$since"; [ -z "$own_created" ] || printf '%s\n' "$own_created"; } | sort | head -n 1)
+      [ -n "$own_created" ] || since=""
+    fi
+    clist=$(ns_stack_closed_list "$repo" "$since")
+  fi
+  closed=$(ns_stack_closed_heads "$repo" "$prs" "$base" "$clist")
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     printf 'warning: the base of %s (%s) is a PR closed without a merge: use ns stack drop\n' \
       "$(jq -r --arg c "$c" '[.[] | select(.base == $c)][0].run' <<<"$others")" "$c" >&2
   done < <(jq -r '.[].base' <<<"$others" | sort -u | grep -xFf <(printf '%s\n' "$closed") || true)
   if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
-    # the run has no PR yet: fall back to the time the run was created
-    own_created=$(jq -r --arg me "$id" '[.[] | select(.run == $me) | .createdAt][0] // empty' <<<"$prs")
-    [ -n "$own_created" ] || own_created=$(lg get "$ledger" '.created // empty')
     while IFS= read -r c; do
       [ -n "$c" ] || continue
       if [ "$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$c" || true)" = "$own_on" ] &&
@@ -138,9 +148,10 @@ conductor_stack_base() {
     done < <(jq -r --arg t "$own_created" '.[] | select(.closedAt >= $t) | .headRefName' <<<"$clist")
   fi
   if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
-    tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')
-    printf 'more than one chain of open run PRs on %s (tops: %s): choose a base by hand (gate 1.5): %s, %s\n' \
-      "$base" "$tops" "$base" "$(sed 's/\(.*\), /\1 or /' <<<"$tops")" >&2
+    tops=$(ns_stack_chains "$others" | jq -c '[.[] | last | .head]')
+    printf 'more than one chain of open run PRs on %s (tops: %s): choose a base by hand (gate 1.5): %s\n' \
+      "$base" "$(jq -r 'join(", ")' <<<"$tops")" \
+      "$(jq -r --arg b "$base" '[$b] + . | (.[:-1] | join(", ")) + " or " + .[-1]' <<<"$tops")" >&2
     exit 7
   fi
   top=$(jq -c 'last // empty' <<<"$others")
