@@ -47,7 +47,9 @@ ns_resume_reconcile() {
   trailer=Plan-Phase
   if project=$(ns_project_by_name "$(jq -r .project <<<"$entry")"); then
     path=$(jq -r .path <<<"$project")
-    trailer=$(ns_profile_json "$path" 2>/dev/null | jq -r '.git.phase_trailer // "Plan-Phase"') || trailer=Plan-Phase
+    # the run's profile: the project's prefix and branch, as ns new and the conductor read it (#14)
+    trailer=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$project")" "$(jq -r '.branch // ""' <<<"$project")" 2>/dev/null |
+      jq -r '.git.phase_trailer // "Plan-Phase"') || trailer=Plan-Phase
     [ -n "$trailer" ] || trailer=Plan-Phase
   fi
   log=$(git -C "$wt" log "origin/$feature" --format=%B 2>/dev/null) || log=""
