@@ -137,6 +137,8 @@ budget_guard_locked() {
   # an escalation document; the next check completes the document and the desk copy
   lg event "$ledger" budget "budget used up: $used h of $limit h (ns-conductor $by)"
   lg state "$ledger" waiting --gate 1.5 --note "budget used up"
+  # a gate event like ns-conductor gate writes: ns report counts the wait and shows its cause (#118)
+  lg event "$ledger" gate "gate 1.5: waiting for the owner: budget used up: $used h of $limit h"
   budget_escalation_doc "$by" "$used" "$limit" "$step" "$tier"
   printf 'budget exceeded: %s h of %s h; escalated at gate 1.5 (RUN/escalation.md); end this session now\n' "$used" "$limit"
   return 4

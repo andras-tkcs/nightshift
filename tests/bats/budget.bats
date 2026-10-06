@@ -218,6 +218,19 @@ EOF
   assert_escalated sbx-10
 }
 
+@test "a budget escalation is a gate wait with its cause in the run report (#65, #118)" {
+  new_run sbx-10 T0
+  over_budget sbx-10
+  run ns-conductor should-stop sbx-10
+  assert_failure 4
+  [ "$(lget sbx-10 '[.events[] | select(.type == "gate")] | last | .note')" = "gate 1.5: waiting for the owner: budget used up: 2 h of 2 h" ]
+  run ns report sbx-10
+  assert_success
+  rep="$SBX-sbx-10/.nightshift/runs/sbx-10/run-report.md"
+  grep -qF '| Escalations | 1 |' "$rep"
+  grep -qF '(gate 1.5): budget used up: 2 h of 2 h' "$rep"
+}
+
 @test "T1: review-round escalates before counting a round" {
   new_run sbx-11 T1
   ns-conductor fix-branch sbx-11 >/dev/null
