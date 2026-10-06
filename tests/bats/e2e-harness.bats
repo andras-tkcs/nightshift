@@ -114,3 +114,26 @@ setup() {
 @test "the fixture README has the typo exactly once" {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }
+
+@test "stack scenario: only run PRs whose chain bottoms out at its base branch are leftovers (sprint #122)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local open plans
+  # the sandbox's old e2e PRs on other bases, one stacked PR on this base, one on a closed run branch,
+  # and a non-run PR on this base
+  open='[
+ {"head":"fix/sbx-x1","base":"e2e/20261002-1"},
+ {"head":"feature/x4","base":"e2e/20261002-5"},
+ {"head":"fix/sbx-x6","base":"feature/x4"},
+ {"head":"fix/sbx-x7","base":"e2e/20261006-1"},
+ {"head":"fix/sbx-x8","base":"fix/sbx-x7"},
+ {"head":"fix/sbx-x9","base":"fix/sbx-x5"},
+ {"head":"dependabot/x","base":"e2e/20261006-1"}
+]'
+  plans=$(printf '%s\n' sbx-x1 sbx-x4 sbx-x6 sbx-x7 sbx-x8 sbx-x9)
+  run stack_leftovers "$open" "$plans" e2e/20261006-1 sbx
+  [ "$status" -eq 0 ]
+  [ "$output" = "fix/sbx-x7 fix/sbx-x8 fix/sbx-x9" ]
+  run stack_leftovers "$open" "$plans" e2e/20261002-5 sbx
+  [ "$output" = "feature/x4 fix/sbx-x6 fix/sbx-x9" ]
+}
