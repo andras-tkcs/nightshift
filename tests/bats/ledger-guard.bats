@@ -105,3 +105,25 @@ unchanged() {
   assert_failure 1
   unchanged
 }
+
+@test "exported shell functions named after the guard's tools do not make a checkout pass" {
+  # readlink, dirname, basename and sed functions that map the checkout onto the fake release
+  readlink() {
+    local a out
+    for a in "$@"; do :; done
+    out="$(command readlink "$@")"
+    case "$out" in
+      "$CHECKOUT"*) printf '%s\n' "$REL${out#"$CHECKOUT"}" ;;
+      *) printf '%s\n' "$out" ;;
+    esac
+  }
+  dirname() { command dirname "$@" | command sed "s|^$CHECKOUT|$REL|"; }
+  basename() { printf 'v9.9.9\n'; }
+  export CHECKOUT REL
+  export -f readlink dirname basename
+  run live "$CHECKOUT/bin/ns-ledger" set "$L" '.step = "phases"'
+  unset -f readlink dirname basename
+  assert_failure 1
+  assert_output_contains "live run sbx-12"
+  unchanged
+}
