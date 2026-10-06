@@ -573,3 +573,57 @@ PRS_PARTIAL_CYCLE='[
   [ "$(grep -cE '^  sbx-[0-9]+ +#7 ' <<<"$output")" -eq 1 ]
   [ "$(grep -cE '^  sbx-[0-9]+ +#8 ' <<<"$output")" -eq 1 ]
 }
+
+# #85 item 2 (owner's decision): stack on the nearest PR below a red one, and say so
+FAIL_ROLLUP='[{"__typename":"CheckRun","name":"tests","conclusion":"FAILURE","status":"COMPLETED"}]'
+PEND_ROLLUP='[{"__typename":"CheckRun","name":"tests","conclusion":null,"status":"IN_PROGRESS"}]'
+
+# prs_two_top <rollup of the top PR> [rollup of the bottom PR]: PRS_TWO with those check states
+prs_two_top() {
+  jq -c --argjson t "$1" --argjson b "${2:-[]}" 'map(if .number == 6 then .statusCheckRollup = $t else .statusCheckRollup = $b end)' <<<"$PRS_TWO"
+}
+
+@test "stack-base skips a top PR with failing checks and stacks on the PR below" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$FAIL_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  assert_output_contains "Stacked on #5 instead of #6 (checks failing on #6)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-11 ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = 6 ]
+  ns-ledger get "$LEDGER" '.events[] | select(.type == "stack") | .note' | grep -qF "Stacked on #5 instead of #6 (checks failing on #6)"
+  [ -f "$CODE_WT/other.txt" ]
+  [ ! -f "$CODE_WT/top.txt" ]
+}
+
+@test "stack-base stacks on the base branch when every PR of the chain is red" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$FAIL_ROLLUP" "$FAIL_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  assert_output_contains "Stacked on main instead of #6 (checks failing on #6, #5)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = "6,5" ]
+  [ ! -f "$CODE_WT/other.txt" ]
+}
+
+@test "stack-base stacks on a top PR whose checks are pending (pending is not red)" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$PEND_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped // [] | length')" = 0 ]
+}
