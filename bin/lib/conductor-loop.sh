@@ -104,7 +104,7 @@ conductor_feature() {
 # when the open run PRs form more than one chain.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
@@ -113,21 +113,27 @@ conductor_stack_base() {
   featpat=$(jq -r '.git.feature_branch' <<<"$profile")
   prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$(jq -r .path <<<"$project")") || ns_die "could not list the pull requests of $repo"
   others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
-  closed=$(ns_stack_closed_heads "$repo")
+  own_on=$(lg get "$ledger" '.stacked_on // empty')
+  clist="[]"
+  if [ "$others" != "[]" ] || { [ -n "$own_on" ] && [ "$own_on" != "$base" ]; }; then clist=$(ns_stack_closed_list "$repo"); fi
+  closed=$(ns_stack_closed_heads "$repo" "$others" "$base" "$clist")
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     printf 'warning: the base of %s (%s) is a PR closed without a merge: use ns stack drop\n' \
       "$(jq -r --arg c "$c" '[.[] | select(.base == $c)][0].run' <<<"$others")" "$c" >&2
   done < <(jq -r '.[].base' <<<"$others" | sort -u | grep -xFf <(printf '%s\n' "$closed") || true)
-  own_on=$(lg get "$ledger" '.stacked_on // empty')
   if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
+    # the run has no PR yet: fall back to the time the run was created
+    own_created=$(jq -r --arg me "$id" '[.[] | select(.run == $me) | .createdAt][0] // empty' <<<"$prs")
+    [ -n "$own_created" ] || own_created=$(lg get "$ledger" '.created // empty')
     while IFS= read -r c; do
       [ -n "$c" ] || continue
-      if [ "$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$c" || true)" = "$own_on" ]; then
+      if [ "$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$c" || true)" = "$own_on" ] &&
+        ! jq -e --arg c "$c" 'any(.[]; .head == $c)' <<<"$prs" >/dev/null; then
         printf 'warning: %s is stacked on %s (%s), a PR closed without a merge: use ns stack drop\n' "$id" "$own_on" "$c" >&2
         break
       fi
-    done <<<"$closed"
+    done < <(jq -r --arg t "$own_created" '.[] | select(.closedAt >= $t) | .headRefName' <<<"$clist")
   fi
   if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
     tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')

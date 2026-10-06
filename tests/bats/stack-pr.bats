@@ -292,3 +292,135 @@ CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":n
   assert_failure
   assert_output_contains "could not list"
 }
+
+# ns-97: a reused branch name is not a closed base; a fork is several chains
+CLOSED_11_OLD='[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-01T09:00:00Z"}]'
+
+@test "ns stack: a closed PR that predates the dependent PR is not a closed base" {
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$CLOSED_11_OLD"
+  run ns stack sbx
+  assert_success
+  case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
+}
+
+@test "ns stack: an open PR with the same head hides the closed one" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_TWO"
+  pr_closed "$CLOSED_11"
+  run ns stack sbx
+  assert_success
+  case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
+}
+
+@test "stack-base: a closed PR that predates the dependent PR gives no warning" {
+  other_run_branch fix/sbx-13 main top.txt "top"
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$CLOSED_11_OLD"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+@test "stack-base: an open PR with the same head gives no closed warning" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_TWO"
+  pr_closed "$CLOSED_11"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+PRS_TWO_DEPS='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":8,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-15","createdAt":"2026-10-02T12:30:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+CLOSED_REUSED_AND_TRUE='[
+ {"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"},
+ {"number":7,"headRefName":"fix/sbx-15","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}
+]'
+
+@test "ns stack: with two dependents only the one on a truly closed base is marked" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_TWO_DEPS"
+  pr_closed "$CLOSED_REUSED_AND_TRUE"
+  run ns stack sbx
+  assert_success
+  [ "$(grep -c "base closed" <<<"$output")" -eq 1 ]
+  grep "base closed" <<<"$output" | grep -q "sbx-14"
+}
+
+@test "stack-base: with two dependents only the truly closed base is warned about" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_TWO_DEPS"
+  pr_closed "$CLOSED_REUSED_AND_TRUE"
+  run ns-conductor stack-base sbx-12
+  assert_output_contains "fix/sbx-15"
+  case "$output" in *"(fix/sbx-11)"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+@test "stack-base: an old closed PR with the own stacked_on head gives no warning" {
+  ns-ledger set "$LEDGER" '.stacked_on = "sbx-11"'
+  pr_list '[]'
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null,"closedAt":"2020-01-01T00:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+PRS_CYCLE='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "ns stack: PRs whose bases form a cycle are still listed" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_CYCLE"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "#5"
+  assert_output_contains "#6"
+}
+
+PRS_FORK='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":7,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T13:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "ns stack prints a fork as two chains" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_FORK"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "chain 1"
+  assert_output_contains "chain 2"
+}
+
+@test "stack-base exits 7 naming both tops of a fork" {
+  other_run_branch fix/sbx-11 main a.txt "a"
+  other_run_branch fix/sbx-13 fix/sbx-11 b.txt "b"
+  other_run_branch fix/sbx-14 fix/sbx-11 c.txt "c"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_FORK"
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "fix/sbx-13"
+  assert_output_contains "fix/sbx-14"
+}
