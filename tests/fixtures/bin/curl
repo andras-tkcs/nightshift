@@ -26,4 +26,5 @@ for a in "$@"; do
     break
   fi
 done
+[ -z "${CURL_STUB_STDERR:-}" ] || printf '%s\n' "$CURL_STUB_STDERR" >&2
 exit "${CURL_STUB_EXIT:-0}"

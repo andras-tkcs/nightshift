@@ -30,6 +30,15 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
 tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
 
+NTFY_TOKEN=tk_abcdefghijklmnopqrstuvwxyz012
+
+# ntfy_token [mode] [token]: writes an ntfy token (valid by default) to tokens/ntfy
+ntfy_token() {
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf '%s\n' "${2:-$NTFY_TOKEN}" >"$NS_CONFIG_DIR/tokens/ntfy"
+  chmod "${1:-600}" "$NS_CONFIG_DIR/tokens/ntfy"
+}
+
 # refused <printf %b text>: publishing it as x.html fails with the R-DSK-2 message and copies nothing
 refused() {
   printf '%b' "$1" >"$RUNDIR/x.html"
@@ -262,7 +271,7 @@ published() {
   long=$(printf 'a%.0s' $(seq 1 300))
   run ns-notify "$long"
   assert_success
-  grep -qE -- "(-d|--data-raw) a{200} " "$NS_STUB_LOG"
+  grep -qE -- "--data-raw a{200} " "$NS_STUB_LOG"
   ! grep -qE -- "a{201}" "$NS_STUB_LOG"
 }
 
@@ -283,13 +292,12 @@ published() {
 
 @test "ns-notify passes the ntfy token via stdin or a file, never argv" {
   export NS_NTFY_TOPIC=topic1
-  mkdir -p "$NS_CONFIG_DIR/tokens"
-  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  ntfy_token
   run ns-notify "hello"
   assert_success
-  grep -qE '^curl-(stdin|file) .*Authorization: Bearer tk_secrettoken123' "$NS_STUB_LOG"
-  ! grep '^curl ' "$NS_STUB_LOG" | grep -q tk_secrettoken123
-  ! grep -q tk_secrettoken123 <<<"$output"
+  grep -qE "^curl-(stdin|file) .*Authorization: Bearer $NTFY_TOKEN" "$NS_STUB_LOG"
+  ! grep '^curl ' "$NS_STUB_LOG" | grep -q "$NTFY_TOKEN"
+  ! grep -q "$NTFY_TOKEN" <<<"$output"
 }
 
 @test "ns-notify without a token file sends no Authorization header" {
@@ -308,12 +316,63 @@ published() {
 
 @test "ns-notify fails on a non-2xx answer and keeps the token out of the output" {
   export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403
-  mkdir -p "$NS_CONFIG_DIR/tokens"
-  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  ntfy_token
   run ns-notify "hello"
   assert_failure 1
   assert_output_contains "ns-notify:"
-  ! grep -q tk_secrettoken123 <<<"$output"
+  ! grep -q "$NTFY_TOKEN" <<<"$output"
+}
+
+@test "ns-notify refuses a token file that is not mode 600 (#34)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token 644
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: token file $NS_CONFIG_DIR/tokens/ntfy must be mode 600"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify refuses a token with a quote before it reaches the curl config (#34)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token 600 'tk_abcdefghijklmnopqrstuvwxy"1'
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: token file $NS_CONFIG_DIR/tokens/ntfy does not hold an ntfy token"
+  assert_output_not_contains 'tk_abcdefghijklmnopqrstuvwxy'
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify refuses a token that is too short or spans lines (#34)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token 600 tk_short
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  printf 'tk_abcdefghijklmn\nopqrstuvwxyz012\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify prints curl's reason after its own message for an unreachable host (#34)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.invalid CURL_STUB_EXIT=6
+  export CURL_STUB_STDERR='curl: (6) Could not resolve host: ntfy.invalid'
+  run ns-notify "hello"
+  assert_failure 1
+  [ "${lines[0]}" = "ns-notify: could not reach ntfy" ]
+  [ "${lines[1]}" = "curl: (6) Could not resolve host: ntfy.invalid" ]
+}
+
+@test "ns-notify keeps curl's reason with a token, and the token stays out of it (#34)" {
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_EXIT=28
+  export CURL_STUB_STDERR='curl: (28) Connection timed out after 10001 milliseconds'
+  ntfy_token
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: could not reach ntfy"
+  assert_output_contains "curl: (28) Connection timed out"
+  assert_output_not_contains "$NTFY_TOKEN"
 }
 
 @test "publishing at gate 1.5 puts the escalation question in the notification (ns-47)" {
