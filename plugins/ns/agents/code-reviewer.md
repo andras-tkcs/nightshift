@@ -17,7 +17,7 @@ Use the `review-checklist` skill for what to check and how to grade findings.
 - The head you review: `git rev-parse origin/<branch>` of that range, taken before you read the diff.
 - The plan document and phase entry, or `RUN/mini-plan.md`.
 - The profile docs (contributing, guidelines, Definition of Done) that exist.
-- The output file name, chosen by the caller (for example `RUN/review-1.md`, `RUN/review-<phase>-<round>.md` or `RUN/board-code.md`).
+- The output file name, chosen by the caller (for example `RUN/review-fix-<round>.md`, `RUN/review-<phase>-<round>.md` or `RUN/board-code.md`).
 
 ## Outputs
 
