@@ -284,3 +284,32 @@ stack3_and_other() {
   assert_output_contains "no open run PR for sbx-15"
   [ -z "$(line_of "pr close 2")" ]
 }
+
+# #119 item 2: tell apart a check that failed, no checks configured, and checks that could not run
+@test "ns stack merge prints a visible SKIP when the profile has no checks, then merges" {
+  stack3 APPROVED
+  local w commit
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/prof.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  sed -i 's/^stacks: .*/stacks: []/' "$w/.claude/project-profile.yaml"
+  git -C "$w" commit -q -am "profile: no stacks"
+  commit=$(git -C "$w" rev-parse HEAD)
+  git -C "$REMOTE" fetch -q "$w" HEAD
+  git -C "$REMOTE" update-ref HEAD "$commit"
+  rm -rf "$w"
+  run ns stack merge sbx
+  assert_success
+  assert_output_contains "SKIP no checks configured"
+  [ -n "$(line_of "pr merge 7 ")" ]
+}
+
+@test "ns stack merge says the checks could not run when the top branch is missing, not that they failed" {
+  stack3 APPROVED
+  git -C "$REMOTE" branch -q -D fix/sbx-14
+  run ns stack merge sbx
+  assert_failure
+  assert_output_contains "could not create a worktree of fix/sbx-14"
+  assert_output_contains "could not run the checks on top of the stack (#7)"
+  case "$output" in *"checks failed"*) echo "reported as failed: $output" >&2; return 1 ;; esac
+  [ -z "$(line_of "pr merge")" ]
+}
