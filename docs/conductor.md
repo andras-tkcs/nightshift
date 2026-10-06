@@ -117,7 +117,7 @@ Prints the branch the run's pull request must target. It lists the open PRs of t
 ns-conductor checks <id> <phase|feature>
 ```
 
-Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in a clean environment (`env -i` with only `HOME`, `PATH`, `LANG`, `TERM` and `TMPDIR`, so no `NS_*` variable reaches a check) in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>`, `FAIL <stack> <name>` or `SKIP <stack> <name>` for each check; exit 5 (no tests collected) is `SKIP`, and not a failure, only for the python `test` check or a command containing `pytest`; for any other check it is `FAIL`. The full output goes to `logs/<id>/<target>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
+Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in a clean environment (`env -i` with only `HOME`, `PATH`, `LANG`, `TERM` and `TMPDIR`, so no `NS_*` variable reaches a check) in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>`, `FAIL <stack> <name>` or `SKIP <stack> <name>` for each check; exit 5 (no tests collected) is `SKIP`, and not a failure, only for the python `test` check or a command containing `pytest`; for any other check it is `FAIL`. The full output goes to `logs/<id>/<target>.checks.log` (rewritten on each run, so it holds the last run for that target): each check starts with `== <stack> <name>: <command>` and `== start <stack> <name> <UTC time>`, and after its output ends with `== end <stack> <name> <UTC time> <PASS|FAIL|SKIP> exit <code>`; `ns report` reads these lines for its Checks table. On failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
 
 ### report
 
@@ -164,7 +164,7 @@ Merges the phase branch into the code branch, in its worktree. When the branch a
 ns-conductor gate <id> <1|1.5|2> <file>[:<name>]...
 ```
 
-Sets the run state to `waiting` with the gate, adds an event `gate`, checkpoints and pushes the ledger, then runs `ns publish <id> <files>`, which also notifies the owner. The conductor then ends its session. Exit 0; 2 for a gate other than `1`, `1.5` or `2`; the exit code of `ns publish` otherwise.
+Sets the run state to `waiting` with the gate, adds an event `gate` with the note `gate <n>: waiting for the owner` (for gate 1.5 followed by `: <question>`, the `## Question` section of `RUN/escalation.md` on one line, at most 200 characters, when it has one, so the run report and `ns status` keep the cause of every escalation), checkpoints and pushes the ledger, then runs `ns publish <id> <files>`, which also notifies the owner. The conductor then ends its session. Exit 0; 2 for a gate other than `1`, `1.5` or `2`; the exit code of `ns publish` otherwise.
 
 ### finish
 
@@ -172,7 +172,7 @@ Sets the run state to `waiting` with the gate, adds an event `gate`, checkpoints
 ns-conductor finish <id> --pr <url>
 ```
 
-Records the pull request URL, sets `step` and the state to `done`, adds an event and checkpoints and pushes the ledger. For T2 and T3 runs it also sets gate `2` and publishes `RUN/handoff.html` when that file exists; for T0 and T1 the gate stays unset. Exit 0, or 1 on failure.
+Records the pull request URL, sets `step` and the state to `done` and adds an event `finish`. It writes `RUN/run-report.md` with `ns report <id>`, checkpoints and pushes the ledger (the report is committed with it), then publishes the report and, for T2 and T3 runs, `RUN/handoff.html` when that file exists, in one `ns publish`. For T2 and T3 it also sets gate `2`; for T0 and T1 the gate stays unset. The run report is best effort: when writing or publishing it fails, `finish` warns and goes on. The handoff report is not: when publishing it fails, `finish` exits 1 with `could not publish the handoff report` after the ledger is recorded and pushed (state `done`); fix `RUN/handoff.html` and publish it with `ns publish <id> RUN/handoff.html`. Exit 0, or 1 on failure.
 
 ### pause and unpause
 
@@ -239,7 +239,9 @@ Everything for a run is under `~/.config/ns/logs/<id>/`:
 |---|---|
 | `conductor.jsonl` | the conductor session's stream (`ns-launch`); read it with `ns log <id>` |
 | `<phase>.prompt.md` | the prompt given to the worker |
-| `<phase>.jsonl` | the worker's stream, including its final `result` with the `PHASE-REPORT` line |
+| `<phase>.jsonl` | the worker's stream of the latest attempt, including its final `result` with the `PHASE-REPORT` line |
+| `<phase>--attempt<n>.jsonl` | an earlier attempt's stream, moved aside by `start` when the phase is started again (`ns report` counts its tokens and cost) |
+| `<target>.checks.log`, `<target>.checks.rc` | the last `checks` run for a phase or `feature`, with start and end lines per check, and its exit code |
 | `done/` | pid and exit files of finished workers |
 
 Stack setup output goes to `~/.config/ns/logs/setup-<worktree name>.log`.

@@ -86,7 +86,7 @@ ev() { printf -- '"""- time: '"'"'%s'"'"'\n  type: %s\n  note: '"'"'%s'"'"'\n"""
   assert_success
   grep -qF '| Cost | no data |' "$RUNDIR/run-report.md"
   grep -qF '| planning | 2026-10-02 10:00 | 40m | 40m | 0s | no data | no data |' "$RUNDIR/run-report.md"
-  grep -qF 'No checks log.' "$RUNDIR/run-report.md"
+  grep -qF 'No checks log in' "$RUNDIR/run-report.md"
   mkdir -p "$LOGS"
   printf 'not json\n{"type":"result","total_cost_usd":"lots","modelUsage":7,"num_turns":"x"}\n[1,2]\n' >"$LOGS/conductor.jsonl"
   printf '\001\002 binary\n== start\n== end x\n== python lint: x\n== end python lint never PASS exit 0\n' >"$LOGS/feature.checks.log"

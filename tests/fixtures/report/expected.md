@@ -19,7 +19,7 @@
 | Tokens | 3.3k (input 27, output 270, cache read 2.6k, cache write 400) |
 | Review rounds | 2 |
 | Escalations | 1 |
-| Checks | 3 PASS, 1 FAIL, 1 SKIP, 2 no data |
+| Checks | 2 PASS, 1 FAIL, 1 SKIP, 2 no data |
 
 Escalations:
 

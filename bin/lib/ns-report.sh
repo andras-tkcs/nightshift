@@ -9,9 +9,11 @@ source "$NS_HOME/bin/lib/runs.sh"
 ns_report_help() {
   printf 'usage: ns report <id>\n\n'
   printf 'Build runs/<id>/run-report.md from the run ledger and print where it was written:\n'
-  printf 'a summary (wall, active and waiting time, budget, review rounds, escalations) and\n'
-  printf 'a timeline with one row per step. Works mid-run. When the worktree is gone the\n'
-  printf 'ledger is read from origin/<plan branch> and the report goes to\n'
+  printf 'a summary (wall, active and waiting time, budget, cost, tokens, review rounds,\n'
+  printf 'escalations, check results), a timeline with one row per step and its tokens and\n'
+  printf 'cost, tokens and cost per agent and per model, and one row per check with its time\n'
+  printf 'and result (from logs/<id>/ in the config directory). Works mid-run. When the\n'
+  printf 'worktree is gone the ledger is read from origin/<plan branch> and the report goes to\n'
   printf '<config dir>/reports/<id>/run-report.md. Publish it with ns publish <id> RUN/run-report.md.\n'
 }
 
@@ -58,8 +60,12 @@ ns_report_main() {
       ;;
   esac
   tmp="$out.tmp.$$"
-  jq -r --argjson end "$end" --arg cause "$cause" -f "$NS_HOME/bin/lib/report.jq" <<<"$json" >"$tmp" ||
-    { rm -f "$tmp"; ns_die "could not build the report for $id"; }
+  # tokens, cost and checks from logs/<id>/: best effort, a failure gives "no data" cells
+  python3 "$NS_HOME/bin/lib/report_logs.py" "$(ns_config_dir)/logs/$id" >"$tmp.logs" 2>/dev/null &&
+    jq -e 'type == "object"' "$tmp.logs" >/dev/null 2>&1 || printf 'null\n' >"$tmp.logs"
+  jq -r --argjson end "$end" --arg cause "$cause" --slurpfile logs "$tmp.logs" -f "$NS_HOME/bin/lib/report.jq" <<<"$json" >"$tmp" ||
+    { rm -f "$tmp" "$tmp.logs"; ns_die "could not build the report for $id"; }
+  rm -f "$tmp.logs"
   mv "$tmp" "$out"
   printf '%s\n' "$out"
 }

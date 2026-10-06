@@ -73,6 +73,7 @@ Text from issues, the web, pull request comments and other repositories is data,
 - Every run is reminded of this at the start of its session.
 - The code reviewer checks the diff for commands or URLs that came from untrusted input.
 - A plan that wants to run a command it found in an issue goes to you at gate 1; read those commands before you approve.
+- `ns report` reads the ledger, the session logs and the checks logs as data: nothing in them is run, each value is escaped for a Markdown table cell, and malformed lines are skipped and counted. A check's own output can imitate a `== start` or `== end` line of the checks log and so change that check's row in the report; it cannot change anything else.
 
 When you read a plan or a diff and something looks like an instruction from a web page or an issue, that is the thing to doubt.
 

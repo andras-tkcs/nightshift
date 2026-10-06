@@ -200,7 +200,7 @@ loop_checks() {
 }
 
 loop_checks_body() {
-  local target="$1" dir log n stack name cmd failed=0 total crc
+  local target="$1" dir log n stack name cmd failed=0 total crc res
   dir=$(loop_phase_wt "$target")
   [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
   total=$(jq '(.checks // []) | length' <<<"$profile")
@@ -217,17 +217,21 @@ loop_checks_body() {
     name=$(jq -r ".checks[$n].name" <<<"$profile")
     cmd=$(jq -r ".checks[$n].cmd" <<<"$profile")
     printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
+    # start and end lines with UTC times and the result: ns report reads them (#65)
+    printf '== start %s %s %s\n' "$stack" "$name" "$(ns_now)" >>"$log"
     crc=0
     (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
       TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
     if [ "$crc" -eq 0 ]; then
-      printf 'PASS %s %s\n' "$stack" "$name"
+      res=PASS
     elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
-      printf 'SKIP %s %s\n' "$stack" "$name"
+      res=SKIP
     else
-      printf 'FAIL %s %s\n' "$stack" "$name"
+      res=FAIL
       failed=1
     fi
+    printf '== end %s %s %s %s exit %s\n' "$stack" "$name" "$(ns_now)" "$res" "$crc" >>"$log"
+    printf '%s %s %s\n' "$res" "$stack" "$name"
     n=$((n + 1))
   done
   if [ "$failed" -eq 1 ]; then
@@ -501,8 +505,14 @@ conductor_gate() {
   esac
   load_run "$1"
   shift 2
+  # gate 1.5: the question goes into the event note, so each escalation keeps its cause (#118)
+  local note="gate $gate: waiting for the owner" q=""
+  if [ "$gate" = 1.5 ] && [ -f "$wt/.nightshift/runs/$id/escalation.md" ]; then
+    q=$(ns_escalation_question "$wt/.nightshift/runs/$id/escalation.md") || q=""
+  fi
+  [ -z "$q" ] || note="$note: $q"
   lg state "$ledger" waiting --gate "$gate"
-  lg event "$ledger" gate "gate $gate: waiting for the owner"
+  lg event "$ledger" gate "$note"
   lg checkpoint "$ledger" --push
   "$NS_HOME/bin/ns" publish "$id" "$@"
 }
@@ -518,20 +528,30 @@ conductor_finish() {
     *) lg state "$ledger" "done" --note "pull request $url" ;;
   esac
   lg event "$ledger" finish "run finished: $url"
-  # the run report is best effort: a failure here never fails the run
-  local -a docs=()
+  # the run report is best effort: writing or publishing it never fails the run. The
+  # handoff report of a T2/T3 run is not: the owner needs it at gate 2 (#118)
+  local report=false hand=false
   if "$NS_HOME/bin/ns" report "$id" >/dev/null; then
-    docs+=("RUN/run-report.md")
+    report=true
   else
     ns_warn "could not write the run report for $id"
   fi
   handoff="$wt/.nightshift/runs/$id/handoff.html"
   case "$tier" in
-    T2 | T3) [ ! -f "$handoff" ] || docs=("RUN/handoff.html" "${docs[@]}") ;;
+    T2 | T3) [ ! -f "$handoff" ] || hand=true ;;
   esac
   lg checkpoint "$ledger" --push
-  if [ "${#docs[@]}" -gt 0 ]; then
-    "$NS_HOME/bin/ns" publish "$id" "${docs[@]}" || ns_warn "could not publish ${docs[*]}"
+  local -a docs=()
+  [ "$hand" = false ] || docs+=("RUN/handoff.html")
+  [ "$report" = false ] || docs+=("RUN/run-report.md")
+  # one publish (one notification) when both are fine; else each on its own
+  if [ "${#docs[@]}" -gt 0 ] && ! "$NS_HOME/bin/ns" publish "$id" "${docs[@]}"; then
+    if [ "$report" = true ] && { [ "$hand" = false ] || ! "$NS_HOME/bin/ns" publish "$id" RUN/run-report.md; }; then
+      ns_warn "could not publish RUN/run-report.md"
+    fi
+    if [ "$hand" = true ] && ! "$NS_HOME/bin/ns" publish "$id" RUN/handoff.html; then
+      ns_die "could not publish the handoff report: fix RUN/handoff.html, then ns publish $id RUN/handoff.html"
+    fi
   fi
   printf 'finished %s: %s\n' "$id" "$url"
 }

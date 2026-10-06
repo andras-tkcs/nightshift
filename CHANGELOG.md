@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ns-conductor finish` publishes the run report best effort but fails again (exit 1, after the ledger is recorded and pushed) when the handoff report of a T2/T3 run cannot be published; bats cases prove that `finish` and the owner's kill command each leave a committed `run-report.md` (issue #118).
+
 - `ns stack` and `ns-conductor stack-base` treat a base as closed only when the closed PR was closed at or after the dependent PR was created and no open PR has that head name; a fork of run PRs is now several chains (`stack-base` exits 7); the stack e2e scenario only counts open PRs of runs with a `plan/<run id>` branch as leftovers (issue #97).
 
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The bats suite runs in parallel: CI installs GNU `parallel` and runs `bats --jobs "$(nproc)"`, and CLAUDE.md and docs/development.md document `bats --jobs 2` for local runs (issue #102).
 
 ### Added
+
+- The run report (`ns report`) shows tokens and cost per agent (conductor, each phase worker attempt), per model and in total, from the `result` events in `logs/<id>/*.jsonl` (each session counted once, as its results are running totals), lists the subagents with model, runs and time, gives each timeline row its tokens and cost, and has a Checks section with one row per check (target, PASS/FAIL/SKIP, time, start); SKIP is listed below it, and the integrator and `/ns:dod` keep SKIP rows in the PR's Checks table. `ns-conductor checks` writes `== start` and `== end` lines with UTC times and the result per check into the checks log, and `ns-conductor start` keeps an earlier attempt's log as `<phase>--attempt<n>.jsonl`. Missing or malformed logs give `no data` cells, never a failed report (issues #65, #62).
+- The run report has a `conductor work` row for running time that no phase or review row covers (the work after a gate 1.5 answer was missing; ns-5 lost 3h 33m of its 5h 52m active time that way), and `ns-conductor gate <id> 1.5` keeps the escalation's question in its gate event note, so every escalation shows its cause; older ledgers keep `cause not recorded` (issue #118).
 
 - `ns stack merge [project] [--dry-run]` lands the stack bottom to top (the profile checks run once on the top of the stack first; each PR needs an approval, no failing checks and no conflicts; the next PR is retargeted to the base branch before the one below is merged; it stops at the first PR that is not ready and lists what is left), and `ns stack drop <id> [--dry-run]` closes a run's PR, restacks the PR above it onto the layer below and reverts the dropped change in it (it stops and names the PR when the revert does not apply). Both are blocked for agents (issue #74).
 - `ns report <id>` writes `runs/<id>/run-report.md` from the run ledger: a summary (wall, active and waiting time, budget, review rounds, escalations) and a timeline with one row per step. It is written automatically when a run finishes or is killed, published to the desk at finish and linked from the PR body; it reads `origin/plan/<id>` when the worktree is gone (issue #64).
