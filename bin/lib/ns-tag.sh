@@ -53,14 +53,18 @@ ns_tag_warn_active_runs() {
 
 # ns_tag_changelog_ok <repo> <tag>: dies unless CHANGELOG.md (when the repository has one) has an
 # empty [Unreleased] section and a section for the version (issue #88)
+# The file is read from the commit being tagged. Empty "###" sub-headings and HTML comments under
+# [Unreleased] do not count as entries.
 ns_tag_changelog_ok() {
-  local file="$1/CHANGELOG.md" ver="${2#v}" fix
-  [ -f "$file" ] || return 0
-  fix="move the entries to '## [$ver] - <date>' in the release pull request (docs/development.md, Releasing)"
-  if awk '/^## \[/ {inside = ($0 ~ /^## \[Unreleased\]/); next} inside && /[^[:space:]]/ {found = 1} END {exit !found}' "$file"; then
-    ns_die "CHANGELOG.md: [Unreleased] still has entries: $fix"
+  local text ver="${2#v}"
+  text=$(git -C "$1" show HEAD:CHANGELOG.md 2>/dev/null) || return 0
+  if awk '/^## \[/ {inside = ($0 ~ /^## \[Unreleased\]/); next}
+      inside && /[^[:space:]]/ && !/^###/ && !/^[[:space:]]*<!--.*-->[[:space:]]*$/ {found = 1}
+      END {exit !found}' <<<"$text"; then
+    ns_die "CHANGELOG.md: [Unreleased] still has entries: move them to '## [$ver] - <date>' in the release pull request (docs/development.md, Releasing)"
   fi
-  grep -qF "## [$ver]" "$file" || ns_die "CHANGELOG.md has no ## [$ver] section: $fix"
+  awk -v h="## [$ver]" 'index($0, h) == 1 {f = 1} END {exit !f}' <<<"$text" ||
+    ns_die "CHANGELOG.md has no ## [$ver] section: add a '## [$ver] - <date>' section in the release pull request (docs/development.md, Releasing)"
 }
 
 ns_tag_main() {
