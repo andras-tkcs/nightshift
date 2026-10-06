@@ -179,7 +179,17 @@ ns-conductor unpause <id>
 
 Set `budget.paused` to true or false and add an event `usage-pause` or `usage-resume` (R-BUD-2); `unpause` also clears `budget.paused_until`. `wait` already pauses the budget on a usage-limit finish, so `/ns:implement` calls only `unpause`. Exit 0.
 
-A run paused on a usage limit does not wait in its session: the conductor parks it (`park`) once no worker is left, which frees its run slot, and `ns health-check` (every 5 minutes) runs `ns resume <id>` for a parked run whose `budget.paused_until` has passed. The resumed session restarts the pending phases and calls `unpause`.
+### Usage limits
+
+A run paused on a usage limit does not wait in its session: the conductor parks it (`park`) once no worker is left, which frees its run slot, and `ns health-check` (every 5 minutes, after `ns dequeue`) runs `ns resume <id>` once `budget.paused_until` has passed, for a run with no open gate that is `parked` or `running` with a dead conductor. The resumed session restarts the pending phases and calls `unpause`.
+
+The conductor shares the Claude account with its workers, so its own session often ends on the same limit. When the conductor's session ends and the run is still `running` with no gate, `ns-launch` reads the last `result` of this session in `conductor.jsonl` with `bin/lib/usage_limit.py`:
+
+- A usage limit that resets: `budget.paused` and `budget.paused_until` are set (the reset time plus a minute, or 15 minutes doubling with each conductor limit since the last `unpause`, at most 4 hours; a later `paused_until` already set by `wait` is kept), an event `usage-pause` is added and the run is parked.
+- A limit that does not reset: workers are stopped, `RUN/escalation.md` quotes the message and the run goes to gate 1.5.
+- Any other end while `wait` had already paused the budget with a `paused_until` (the conductor died before `park`): the run is parked.
+
+`usage_limits` of a phase is not reset when the owner lets the run continue past a gate 1.5 escalation, so a further usage limit of that phase escalates again at once. `ns stop` on a run parked on a usage limit stops it and clears `paused_until`.
 
 ## Pool files
 

@@ -13,15 +13,15 @@ ns_health_check_help() {
   printf 'Each incident sends one ns-notify message (another when it changes between dead and silent); the incident is remembered in\n'
   printf '<config dir>/health/<id> and cleared when the run is healthy again. A systemd timer runs\n'
   printf 'this every 5 minutes.\n\n'
-  printf 'It also resumes (ns resume) a run that was parked on a usage limit once the\n'
-  printf 'budget.paused_until time in its ledger has passed.\n'
+  printf 'After ns dequeue it resumes (ns resume) a run paused on a usage limit, parked or with a\n'
+  printf 'dead conductor and no open gate, once budget.paused_until in its ledger has passed.\n'
 }
 
 ns_health_check_main() {
   [ $# -eq 0 ] || ns_usage "ns health-check"
   ns_load_env
   local entry id ledger led state gate health dir f old bad=0 sent=0 total=0 seen=' ' pu now
-  local wake=() resumed=0
+  local wake=() resumed=0 queued=0 out
   dir="$(ns_config_dir)/health"
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
@@ -33,12 +33,13 @@ ns_health_check_main() {
     seen="$seen$id "
     state=$(jq -r '.state // ""' <<<"$led")
     gate=$(jq -r '.gate // ""' <<<"$led")
-    pu=$(jq -r 'if .state == "parked" and .budget.paused then (.budget.paused_until // "") else "" end' <<<"$led")
-    if [ -n "$pu" ]; then
+    health=$(ns_run_health "$id" "$state" "$gate")
+    # paused on a usage limit, no open gate, and parked (or its conductor died): wake after the reset
+    pu=$(jq -r 'if .gate == null and .budget.paused and (.state == "parked" or .state == "running") then (.budget.paused_until // "") else "" end' <<<"$led")
+    if [ -n "$pu" ] && { [ "$state" = parked ] || [ "$health" = dead ]; }; then
       now=$(date -u -d "$(ns_now)" +%s)
       [ "$(date -u -d "$pu" +%s)" -gt "$now" ] || wake+=("$id")
     fi
-    health=$(ns_run_health "$id" "$state" "$gate")
     if [ "$health" = ok ]; then
       rm -f "$dir/$id"
       continue
@@ -61,14 +62,20 @@ ns_health_check_main() {
       case "$seen" in *" $id "*) ;; *) rm -f "$f" ;; esac
     done
   fi
+  # queued runs first, so they keep their place ahead of runs woken from a usage limit
+  "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
   for id in "${wake[@]}"; do
-    # parked on a usage limit that has reset: resume (ns resume queues it when no slot is free)
-    if "$NS_HOME/bin/ns" resume "$id"; then
-      resumed=$((resumed + 1))
+    # the usage limit has reset: resume (ns resume queues it when no run slot is free)
+    if out=$("$NS_HOME/bin/ns" resume "$id"); then
+      [ -z "$out" ] || printf '%s\n' "$out"
+      case "$out" in
+        queued*) queued=$((queued + 1)) ;;
+        *) resumed=$((resumed + 1)) ;;
+      esac
     else
+      [ -z "$out" ] || printf '%s\n' "$out"
       ns_warn "could not resume $id after its usage limit"
     fi
   done
-  "$NS_HOME/bin/ns" dequeue >/dev/null || ns_warn "ns dequeue failed"
-  printf 'ns health-check: %s run(s) checked, %s unhealthy, %s notified, %s resumed after a usage limit\n' "$total" "$bad" "$sent" "$resumed"
+  printf 'ns health-check: %s run(s) checked, %s unhealthy, %s notified, %s resumed after a usage limit, %s queued\n' "$total" "$bad" "$sent" "$resumed" "$queued"
 }

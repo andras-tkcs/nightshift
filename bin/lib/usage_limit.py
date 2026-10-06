@@ -90,13 +90,14 @@ def reset_epoch(msg, now):
             if mon is None:
                 return None
             year = int(w.group("year") or nowdt.year)
-            dt = datetime.datetime(year, mon, int(w.group("day")), hour, minute, tzinfo=tz)
+            # fold=1: of an ambiguous wall time (DST ends) take the later one; never resume early
+            dt = datetime.datetime(year, mon, int(w.group("day")), hour, minute, tzinfo=tz, fold=1)
             if not w.group("year") and dt.timestamp() < now - 86400:
                 dt = dt.replace(year=year + 1)
         else:
-            dt = nowdt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            dt = nowdt.replace(hour=hour, minute=minute, second=0, microsecond=0, fold=1)
             if dt.timestamp() <= now:
-                dt += datetime.timedelta(days=1)
+                dt = (dt.replace(tzinfo=None) + datetime.timedelta(days=1)).replace(tzinfo=tz, fold=1)
     except ValueError:
         return None
     t = int(dt.timestamp()) + MARGIN

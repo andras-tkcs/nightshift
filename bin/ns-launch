@@ -21,6 +21,61 @@ usage() {
   printf "stream to \$NS_CONFIG_DIR/logs/<id>/conductor.jsonl.\n"
 }
 
+# after_conductor: the conductor session ended while the run is still running with no gate. When
+# its own last result is a usage limit (it shares the account with its workers), or wait had
+# already paused the budget on one, park the run so ns health-check resumes it after
+# budget.paused_until; a limit that does not reset escalates to gate 1.5 (R-BUD-2).
+after_conductor() {
+  local state res cls kind=none until=- msg="" now n backoff pu run_dir
+  state=$(ns-ledger get "$ledger" '[.state, (.gate // "-")] | join(" ")')
+  [ "$state" = "running -" ] || return 0
+  res=$(tail -n +"$((lines0 + 1))" "$log" 2>/dev/null | jq -R -c 'fromjson? | select(.type == "result")' 2>/dev/null | tail -n1) || res=""
+  now=$(date -u -d "$(ns_now)" +%s)
+  if [ -n "$res" ]; then
+    cls=$(python3 "$NS_HOME/bin/lib/usage_limit.py" "$now" <<<"$res") || cls=none
+    IFS=$'\t' read -r kind until msg <<<"$cls" || true
+  fi
+  case "$kind" in
+    usage-final)
+      ns-conductor stop "$id" >/dev/null || true
+      run_dir="$wt/.nightshift/runs/$id"
+      mkdir -p "$run_dir"
+      {
+        printf '# Escalation: %s hit a usage limit that does not reset\n\n' "$id"
+        printf 'The conductor session ended on this message from Claude Code:\n\n> %s\n\n' "$msg"
+        printf 'The run is waiting with its budget paused. Raise the limit or add usage credits, then approve to continue, or stop the run.\n\n'
+        printf "## Owner's answer\n\n"
+      } >"$run_dir/escalation.md"
+      ns-ledger set "$ledger" '.budget.paused = true | .budget.paused_until = null'
+      ns-ledger event "$ledger" usage-pause "conductor hit a usage limit; escalate: $msg"
+      ns-conductor gate "$id" 1.5 RUN/escalation.md
+      ;;
+    usage)
+      if ! [[ $until =~ ^[0-9]+$ ]]; then
+        # conductor limits since the last resume: 15 min, doubling, at most 4 h
+        n=$(ns-ledger get "$ledger" '[.events[] | select(.type == "usage-resume" or (.type == "usage-pause" and (.note | startswith("conductor hit")))) | .type] | reverse | (index("usage-resume") // length)')
+        backoff=$((900 << n))
+        [ "$backoff" -le 14400 ] || backoff=14400
+        until=$((now + backoff))
+      fi
+      pu=$(ns-ledger get "$ledger" '.budget.paused_until // ""')
+      if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$until" ]; then
+        until=$(date -u -d "$pu" +%s)
+      fi
+      pu=$(date -u -d "@$until" +%Y-%m-%dT%H:%M:%SZ)
+      ns-ledger set "$ledger" ".budget.paused = true | .budget.paused_until = \"$pu\""
+      ns-ledger event "$ledger" usage-pause "conductor hit a usage limit; paused until $pu: $msg"
+      ns-conductor park "$id"
+      ;;
+    *)
+      pu=$(ns-ledger get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end')
+      [ -n "$pu" ] || return 0
+      ns-ledger event "$ledger" note "conductor ended during a usage pause until $pu; parked"
+      ns-conductor park "$id"
+      ;;
+  esac
+}
+
 id=""
 mode=""
 while [ $# -gt 0 ]; do
@@ -85,11 +140,16 @@ log="$(ns_config_dir)/logs/$id/conductor.jsonl"
 mkdir -p "$(dirname "$log")"
 
 cd "$wt"
+lines0=0
+[ ! -f "$log" ] || lines0=$(wc -l <"$log")
 rc=0
 "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
   --model "$model" --agent ns:conductor "${plugin_args[@]}" "$prompt" \
   < /dev/null > >(tee -a "$log" | python3 "$NS_HOME/bin/lib/stream-view.py") || rc=$?
 wait || true
+if [ "$mode" != --triage ] && [ -f "$ledger" ]; then
+  after_conductor || ns_warn "could not record the end of the conductor session"
+fi
 # the conductor ended: let the next queued run take the slot
 if [ "$mode" != --triage ]; then
   # clean environment: the ending run's token and ids must not reach other runs' conductors
