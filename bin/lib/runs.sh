@@ -173,9 +173,11 @@ ns_secs_fmt() {
   fi
 }
 
-# ns_escalation_question <escalation.md>: the "## Question" section as one line, at most 200 chars
+# ns_escalation_question <escalation.md>: the "## Question" section as one line, at most 200
+# characters (not bytes); tabs and line ends become spaces, other control characters are dropped
 ns_escalation_question() {
-  local q
-  q=$(awk '/^## /{f = ($0 ~ /^## Question[[:space:]]*$/); next} f' "$1" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  local q LC_ALL=C.UTF-8
+  q=$(awk '/^## /{f = ($0 ~ /^## Question[[:space:]]*$/); next} f' "$1" | tr '\n\r\t' '   ' | tr -d '[:cntrl:]' |
+    sed 's/  */ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')
   printf '%s\n' "${q:0:200}"
 }

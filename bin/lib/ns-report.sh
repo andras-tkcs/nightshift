@@ -66,6 +66,11 @@ ns_report_main() {
   jq -r --argjson end "$end" --arg cause "$cause" --slurpfile logs "$tmp.logs" -f "$NS_HOME/bin/lib/report.jq" <<<"$json" >"$tmp" ||
     { rm -f "$tmp" "$tmp.logs"; ns_die "could not build the report for $id"; }
   rm -f "$tmp.logs"
+  # the report is committed and published: never with a token-shaped string in it
+  if ns_has_token "$(cat "$tmp")"; then
+    ns_redact_tokens "$tmp"
+    ns_warn "the report of $id had a token-shaped string; it was replaced with [redacted]"
+  fi
   mv "$tmp" "$out"
   printf '%s\n' "$out"
 }

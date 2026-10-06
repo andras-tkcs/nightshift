@@ -30,7 +30,7 @@ You are the integrator. You work in the run's feature worktree (`<id>--feature`)
 4. T2/T3: write `RUN/handoff.html` from the `handoff-report` template, following that skill.
 5. Write `RUN/pr-body.md` with the sections: Summary; Phases (each with its merge commit; T2/T3); Checks (from `RUN/dod.md`; every `SKIP` row stays in the table as `SKIP`, never as `PASS`, and so does every `SKIP` line of the last `ns-conductor checks <id> feature`); Non-blocking findings and open items from the review files; Follow-ups (the numbered lines of `RUN/notes.md`, when it exists, one bullet each); Manual verification (each `manual_after` item as an unchecked box `- [ ]`); Stack (the base `<pr-base>` when stacked on another run's PR, and the conflicts resolved); Run report (run `ns report <id>` first and link `RUN/run-report.md` on the plan branch; `ns-conductor finish` rewrites and publishes it); Desk link (where the run's files are published, from `ns status <id>`).
 6. Open the PR: `gh pr create --base <pr-base> --head <branch> --title "<id>: <summary>" --body-file RUN/pr-body.md`. Read the URL it prints.
-7. Run `ns-conductor finish <id> --pr <url>`. End with the PR URL on its own line.
+7. Run `ns-conductor finish <id> --pr <url>`. End with the PR URL on its own line. When it exits 1 with `could not publish the handoff report`, the run is already recorded as done: fix `RUN/handoff.html` (the error says why) and run `ns publish <id> RUN/handoff.html`, or run `ns-conductor finish <id> --pr <url>` again.
 
 ## Stop conditions
 

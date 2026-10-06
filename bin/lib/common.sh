@@ -90,8 +90,15 @@ ns_age() {
   fi
 }
 
+NS_TOKEN_RE='(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})'
+
 ns_has_token() {
-  printf '%s' "$1" | grep -Eq '(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})'
+  printf '%s' "$1" | grep -Eq "$NS_TOKEN_RE"
+}
+
+# ns_redact_tokens <file>: replace every token-shaped string in <file> with [redacted]
+ns_redact_tokens() {
+  sed -E -i "s/$NS_TOKEN_RE/[redacted]/g" "$1"
 }
 
 ns_plugin_args() {

@@ -14,8 +14,10 @@ def dur:
 def stamp: strftime("%Y-%m-%d %H:%M");
 def first_word: split(" ")[0];
 def dec($n): (. * $n | round) as $x | "\($x / $n | floor).\($x % $n | tostring | if length < 2 and $n == 100 then "0" + . else . end)";
-def tok: if . == null then "no data" elif . < 1000 then "\(. | floor)" elif . < 1000000 then "\(. / 1000 | dec(10))k" else "\(. / 1000000 | dec(100))M" end;
-def money: if . == null then "no data" else "$" + dec(100) end;
+# a value that is not a finite number is no data; 999950 and up is shown in M, never 1000.0k
+def finite: type == "number" and (isinfinite or isnan | not);
+def tok: if finite | not then "no data" elif . < 1000 then "\(. | floor)" elif . < 999950 then "\(. / 1000 | dec(10))k" else "\(. / 1000000 | dec(100))M" end;
+def money: if finite | not then "no data" else "$" + dec(100) end;
 # the cost cell of a timeline row: part of it has no cost when a session ended without a result
 def rowcost: if .none == true then "no data" elif .part == true then "at least \(.cost | money)" else (.cost | money) end;
 def sumtok: if . == null then null else .in + .out + .cr + .cw end;
@@ -174,7 +176,7 @@ def minus($waits):
           ["| Total | \($total.tok.in | tok) | \($total.tok.out | tok) | \($total.tok.cr | tok) | \($total.tok.cw | tok) | \($total.cost | money) |"] end)
       + (if ($L.subagents | length) > 0 then
           ["", "Subagents:", "", "| Subagent | Started by | Model | Runs | Time |", "|---|---|---|---|---|"]
-          + [$L.subagents[] | "| \(.type | esc) | \(.by | esc) | \(.model | esc) | \(.runs) | \(.s | dur) |"]
+          + [$L.subagents[] | "| \(.type | esc) | \(.by | esc) | \(.model | esc) | \(.runs) | \(if .unknown == .runs then "no data" elif .unknown > 0 then "at least \(.s | dur)" else (.s | dur) end) |"]
         else [] end)
     end)
   + ["", "## Checks", ""]

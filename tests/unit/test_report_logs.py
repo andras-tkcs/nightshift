@@ -81,12 +81,15 @@ def test_background_subagents_are_counted_with_their_type(tmp_path):
     write(tmp_path / "conductor.jsonl", [
         {"type": "assistant", "session_id": "a", "timestamp": "2026-10-02T10:00:00Z",
          "message": {"id": "x", "model": "m", "usage": {}, "content": [
-             {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"subagent_type": "ns:triage"}}]}},
+             {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"subagent_type": "ns:triage"}},
+             {"type": "tool_use", "id": "t2", "name": "Agent", "input": {"subagent_type": "ns:planner"}}]}},
         {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1"}]},
          "tool_use_result": {"status": "async_launched", "resolvedModel": "m2"}},
     ])
     _, _, subs = report_logs.read_session_log(str(tmp_path / "conductor.jsonl"))
-    assert subs == [{"type": "ns:triage", "by": "conductor", "model": "m2", "s": None}]
+    # t2 never got a result (the session was cut off): still a run, model unknown
+    assert subs == [{"type": "ns:triage", "by": "conductor", "model": "m2", "s": None},
+                    {"type": "ns:planner", "by": "conductor", "model": "unknown", "s": None}]
 
 
 def test_message_tokens_are_scaled_to_the_session_model_usage(tmp_path):

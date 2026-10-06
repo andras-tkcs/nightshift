@@ -8,18 +8,26 @@ data: nothing is executed, unknown or malformed lines are skipped and counted, a
 of the wrong type counts as missing. A missing directory gives empty lists, never an error.
 
 Session logs (*.jsonl, Claude Code stream-json):
-  conductor.jsonl               the conductor (ns-launch appends every session)
+  conductor.jsonl               the conductor (its launcher appends every session)
   <phase>.jsonl                 the phase worker's latest attempt (ns-conductor start)
   <phase>--attempt<n>.jsonl     an earlier attempt, kept by ns-conductor start
 The `result` events of one session are cumulative: total_cost_usd and modelUsage of the last
 one hold the whole session (num_turns is per result). A session's cost and tokens are the
 last result's; an agent's are the sum over its sessions. Subagents run inside the session
-that started them, so their cost is part of it; the Agent tool's results name them.
+that started them, so their cost is part of it. A foreground subagent's Agent tool result
+names its type, model and duration; a background one's result only says async_launched with
+its model, so its type comes from the Agent tool_use block (input.subagent_type) and its
+duration from the task_notification for that tool use, when there is one.
 
 Each assistant message (deduplicated by message id) gives a time, a model and its tokens,
-for the timeline. Its cost is the session's costUSD for that model shared out by weighted
-tokens (input 1, output 5, cache read 0.1, cache write 1.25), so the parts add up to the
-result events exactly.
+for the timeline. The stream's usage is partial (output_tokens in particular), so each kind
+of token is scaled per session and model to that session's modelUsage. Its cost is the
+session's costUSD for that model shared out by weighted tokens (input 1, output 5, cache
+read 0.1, cache write 1.25). Both add up to the result events exactly. A session without a
+result keeps the stream's tokens and has no cost.
+
+A number that is not finite or above 1e15 counts as missing; a line that is not JSON, or
+nested too deep to parse, is skipped and counted.
 
 Checks logs (<target>.checks.log, ns-conductor checks):
   == <stack> <name>: <command>
@@ -30,6 +38,7 @@ An older log without start and end lines gives the check with no result and no t
 """
 import datetime
 import json
+import math
 import os
 import re
 import sys
@@ -49,8 +58,10 @@ KEYS = {
 
 
 def num(v):
-    """A JSON number (not a bool), else None."""
+    """A finite JSON number (not a bool) of at most 1e15, else None."""
     if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    if not math.isfinite(v) or abs(v) > 1e15:
         return None
     return v
 
@@ -98,7 +109,9 @@ def read_session_log(path):
     turns = 0
     msgs = {}  # message id -> message
     order = []
-    subs = []
+    subs = {}  # tool use id (or a counter) -> subagent run
+    agent_types = {}  # Agent tool use id -> subagent_type
+    durations = {}  # tool use id -> seconds, from task_notification
     anon = 0
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -111,7 +124,7 @@ def read_session_log(path):
             continue
         try:
             e = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
             bad += 1
             continue
         if not isinstance(e, dict):
@@ -136,6 +149,10 @@ def read_session_log(path):
             m = e.get("message")
             if not isinstance(m, dict):
                 continue
+            for c in m.get("content") if isinstance(m.get("content"), list) else []:
+                if (isinstance(c, dict) and c.get("type") == "tool_use" and isinstance(c.get("id"), str)
+                        and isinstance(c.get("input"), dict) and isinstance(c["input"].get("subagent_type"), str)):
+                    agent_types[c["id"]] = c["input"]["subagent_type"]
             t = epoch(e.get("timestamp"))
             tok = tokens(m.get("usage"), 1)
             if t is None or tok is None:
@@ -148,17 +165,49 @@ def read_session_log(path):
             msgs[mid] = {"t": t, "sid": sid, "model": model, "tok": tok}
         elif typ == "user":
             r = e.get("tool_use_result")
-            if isinstance(r, dict) and isinstance(r.get("agentType"), str):
+            if not isinstance(r, dict):
+                continue
+            tid = None
+            msg = e.get("message")
+            for c in (msg.get("content") if isinstance(msg, dict) and isinstance(msg.get("content"), list) else []):
+                if isinstance(c, dict) and isinstance(c.get("tool_use_id"), str):
+                    tid = c["tool_use_id"]
+            key = tid or "\0sub%d" % len(subs)
+            # a tool use id is counted once; a second completed result with it is another run
+            if key in subs and subs[key]["type"] is not None:
+                key = "\0sub%d" % len(subs)
+            model = r.get("resolvedModel") if isinstance(r.get("resolvedModel"), str) else "unknown"
+            if isinstance(r.get("agentType"), str):
                 ms = num(r.get("totalDurationMs"))
-                model = r.get("resolvedModel") if isinstance(r.get("resolvedModel"), str) else "unknown"
-                subs.append({"type": r["agentType"], "by": label, "model": model,
-                             "s": int(ms / 1000) if ms is not None else None})
+                subs[key] = {"type": r["agentType"], "by": label, "model": model,
+                             "s": int(ms / 1000) if ms is not None else None, "tid": tid}
+            elif r.get("status") == "async_launched" and isinstance(r.get("resolvedModel"), str):
+                subs.setdefault(key, {"type": None, "by": label, "model": model, "s": None, "tid": tid})
+        elif typ == "system" and e.get("subtype") == "task_notification":
+            u = e.get("usage")
+            ms = num(u.get("duration_ms")) if isinstance(u, dict) else None
+            if isinstance(e.get("tool_use_id"), str) and ms is not None:
+                durations[e["tool_use_id"]] = int(ms / 1000)
+
+    # an Agent call with no result at all (the session was cut off) is still a run
+    for tid in agent_types:
+        if tid not in subs:
+            subs[tid] = {"type": agent_types[tid], "by": label, "model": "unknown", "s": None, "tid": tid}
+    sub_list = []
+    for x in subs.values():
+        tid = x.pop("tid")
+        if x["type"] is None:
+            x["type"] = agent_types.get(tid, "unknown")
+        if x["s"] is None and tid in durations:
+            x["s"] = durations[tid]
+        sub_list.append(x)
 
     # per session and model: tokens and cost of the last result
     models = {}
     tot = {k: 0 for k in KEYS}
     cost = 0.0
     session_model_cost = {}
+    session_model_tok = {}
     for sid, r in sessions.items():
         cost += r["cost"]
         mu = r["models"]
@@ -173,6 +222,7 @@ def read_session_log(path):
                 m["cost"] += float(c) if c is not None else 0.0
                 tot = add(tot, tk)
                 session_model_cost[(sid, str(name))] = float(c) if c is not None else 0.0
+                session_model_tok[(sid, str(name))] = tk
         else:
             tk = tokens(r["usage"], 1)
             if tk is not None:
@@ -182,13 +232,24 @@ def read_session_log(path):
                 m["cost"] += r["cost"]
             session_model_cost[(sid, "*")] = r["cost"]
 
-    # share each session's cost per model out over its messages by weighted tokens
-    weight = {}
+    # scale each message's tokens to its session's modelUsage, kind by kind
+    raw = {}
     for mid in order:
         m = msgs[mid]
         key = (m["sid"], m["model"]) if (m["sid"], m["model"]) in session_model_cost else (m["sid"], "*")
         m["key"] = key
-        weight[key] = weight.get(key, 0.0) + sum(WEIGHT[k] * m["tok"][k] for k in KEYS)
+        raw[key] = add(raw.get(key, {}), m["tok"])
+    for mid in order:
+        m = msgs[mid]
+        want = session_model_tok.get(m["key"])
+        if want is not None:
+            have = raw[m["key"]]
+            m["tok"] = {k: (m["tok"][k] * want[k] / have[k] if have[k] else 0) for k in KEYS}
+    # share each session's cost per model out over its messages by weighted tokens
+    weight = {}
+    for mid in order:
+        m = msgs[mid]
+        weight[m["key"]] = weight.get(m["key"], 0.0) + sum(WEIGHT[k] * m["tok"][k] for k in KEYS)
     out_msgs = []
     for mid in order:
         m = msgs[mid]
@@ -198,7 +259,7 @@ def read_session_log(path):
             total_w = weight[m["key"]]
             c = session_model_cost[m["key"]] * w / total_w if total_w > 0 else 0.0
         out_msgs.append({"t": m["t"], "agent": label, "phase": phase, "attempt": attempt,
-                         "tok": sum(m["tok"].values()), "cost": c})
+                         "tok": round(sum(m["tok"].values())), "cost": c})
 
     agent = {
         "agent": label,
@@ -214,7 +275,7 @@ def read_session_log(path):
         # sessions that wrote messages but no result with a cost (killed, or cut off)
         "open": len({msgs[m]["sid"] for m in order if msgs[m]["sid"]} - set(sessions)),
     }
-    return agent, out_msgs, subs
+    return agent, out_msgs, sub_list
 
 
 def read_checks_log(path):
@@ -291,9 +352,13 @@ def main():
 
     grouped = {}
     for s in subs:
-        g = grouped.setdefault((s["by"], s["type"], s["model"]), {"by": s["by"], "type": s["type"], "model": s["model"], "runs": 0, "s": 0})
+        g = grouped.setdefault((s["by"], s["type"], s["model"]),
+                               {"by": s["by"], "type": s["type"], "model": s["model"], "runs": 0, "s": 0, "unknown": 0})
         g["runs"] += 1
-        g["s"] += s["s"] or 0
+        if s["s"] is None:
+            g["unknown"] += 1
+        else:
+            g["s"] += s["s"]
     sub_rows = [grouped[k] for k in sorted(grouped, key=lambda k: (akey_label(k[0], agents), k[1], k[2]))]
 
     json.dump({"agents": agents, "models": [models[k] for k in sorted(models)], "total": total,
