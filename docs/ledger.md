@@ -128,7 +128,7 @@ ns-ledger tier "$NS_LEDGER" T2 --source triage --hours 6 --tags python,risk:poli
 ns-ledger checkpoint <ledger> [--push]
 ```
 
-Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the hours since `budget.since`, rounded to 2 decimals; `since` is always set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
+Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the whole steps of 0.01 h (36 seconds) since `budget.since`, and `since` moves forward by exactly the time charged, so the remainder is carried to the next checkpoint and frequent checkpoints lose nothing; otherwise `since` is set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
 
 With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event and still exits 0; the next checkpoint commits that event.
 
@@ -158,7 +158,7 @@ ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --
 
 ## The budget clock
 
-The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A crashed run is still `running`; `ns resume` sets `since` to now itself, so the time it was dead is not charged either.
+The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A write that sets `since` itself is never charged. A crashed run is still `running`, with the old `since`: every command that moves a run with no live conductor out of that state sets `since` to now in the same write (`ns resume`, also when it has to queue the run, `ns drain` and `ns kill`), so the time it was dead is not charged either.
 
 ## Schema drift and live runs
 

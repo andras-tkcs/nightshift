@@ -201,6 +201,9 @@ ns_approve_main() {
   esc="$wt/.nightshift/runs/$id/escalation.md"
   if [ "$gate" = 1.5 ] && [ -f "$esc" ]; then
     hours=$(sed -n 's/^budget_hours:[[:space:]]*\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,1\}\)[[:space:]]*$/\1/p' "$esc" | tail -n 1)
+    if [ -z "$hours" ] && grep -q '^budget_hours:' "$esc"; then
+      ns_warn "cannot read $(grep '^budget_hours:' "$esc" | tail -n 1 | cut -c1-60) (write a number of hours, like budget_hours: 6); the budget stays $("$NS_HOME/bin/ns-ledger" get "$ledger" .budget.limit) h"
+    fi
     if [ -n "$hours" ] && [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" ".budget.limit == $hours")" != true ]; then
       "$NS_HOME/bin/ns-ledger" set "$ledger" ".budget.limit = $hours"
       "$NS_HOME/bin/ns-ledger" event "$ledger" budget "owner set the budget to $hours h"

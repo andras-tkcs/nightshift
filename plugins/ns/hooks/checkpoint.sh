@@ -11,9 +11,11 @@ if ! command -v ns-ledger >/dev/null 2>&1; then
 fi
 ns-ledger checkpoint "$NS_LEDGER" --push >/dev/null 2>&1 || echo "ns checkpoint: failed for $NS_RUN_ID" >&2
 rc=0
-ns-conductor budget-check "$NS_RUN_ID" >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 4 ]; then
-  echo "ns checkpoint: $NS_RUN_ID used its budget (gate 1.5)" >&2
+out=$(ns-conductor budget-check "$NS_RUN_ID" 2>/dev/null) || rc=$?
+if [ "$rc" -eq 4 ] && [[ $out == *"escalated at gate 1.5"* ]]; then
+  echo "ns checkpoint: $NS_RUN_ID used its budget; escalated at gate 1.5" >&2
+elif [ "$rc" -eq 4 ]; then
+  echo "ns checkpoint: $NS_RUN_ID is over its budget" >&2
 elif [ "$rc" -ne 0 ]; then
   echo "ns checkpoint: budget check failed for $NS_RUN_ID" >&2
 fi

@@ -401,7 +401,9 @@ budget_hook() {
 @test "a budget gate left without its escalation document is completed by the next check" {
   new_run sbx-11 T1
   over_budget sbx-11
-  ns-ledger state "$(ledger sbx-11)" waiting --gate 1.5
+  # a budget check killed right after it opened the gate
+  ns-ledger event "$(ledger sbx-11)" budget "budget used up: 2 h of 2 h"
+  ns-ledger state "$(ledger sbx-11)" waiting --gate 1.5 --note "budget used up"
   run ns-conductor budget-check sbx-11
   assert_failure 4
   assert_escalated sbx-11
