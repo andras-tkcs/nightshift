@@ -540,7 +540,7 @@ EOF
   allowed_all "grep -rn 'ns kill' docs" "rg 'ns tag' bin" "cat bin/lib/ns-kill.sh" "sed -n 1,20p bin/lib/ns-tag.sh" \
     "bash -n bin/lib/ns-kill.sh" "shellcheck bin/lib/ns-*.sh" "bats tests/bats/kill.bats" \
     "bats -f 'ns kill' tests/bats/kill.bats" "timeout 600 bats --jobs 2 tests/bats" "tests/lint" \
-    "echo 'run ns kill sbx-12 yourself'" "printf '%s\n' 'ns tag v1'" "kill -TERM 123" "kill %1" "pkill -f sleeper" \
+    "echo 'run ns kill sbx-12 yourself'" "printf '%s\n' 'ns tag v1'" "kill -TERM 123" "kill %1" "pgrep -f sleeper" \
     "bash -c 'echo hi'" "X=1; echo \$X" '$PY -m pytest' 'for f in a b; do echo "$f"; done' \
     "find . -name '*.sh' -exec shellcheck {} +" "env GIT_TRACE=1 git status" "echo kill | grep kill" \
     "python3 -c 'print(1)'" "python3 -m pytest -q" "jq -r .state ledger.json" "make test" "npm test" \
