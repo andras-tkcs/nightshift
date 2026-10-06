@@ -117,6 +117,22 @@ Add the x feature"
   assert_output_contains "Add the x feature"
 }
 
+@test "ns tag also records squash-merged PR titles, and not plain commits (#81)" {
+  printf 'y\n' >"$REPO/y.txt"
+  git -C "$REPO" add y.txt
+  git -C "$REPO" commit -q -m "Add the y feature (#9)"
+  printf 'z\n' >"$REPO/z.txt"
+  git -C "$REPO" add z.txt
+  git -C "$REPO" commit -q -m "Fix a typo"
+  git -C "$REPO" push -q origin main
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run git -C "$BARE" tag -l --format='%(contents)' v0.1.1
+  assert_output_contains "- Add the x feature"
+  assert_output_contains "- Add the y feature (#9)"
+  [[ $output != *"Fix a typo"* ]]
+}
+
 @test "ns tag warns, but still tags, when CI is not green" {
   mkdir -p "$BATS_TEST_TMPDIR/ghbin"
   cat >"$BATS_TEST_TMPDIR/ghbin/gh" <<'EOF'

@@ -261,3 +261,28 @@ ns_run_ledger_of() {
   assert_output_contains "token"
   [ ! -d "$SBX-sbx-x1" ]
 }
+
+@test "ns new --from-desk refuses a symlink inside the desk that points outside it (#117)" {
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox" "$BATS_TEST_TMPDIR/out"
+  printf 'outside note\n' >"$BATS_TEST_TMPDIR/out/n.md"
+  ln -s "$BATS_TEST_TMPDIR/out/n.md" "$NS_DESK_DIR/nightshift-sandbox/link.md"
+  ln -s "$BATS_TEST_TMPDIR/out" "$NS_DESK_DIR/nightshift-sandbox/dir"
+  run ns new sbx --from-desk nightshift-sandbox/link.md --tier T1 --yes
+  assert_failure
+  assert_output_contains "outside the desk"
+  run ns new sbx --from-desk "$NS_DESK_DIR/nightshift-sandbox/dir/n.md" --tier T1 --yes
+  assert_failure
+  assert_output_contains "outside the desk"
+  [ ! -d "$SBX-sbx-x1" ]
+}
+
+@test "ns new refuses --allow-outside without --from-desk (#117)" {
+  run ns new sbx "do it" --allow-outside --tier T1 --yes
+  assert_failure 2
+  assert_output_contains "usage: ns new"
+  run ns new sbx-12 --allow-outside --tier T1 --yes
+  assert_failure 2
+  assert_output_contains "usage: ns new"
+  [ ! -d "$SBX-sbx-x1" ]
+  [ ! -d "$SBX-sbx-12" ]
+}

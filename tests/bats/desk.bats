@@ -381,3 +381,60 @@ desk_leftovers() {
   assert_output_contains "gh pr create failed"
   desk_leftovers
 }
+
+@test "ns desk import refuses a repo path under .github/workflows/ (#117)" {
+  mkdir -p "$DESK/notes"
+  printf 'on: push\n' >"$DESK/notes/ci.md"
+  for rel in .github/workflows/ci.yml .github/workflows ./.github/workflows/ci.yml .github//workflows/ci.yml docs/./x.md; do
+    run ns desk import nightshift-sandbox/notes/ci.md "$rel"
+    assert_failure
+  done
+  run ns desk import nightshift-sandbox/notes/ci.md .github/workflows/ci.yml
+  assert_output_contains ".github/workflows"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+}
+
+@test "ns desk import refuses a repo path through a symlink on the base branch (#117)" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  co="$NS_CODING_DIR/nightshift-sandbox"
+  ln -s /tmp "$co/link"
+  ln -s ../README.md "$co/readme-link.md"
+  git -C "$co" add link readme-link.md
+  git -C "$co" commit -q -m "symlinks"
+  git -C "$co" push -q origin HEAD:main
+  run ns desk import nightshift-sandbox/notes/idea.md link/x.md
+  assert_failure
+  assert_output_contains "symlink"
+  run ns desk import nightshift-sandbox/notes/idea.md readme-link.md
+  assert_failure
+  assert_output_contains "symlink"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+}
+
+@test "ns desk import refuses a desk note that is a symlink to a file outside the desk (#117)" {
+  mkdir -p "$DESK/notes"
+  printf 'secret\n' >"$BATS_TEST_TMPDIR/outside.md"
+  ln -s "$BATS_TEST_TMPDIR/outside.md" "$DESK/notes/link.md"
+  run ns desk import nightshift-sandbox/notes/link.md docs/x.md
+  assert_failure
+  assert_output_contains "not inside the desk"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+}
+
+@test "ns desk import prints an open desk PR for the same repo path instead of opening another (#117)" {
+  mkdir -p "$DESK/notes" "$BATS_TEST_TMPDIR/resp"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  printf '[{"number":5,"url":"https://github.com/andras-tkcs/nightshift-sandbox/pull/5","title":"Add docs/idea.md from the desk","headRefName":"nightshift/desk-idea-md-1-2"},{"number":6,"url":"https://github.com/andras-tkcs/nightshift-sandbox/pull/6","title":"Add docs/other.md from the desk","headRefName":"nightshift/desk-other-md-1-2"}]\n' \
+    >"$BATS_TEST_TMPDIR/resp/open.json"
+  printf '0\topen.json\t^pr list\n0\t-\t^pr create\n' >"$BATS_TEST_TMPDIR/resp/map"
+  GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/resp" run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
+  assert_success
+  assert_output_contains "already open for docs/idea.md: https://github.com/andras-tkcs/nightshift-sandbox/pull/5"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+  remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  [ -z "$(git -C "$remote" for-each-ref --format='%(refname:short)' 'refs/heads/nightshift/*')" ]
+}
