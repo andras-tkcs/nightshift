@@ -79,9 +79,18 @@ def load_profile(root):
         return {}
 
 
+# the guard's own git calls: a repository's config must not run commands inside the guard
+GIT = ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+
+
+def git_env():
+    return dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_OPTIONAL_LOCKS="0")
+
+
 def git_out(root, *args):
     try:
-        r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=10)
+        r = subprocess.run([*GIT, "-C", root, *args], capture_output=True, text=True,
+                           timeout=10, env=git_env())
     except Exception:
         return None
     return r.stdout if r.returncode == 0 else None
@@ -225,8 +234,8 @@ def check_file(tool, inp, cwd):
 
 def current_branch(directory):
     try:
-        r = subprocess.run(["git", "-C", directory, "rev-parse", "--abbrev-ref", "HEAD"],
-                           capture_output=True, text=True, timeout=10)
+        r = subprocess.run([*GIT, "-C", directory, "rev-parse", "--abbrev-ref", "HEAD"],
+                           capture_output=True, text=True, timeout=10, env=git_env())
         return r.stdout.strip()
     except Exception:
         return ""
@@ -860,13 +869,15 @@ class Arg:
 
 
 class Ctx:
-    def __init__(self, cwd, full, strict=True):
+    def __init__(self, cwd, full, strict=True, home=None):
         self.cwd, self.full, self.strict = cwd, full, strict
+        # the run's repository: where the session works (the hook's cwd), never a later cd
+        self.home = home if home is not None else (repo_root(cwd) or "")
         self.vars = {}
         self.ifs = False
 
     def child(self, strict):
-        c = Ctx(self.cwd, self.full, strict)
+        c = Ctx(self.cwd, self.full, strict, self.home)
         c.vars, c.ifs = self.vars, self.ifs
         return c
 
@@ -1110,18 +1121,24 @@ def scan_file(path, ctx, depth, shell):
     if shell:
         # the repo's own code (tracked and clean at HEAD) is read leniently; a script the agent
         # wrote or changed is held to the same rules as its command line
-        analyze_text(content, ctx.child(not tracked_clean(path)), depth + 1)
+        analyze_text(content, ctx.child(not trusted_script(path, ctx)), depth + 1)
 
 
-def tracked_clean(path):
-    """True when path is tracked in its repository and unchanged against HEAD."""
+def trusted_script(path, ctx):
+    """True when path lies in the run's own repository and is identical to origin/<base> there,
+    the ref the profile comes from. Commits on the run's branch, other repositories (cloned or
+    git init'ed) and a repository without an origin profile do not count."""
     real = os.path.realpath(path)
     root = repo_root(real)
-    if not root:
+    if not root or not ctx.home or os.path.realpath(root) != os.path.realpath(ctx.home):
         return False
+    prof = project_profile(root)
+    if prof.source == WORKTREE_SOURCE:
+        return False
+    ref = f"refs/remotes/origin/{prof.base}"
     rel = os.path.relpath(real, os.path.realpath(root))
-    return (git_out(root, "ls-files", "--error-unmatch", "--", rel) is not None
-            and git_out(root, "diff", "--quiet", "HEAD", "--", rel) is not None)
+    return (bool((git_out(root, "ls-tree", ref, "--", rel) or "").strip())
+            and git_out(root, "diff", "--quiet", ref, "--", rel) is not None)
 
 
 # ---------------------------------------------------------------------------
