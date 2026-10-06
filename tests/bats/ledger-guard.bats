@@ -128,6 +128,8 @@ unchanged() {
   unchanged
 }
 
+# Pins the documented limit (docs/security.md, issue #128): flip this test when live ledgers are marked on disk
+# or the release home must be root-owned.
 @test "known limit: a copy of the checkout under a fake NS_OPT named after the tag passes" {
   # The guard is a seatbelt against the accidental case (docs/security.md). A deliberate copy or
   # worktree placed at <fake NS_OPT>/<tag> looks like the release; this pins the documented limit.

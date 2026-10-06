@@ -79,7 +79,7 @@ What it does not trust:
 - `NS_HOME`: it must resolve to the same home as the script.
 - `NS_RUN_HOME` for a run whose ledger records a release.
 - A symlink in `PATH`, in `NS_OPT` or in `NS_HOME`: every path is resolved first, so a link named `vX.Y.Z` that points at a checkout fails.
-- Exported shell functions named after the tools it calls (`readlink`, `sed`, `dirname`, `basename`, `printf`): it calls them through `command` and uses `[[ ]]`.
+- Exported shell functions named after the tools it calls (`readlink`, `sed`, `head`, `printf`; it no longer calls `dirname` or `basename`): it calls them through `command` and uses `[[ ]]`.
 
 What gets through, and why that is accepted (each one is a deliberate act, not an accident):
 
