@@ -12,7 +12,8 @@ ns_tag_help() {
   printf 'usage: ns tag <vX.Y.Z> [--repo <dir>] [--yes]\n\n'
   printf 'Tag the base branch of a repository as a release and push the tag. Refuses when\n'
   printf 'the local branch is dirty or differs from origin, the name is not vX.Y.Z or is not\n'
-  printf 'the next version, the tag exists, or the project checks fail. Warns when CI is not\n'
+  printf 'the next version, the tag exists, CHANGELOG.md still has [Unreleased] entries or no\n'
+  printf 'section for the version, or the project checks fail. Warns when CI is not\n'
   printf 'green or Nightshift runs are active (the upgrade refuses while they are). Prints the\n'
   printf 'root upgrade command. --yes skips the confirmation. Owner only.\n'
 }
@@ -48,6 +49,18 @@ ns_tag_warn_active_runs() {
   done < <(ns_runs_json | jq -c '.[] | select(.archived | not)' 2>/dev/null || true)
   [ -z "$lines" ] ||
     ns_warn "Nightshift runs are active (bootstrap.sh --upgrade refuses while they run):$lines"
+}
+
+# ns_tag_changelog_ok <repo> <tag>: dies unless CHANGELOG.md (when the repository has one) has an
+# empty [Unreleased] section and a section for the version (issue #88)
+ns_tag_changelog_ok() {
+  local file="$1/CHANGELOG.md" ver="${2#v}" fix
+  [ -f "$file" ] || return 0
+  fix="move the entries to '## [$ver] - <date>' in the release pull request (docs/development.md, Releasing)"
+  if awk '/^## \[/ {inside = ($0 ~ /^## \[Unreleased\]/); next} inside && /[^[:space:]]/ {found = 1} END {exit !found}' "$file"; then
+    ns_die "CHANGELOG.md: [Unreleased] still has entries: $fix"
+  fi
+  grep -qF "## [$ver]" "$file" || ns_die "CHANGELOG.md has no ## [$ver] section: $fix"
 }
 
 ns_tag_main() {
@@ -103,6 +116,8 @@ ns_tag_main() {
   if [ -n "$last" ] && ! ns_tag_next_ok "$tag" "$last"; then
     ns_die "$tag is not the next version after $last (expected next patch, minor or major)"
   fi
+
+  ns_tag_changelog_ok "$repo" "$tag"
 
   local cmd
   cmd=$(jq -r '.commands.test // ""' <<<"$profile" 2>/dev/null) || cmd=""

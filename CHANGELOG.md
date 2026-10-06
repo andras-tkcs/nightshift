@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The release tag command refuses when `CHANGELOG.md` has entries under `[Unreleased]` or no section for the version being tagged, and says to move the entries in the release pull request; repositories without `CHANGELOG.md` are not checked (issue #88).
 - `ns stack` and `ns-conductor stack-base` treat a base as closed only when the closed PR was closed at or after the dependent PR was created and no open PR has that head name; a fork of run PRs is now several chains (`stack-base` exits 7); the stack e2e scenario only counts open PRs of runs with a `plan/<run id>` branch as leftovers (issue #97).
 
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
