@@ -23,7 +23,7 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 | Admin tokens for `ns-gh` | typed into `GH_TOKEN` as root for one run, never stored | root, for 7 days at most |
 | Claude login | `~/.claude` | `ns` |
 | ntfy topic, desk URL, health-check URL | `~/.config/ns/env`, mode 600 | `ns` |
-| ntfy token for `ns-notify` (`tk_` and 29 letters or digits; write-only on the one topic) | `~/.config/ns/tokens/ntfy`, mode 600 (`ns-notify` refuses another mode) | `ns`; it goes only to curl on stdin for `NS_NTFY_URL`, never to GitHub (`ns doctor` skips it in the GitHub token check), argv, logs or output |
+| ntfy token for `ns-notify` (`tk_` and 29 letters or digits; write-only on the one topic) | `~/.config/ns/tokens/ntfy`, mode 600 (`ns-notify` refuses another mode) | `ns`; it goes only to curl on stdin for your own ntfy at `NS_NTFY_URL`, never to ntfy.sh, GitHub (`ns doctor` skips it in the GitHub token check, `ns_token_export` refuses the name `ntfy`), argv, logs or output |
 | Cloudflare tunnel token | the `cloudflared` service on ns-main | root |
 | The release | `/opt/nightshift/<tag>`, owned by root | read-only for `ns` |
 | The desk | `/srv/ns-space` (owner `ns`, group `caddy`, mode 2750) | `ns`, the web server; reached through Access |
@@ -75,7 +75,7 @@ When you read a plan or a diff and something looks like an instruction from a we
 
 ## Notifications
 
-Notifications go to ntfy.sh under the topic `NS_NTFY_TOPIC` (R-NOT-1). A topic on ntfy.sh is public to anyone who knows its name, so messages contain only the run id, the gate and a desk link, never code, findings or tokens. With a self-hosted ntfy (`NS_NTFY_URL`), `ns-notify` authenticates with a bearer token that goes to curl on stdin, never in argv, logs or error output. `ns-notify` cuts the text to 200 characters and refuses text that looks like a token. The topic name is random (`ns-` and 16 hex digits); keep it out of chats and repositories. The desk link only opens after the Cloudflare Access login.
+Notifications go to ntfy.sh under the topic `NS_NTFY_TOPIC` (R-NOT-1). A topic on ntfy.sh is public to anyone who knows its name, so messages contain only the run id, the gate and a desk link, never code, findings or tokens. Only with a self-hosted ntfy (`NS_NTFY_URL` set to a host other than ntfy.sh) does `ns-notify` authenticate, with a bearer token that goes to curl on stdin (curl runs with `-q`, ignoring `~/.curlrc`), never in argv, logs or error output; the token is never sent to ntfy.sh, and `ns doctor` test-publishes only to your own ntfy. `ns-notify` cuts the text to 200 characters and refuses text that looks like a token. The topic name is random (`ns-` and 16 hex digits); keep it out of chats and repositories. The desk link only opens after the Cloudflare Access login.
 
 ## Worker permission mode
 

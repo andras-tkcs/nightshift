@@ -55,11 +55,11 @@ doc_gh_auth() {
 # file named after one of them (tokens/<owner>, as ns_token_export reads it) is a GitHub token.
 doc_owners() {
   ns_projects_json 2>/dev/null | jq -r '.[].repo // empty | split("/")[0]' 2>/dev/null |
-    grep -E '^[A-Za-z0-9][A-Za-z0-9-]*$' | sort -u || true
+    LC_ALL=C grep -E "^[$NS_ALNUM][$NS_ALNUM-]*\$" | sort -u || true
 }
 
 doc_tokens() {
-  local dir f base name mode tok hdr exp now e days owners
+  local dir f base name mode tok hdr exp now e days owners o known re="^[$NS_ALNUM][$NS_ALNUM-]*\$"
   dir="$(ns_config_dir)/tokens"
   if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
     doc_warn tokens "no token files in $dir"
@@ -79,7 +79,15 @@ doc_tokens() {
     # tokens/ntfy is checked by doc_ntfy and never goes to GitHub, nor does any file
     # that is not named after a registered project owner.
     [ "$base" != ntfy ] || continue
-    if ! grep -qxF -- "$base" <<<"$owners"; then
+    # A whole-name match against each owner; a name with a newline or any other
+    # character never matches.
+    known=0
+    if [[ $base =~ $re ]]; then
+      while IFS= read -r o; do
+        [ "$o" != "$base" ] || known=1
+      done <<<"$owners"
+    fi
+    if [ "$known" = 0 ]; then
       doc_warn "$name" "not named after a registered project owner, not checked"
       continue
     fi
@@ -87,6 +95,10 @@ doc_tokens() {
     IFS= read -r tok <"$f" || true
     tok="${tok#"${tok%%[![:space:]]*}"}"
     tok="${tok%"${tok##*[![:space:]]}"}"
+    if [[ $tok == tk_* ]]; then
+      doc_fail "$name" "holds an ntfy token, not sent to GitHub"
+      continue
+    fi
     hdr=$(GH_TOKEN="$tok" gh api -i user 2>/dev/null | tr -d '\r' |
       grep -i '^github-authentication-token-expiration:' | head -n1) || hdr=""
     exp="${hdr#*:}"
@@ -120,8 +132,12 @@ doc_ntfy() {
     doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_TOPIC not set)"
     return 0
   fi
-  url="${NS_NTFY_URL:-https://ntfy.sh}"
-  if out=$("$NS_HOME/bin/ns-notify" "ns doctor: test publish" 2>&1); then
+  if ns_ntfy_public "${NS_NTFY_URL:-}"; then
+    doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_URL is not set or points at ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+    return 0
+  fi
+  url="$NS_NTFY_URL"
+  if out=$(NS_NTFY_PRIORITY=min "$NS_HOME/bin/ns-notify" "ns doctor: test publish" 2>&1); then
     doc_ok "token ntfy" "mode 600, test publish to $url ok"
   else
     doc_fail "token ntfy" "test publish failed: $(printf '%s\n' "$out" | awk 'NF { printf "%s%s", s, $0; s = "; " }')"

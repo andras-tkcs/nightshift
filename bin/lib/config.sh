@@ -52,6 +52,7 @@ ns_project_register() {
 ns_token_export() {
   local file mode tok
   file="$(ns_config_dir)/tokens/$1"
+  [ "$1" != ntfy ] || ns_die "token file ntfy is the ntfy token, not a GitHub token"
   [ -f "$file" ] || return 0
   mode=$(stat -c %a "$file")
   [ "$mode" = 600 ] || ns_die "token file $file must be mode 600"

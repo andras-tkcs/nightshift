@@ -90,15 +90,33 @@ ns_age() {
   fi
 }
 
+# ASCII letters and digits, spelled out: a range like [A-Za-z0-9] depends on the locale
+# (en_US.UTF-8 lets it match é).
+NS_ALNUM=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+
 ns_has_token() {
-  printf '%s' "$1" | grep -Eq '(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})'
+  printf '%s' "$1" | LC_ALL=C grep -Eq "(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|tk_[$NS_ALNUM]{29})"
+}
+
+# ns_ntfy_public [url]: true when url is empty or its host is ntfy.sh or a subdomain of it,
+# the public server, where the ntfy token must never go.
+ns_ntfy_public() {
+  local host="${1:-}"
+  [ -n "$host" ] || return 0
+  host="${host#*://}"
+  host="${host%%[/?#]*}"
+  host="${host##*@}"
+  host="${host%%:*}"
+  host="${host%.}"
+  host="${host,,}"
+  [ "$host" = ntfy.sh ] || [[ $host == *.ntfy.sh ]]
 }
 
 # ns_ntfy_token: prints the ntfy token from tokens/ntfy, or nothing if there is no such file.
 # Dies, never printing the token, if the file is not mode 600 (the ns_token_export message)
 # or its first line is not an ntfy token, so the token is safe inside a quoted curl config.
 ns_ntfy_token() {
-  local file mode tok
+  local file mode tok re="^tk_[$NS_ALNUM]{29}\$"
   file="$(ns_config_dir)/tokens/ntfy"
   [ -f "$file" ] || return 0
   mode=$(stat -c %a "$file")
@@ -107,7 +125,7 @@ ns_ntfy_token() {
   IFS= read -r tok <"$file" || true
   tok="${tok#"${tok%%[![:space:]]*}"}"
   tok="${tok%"${tok##*[![:space:]]}"}"
-  [[ $tok =~ ^tk_[A-Za-z0-9]{29}$ ]] ||
+  [[ $tok =~ $re ]] ||
     ns_die "token file $file does not hold an ntfy token (tk_ and 29 letters or digits)"
   printf '%s\n' "$tok"
 }

@@ -23,13 +23,29 @@ if ns_has_token "$text" || ns_has_token "$url"; then
   ns_die "refusing to send something that looks like a token"
 fi
 text="${text:0:200}"
+priority="${NS_NTFY_PRIORITY:-}"
+case "$priority" in
+  "" | min | low | default | high | max | [1-5]) ;;
+  *) ns_die "NS_NTFY_PRIORITY must be one of min low default high max 1 2 3 4 5" 2 ;;
+esac
 
-args=(-sS -m 10 -o /dev/null -w '%{http_code}' -H "Title: Nightshift")
+# -q first: curl must not read ~/.curlrc (verbose or stderr there would put the token in
+# the output).
+args=(-q -sS -m 10 -o /dev/null -w '%{http_code}' -H "Title: Nightshift")
 [ -z "$url" ] || args+=(-H "Click: $url")
+[ -z "$priority" ] || args+=(-H "Priority: $priority")
 args+=(--data-raw "$text")
 endpoint="${NS_NTFY_URL:-https://ntfy.sh}/$NS_NTFY_TOPIC"
-# Dies on a token file that is not mode 600 or not an ntfy token.
-token="$(ns_ntfy_token)"
+# The token is only for your own ntfy: never sent to ntfy.sh (NS_NTFY_URL unset or ntfy.sh),
+# which then gets the message without it. Otherwise dies on a token file that is not
+# mode 600 or not an ntfy token.
+token=""
+if ns_ntfy_public "${NS_NTFY_URL:-}"; then
+  [ ! -e "$(ns_config_dir)/tokens/ntfy" ] ||
+    ns_warn "not sending the ntfy token to ntfy.sh; set NS_NTFY_URL to your own ntfy"
+else
+  token="$(ns_ntfy_token)"
+fi
 errfile="$(mktemp)"
 trap 'rm -f "$errfile"' EXIT
 # The token goes to curl as a config on stdin, never in argv. curl's stderr goes to a
@@ -49,6 +65,7 @@ if [ "$rc" -ne 0 ]; then
   [ -z "$reason" ] || printf '%s\n' "$reason" >&2
   exit 1
 fi
+[[ $code =~ ^[0-9]{3}$ ]] || code="?"
 case "$code" in
   2??) ;;
   *) ns_die "ntfy answered HTTP $code; not sent" ;;
