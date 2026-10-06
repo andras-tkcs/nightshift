@@ -12,7 +12,9 @@ project: nightshift-sandbox
 prefix: sbx
 commands:
   setup: "true"
-git: {}
+git:
+  feature_branch: "feature/{slug}"
+  phase_branch: "phase/{slug}--{phase}"
 stacks: [python]
 EOF
   printf '# sandbox\n' >"$FIX/README.md"

@@ -12,7 +12,9 @@ project: nightshift-sandbox
 prefix: sbx
 commands:
   setup: "true"
-git: {}
+git:
+  feature_branch: "feature/{slug}"
+  phase_branch: "phase/{slug}--{phase}"
 stacks: [python]
 EOF
   printf '# sandbox\n' >"$FIX/README.md"
@@ -165,6 +167,8 @@ set_pr() {
   assert_failure
   assert_output_contains "archived"
   assert_output_contains "ns rm sbx-12 --forget --remote"
+  assert_output_contains "--dry-run"
+  assert_output_contains "closes an open PR"
   assert_output_not_contains "ns resume"
 }
 
@@ -267,4 +271,104 @@ set_pr() {
   assert_output_contains "forgot sbx-12"
   run ns ls --all
   assert_output_not_contains "sbx-12"
+}
+
+# an archived run that was resumed has its worktree and ledger back: they decide again
+archive_and_resume_running() {
+  ns rm sbx-12 --yes >/dev/null
+  [ ! -e "$WT" ]
+  ns resume sbx-12 >/dev/null 2>&1 || true
+  [ -f "$LEDGER" ]
+  ns-ledger set "$LEDGER" '.state="running"'
+  : >"$TMUX_STUB_DIR/sbx-12"
+}
+
+@test "ns rm refuses an archived run that was resumed and is running" {
+  archive_and_resume_running
+  run ns rm sbx-12 --yes
+  assert_failure
+  assert_output_contains "ns stop"
+  [ -d "$WT" ]
+  [ -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "ns rm --forget refuses an archived run that was resumed and is running" {
+  archive_and_resume_running
+  run ns rm sbx-12 --forget --remote --yes
+  assert_failure
+  assert_output_contains "ns stop"
+  [ -d "$WT" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  ns ls --all | grep -q sbx-12
+}
+
+@test "ns rm refuses an archived run whose tmux session is alive" {
+  archive_and_resume_running
+  ns-ledger set "$LEDGER" '.state="parked"'
+  ns-ledger checkpoint "$LEDGER" --push
+  run ns rm sbx-12 --yes
+  assert_failure
+  assert_output_contains "tmux session"
+  [ -d "$WT" ]
+}
+
+@test "ns rm --forget keeps the entry when the removal partly failed" {
+  git -C "$PROJ" worktree lock "$WT"
+  run ns rm sbx-12 --forget --remote --yes
+  assert_failure
+  assert_output_contains "kept the run in runs.yaml"
+  assert_output_not_contains "forgot sbx-12"
+  [ -d "$WT" ]
+  ns ls --all | grep -q sbx-12
+}
+
+@test "ns rm --remote deletes only the run's own branches named in the ledger" {
+  git -C "$PROJ" push -q origin origin/main:refs/heads/feature/sbx-1 origin/main:refs/heads/phase/sbx-1--p1 origin/main:refs/heads/-x
+  ns-ledger set "$LEDGER" '.feature_branch="feature/sbx-1" | .phases=[{"id":"p1","title":"t","state":"merged","branch":"phase/sbx-1--p1","worktree":null,"attempts":1,"review_rounds":0},{"id":"p2","title":"t","state":"merged","branch":"-x","worktree":null,"attempts":1,"review_rounds":0}]'
+  ns-ledger checkpoint "$LEDGER" --push
+  ns rm sbx-12 --yes >/dev/null
+  run ns rm sbx-12 --remote --yes
+  assert_success
+  assert_output_contains "not a branch of sbx-12"
+  [ -z "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'feature/sbx-1')" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'phase/sbx-1--p1')" ]
+  [ -n "$(git ls-remote "$REMOTE" 'refs/heads/-x')" ]
+}
+
+@test "ns rm --forget --remote refuses when origin cannot be fetched" {
+  set_pr 103
+  ns rm sbx-12 --yes >/dev/null
+  git -C "$PROJ" update-ref -d refs/remotes/origin/plan/sbx-12
+  git -C "$PROJ" config remote.origin.url /nonexistent-for-fetch
+  git -C "$PROJ" config remote.origin.pushurl "$REMOTE"
+  run ns rm sbx-12 --forget --remote --yes
+  assert_failure
+  assert_output_contains "cannot"
+  assert_output_not_contains "forgot sbx-12"
+  ! grep -q 'pr close' "$GH_STUB_LOG"
+  [ -n "$(git ls-remote --heads "$REMOTE" 'feature/sbx-12')" ]
+  ns ls --all | grep -q sbx-12
+}
+
+@test "ns rm --forget is not blocked by another branch ending in plan/<id>" {
+  git -C "$PROJ" push -q origin origin/main:refs/heads/old/plan/sbx-12
+  ns rm sbx-12 --remote --yes >/dev/null
+  run ns rm sbx-12 --forget --yes
+  assert_success
+  assert_output_contains "forgot sbx-12"
+  [ -n "$(git ls-remote "$REMOTE" 'refs/heads/old/plan/sbx-12')" ]
+}
+
+@test "a forgotten id that is reused and removed again keeps both desk archives" {
+  ns rm sbx-12 --forget --remote --yes >/dev/null
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  ns-ledger set "$LEDGER" '.state="parked"'
+  ns-ledger checkpoint "$LEDGER" --push
+  mkdir -p "$DESK/runs/sbx-12"
+  printf 'second\n' >"$DESK/runs/sbx-12/plan.md"
+  run ns rm sbx-12 --yes
+  assert_success
+  [ "$(cat "$DESK/archive/2026-10/sbx-12/plan.md")" = plan ]
+  grep -qx second "$DESK/archive/2026-10/"sbx-12-*/plan.md
 }
