@@ -134,6 +134,18 @@ e2e_ledger_has() { e2e_status_json "$1" | jq -e "$2" >/dev/null; }
 
 e2e_ledger_get() { e2e_status_json "$1" | jq -r "$2"; }
 
+# e2e_run_dir <id>: the run's RUN/ directory (.nightshift/runs/<id>) in the worktree that runs.yaml
+# records for it; fails when the run is unknown or that worktree holds no ledger of it
+e2e_run_dir() {
+  local wt dir
+  wt=$(python3 "$E2E_REPO_ROOT/bin/lib/nsyaml.py" to-json "${NS_CONFIG_DIR:?}/runs.yaml" 2>/dev/null |
+    jq -r --arg i "$1" '[.runs[]? | select(.id == $i) | .worktree] | .[0] // empty') || return 1
+  [ -n "$wt" ] || return 1
+  dir="$wt/.nightshift/runs/$1"
+  [ -f "$dir/ledger.yaml" ] || return 1
+  printf '%s\n' "$dir"
+}
+
 e2e_pr_url() { e2e_ledger_get "$1" '.pr // ""'; }
 
 e2e_pr_json() { gh pr view "$(e2e_pr_url "$1")" -R "$E2E_REPO" --json "$2"; }

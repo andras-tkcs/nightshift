@@ -206,3 +206,73 @@ new file mode 100644
   [ "$status" -eq 0 ]
   [ "$output" = "$(printf 'KEEP.md\t-old\nKEEP.md\t+new\nGONE.md\t-gone line\nNEW.md\t+fresh')" ]
 }
+
+# e2e_runs_fixture: two runs in runs.yaml; sbx-1 has a ledger in its worktree, sbx-2 has none,
+# and a stray notes.md of sbx-1 sits in an older directory under E2E_ROOT
+e2e_runs_fixture() {
+  E2E_ROOT="$BATS_TEST_TMPDIR/root"
+  RUN1="$E2E_ROOT/coding/worktrees/sandbox-sbx-1/.nightshift/runs/sbx-1"
+  mkdir -p "$RUN1" "$E2E_ROOT/aaa-old/.nightshift/runs/sbx-1" "$E2E_ROOT/coding/worktrees/sandbox-sbx-2"
+  printf 'id: sbx-1\n' >"$RUN1/ledger.yaml"
+  printf '1. stray\n2. stray\n' >"$E2E_ROOT/aaa-old/.nightshift/runs/sbx-1/notes.md"
+  cat >"$NS_CONFIG_DIR/runs.yaml" <<YAML
+runs:
+  - id: sbx-1
+    worktree: $E2E_ROOT/coding/worktrees/sandbox-sbx-1
+  - id: sbx-2
+    worktree: $E2E_ROOT/coding/worktrees/sandbox-sbx-2
+YAML
+}
+
+@test "e2e_run_dir resolves RUN/ from the worktree that holds the run's ledger (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  e2e_runs_fixture
+  run e2e_run_dir sbx-1
+  [ "$status" -eq 0 ]
+  [ "$output" = "$RUN1" ]
+  # no ledger in the worktree, or an unknown run: no directory
+  run e2e_run_dir sbx-2
+  [ "$status" -ne 0 ]
+  run e2e_run_dir sbx-9
+  [ "$status" -ne 0 ]
+}
+
+@test "t1_notes_match reads notes.md of the run's own worktree, not the first copy find sees (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/t1.sh"
+  e2e_runs_fixture
+  # the ledger has no note events
+  e2e_ledger_has() { return 1; }
+  run t1_notes_match sbx-1
+  [ "$status" -eq 0 ]
+  printf '1. real\n' >"$RUN1/notes.md"
+  run t1_notes_match sbx-1
+  [ "$status" -ne 0 ]
+  # a run whose ledger cannot be found is a failure, not a pass
+  run t1_notes_match sbx-2
+  [ "$status" -ne 0 ]
+}
+
+@test "t1_no_denial matches the auto mode classifier denial text of Claude Code (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/t1.sh"
+  mkdir -p "$NS_CONFIG_DIR/logs/sbx-1"
+  log="$NS_CONFIG_DIR/logs/sbx-1/conductor.jsonl"
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}\n' >"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -eq 0 ]
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: pushes to main"}]}}\n' >>"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -ne 0 ]
+  printf '{"type":"result","result":"Auto mode could not evaluate this action and is blocking it for safety"}\n' >"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -ne 0 ]
+}

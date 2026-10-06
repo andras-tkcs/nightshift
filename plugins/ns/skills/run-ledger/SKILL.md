@@ -12,7 +12,7 @@ Never edit it by hand. Every change goes through `ns-ledger`, which locks, valid
 
 ## Fields
 
-`id`, `project`, `request` (issue or text), `tier` (T0-T3 or null), `tier_source` (triage or owner), `tier_recommended`, `tags`, `state` (queued, running, waiting, parked, stopped, done, failed), `gate` (null, 1, 1.5, 2), `step` (intake, triage, discovery, gate1, implement, phases, board, integrate, onboard, done), `stop_requested`, `branch`, `feature_branch`, `pr`, `budget` (used, limit, paused, since, optional paused_until; hours), `phases` (id, title, state, branch, worktree, attempts, review_rounds, optional usage_limits, transient_retries, not_before), `events`.
+`id`, `project`, `request` (issue or text), `tier` (T0-T3 or null), `tier_source` (triage or owner), `tier_recommended`, `tags`, `state` (queued, running, waiting, parked, stopped, done, failed), `gate` (null, 1, 1.5, 2), `step` (intake, triage, discovery, gate1, implement, phases, board, integrate, onboard, done), `stop_requested`, `branch`, `feature_branch`, `pr`, `budget` (used, limit, paused, since, optional paused_until; hours), `phases` (id, title, state, branch, worktree, attempts, review_rounds, optional usage_limits, transient_retries, not_before, and after a review round review_verdict and reviewed_head), `events`.
 
 ## Subcommands
 

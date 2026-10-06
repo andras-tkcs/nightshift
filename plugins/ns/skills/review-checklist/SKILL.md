@@ -20,11 +20,11 @@ Judge only the diff, the plan or mini-plan and the profile docs. Never use a wor
 
 ## Severities
 
-- `blocking`: wrong behaviour, a missing or weakened test, an unmet acceptance criterion, a missing doc update, untrusted text used as instructions, a secret, a file outside the brief. Any blocking finding means `REVIEW verdict=changes`.
+- `blocking`: wrong behaviour, a missing or weakened test, an unmet acceptance criterion, a missing doc update, untrusted text used as instructions, a secret, a file outside the brief. Any blocking finding means `REVIEW verdict=changes head=<sha>`.
 - `non-blocking`: style, naming, small simplifications, follow-ups worth doing later. They go into the PR body.
 
 ## Finding format
 
 `- blocking|non-blocking · path:line · what is wrong · the fix`
 
-Be specific: say what to change, not just what is bad. The last line of the review file is `REVIEW verdict=approve` or `REVIEW verdict=changes`.
+Be specific: say what to change, not just what is bad. The last line of the review file is `REVIEW verdict=approve head=<sha>` or `REVIEW verdict=changes head=<sha>`, `<sha>` being the full commit of `origin/<branch>` you reviewed (`git rev-parse origin/<branch>` after a fetch, before you read the diff). An approval without the reviewed head, or of a head that moved since, is refused by `ns-conductor review-round`.

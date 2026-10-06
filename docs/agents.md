@@ -67,7 +67,7 @@ The specialist agents (database expert, data analyst, UI/UX designer) are Build 
 - Model: opus.
 - Called: T1 once; T2 and T3 after every phase and on the whole branch in the review board; it also reviews the plan. Read-only.
 - Inputs: a diff, the plan or mini-plan and the profile docs; never the worker's log (skill `review-checklist`).
-- Outputs: a review file with findings `blocking|non-blocking · path:line · problem · fix` and a last line `REVIEW verdict=approve` or `REVIEW verdict=changes`.
+- Outputs: a review file with findings `blocking|non-blocking · path:line · problem · fix` and a last line `REVIEW verdict=approve head=<sha>` or `REVIEW verdict=changes head=<sha>`, `<sha>` being the commit it reviewed.
 
 ## sec-compliance
 
