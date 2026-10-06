@@ -23,7 +23,7 @@ ns_report_cause() {
 ns_report_main() {
   local u="ns report <id>"
   [ $# -eq 1 ] && [[ $1 != -* ]] || ns_usage "$u"
-  local id="$1" entry wt ledger dir out json cause="" end last state tmp project path branch rel
+  local id="$1" entry wt ledger dir out json cause="" end last state tmp project path branch rel orc
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")
@@ -35,13 +35,15 @@ ns_report_main() {
     out="$dir/run-report.md"
   else
     project=$(jq -r .project <<<"$entry")
-    path=$(ns_project_by_name "$project" | jq -r '.path // empty') || path=""
     branch=$(jq -r .branch <<<"$entry")
-    [ -n "$path" ] && [ -d "$path" ] || ns_die "no ledger for $id: worktree $wt is gone and project $project has no checkout"
-    git -C "$path" fetch -q origin "$branch" 2>/dev/null || true
     tmp="$(mktemp)"
-    git -C "$path" show "origin/$branch:$rel/ledger.yaml" >"$tmp" 2>/dev/null ||
-      { rm -f "$tmp"; ns_die "no ledger for $id: not in $wt or on origin/$branch"; }
+    orc=0
+    path=$(ns_run_origin_ledger "$entry" "$tmp") || orc=$?
+    if [ "$orc" != 0 ]; then
+      rm -f "$tmp"
+      [ "$orc" != 2 ] || ns_die "no ledger for $id: worktree $wt is gone and project $project has no checkout"
+      ns_die "no ledger for $id: not in $wt or on origin/$branch"
+    fi
     json=$(ns_yaml_json "$tmp") || { rm -f "$tmp"; ns_die "ledger of $id on origin/$branch does not parse"; }
     rm -f "$tmp"
     cause=$(git -C "$path" show "origin/$branch:$rel/escalation.md" 2>/dev/null | ns_report_cause) || cause=""

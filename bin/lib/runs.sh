@@ -63,6 +63,21 @@ ns_run_ledger() {
   printf '%s/.nightshift/runs/%s/ledger.yaml\n' "$wt" "$1"
 }
 
+# ns_run_origin_ledger <run-json> <out-file>: fetch the run's plan branch and write its ledger
+# from origin/<plan branch> to out-file; prints the project checkout path. Returns 2 when the
+# project has no checkout, 1 when the ledger is not on origin.
+ns_run_origin_ledger() {
+  local entry="$1" out="$2" id path branch
+  id=$(jq -r .id <<<"$entry")
+  branch=$(jq -r '.branch // ""' <<<"$entry")
+  path=$(ns_project_by_name "$(jq -r .project <<<"$entry")" | jq -r '.path // empty') || path=""
+  [ -n "$path" ] && [ -d "$path" ] || return 2
+  [ -n "$branch" ] || return 1
+  git -C "$path" fetch -q origin "$branch" 2>/dev/null || true
+  git -C "$path" show "origin/$branch:.nightshift/runs/$id/ledger.yaml" >"$out" 2>/dev/null || return 1
+  printf '%s\n' "$path"
+}
+
 # ns_run_worktree_path <profile-json> <slug>
 ns_run_worktree_path() {
   local tpl repo

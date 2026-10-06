@@ -97,21 +97,24 @@ gc_run_inner() {
   gc_cleanup_run "$run" "$proj" "$remote" 0 || return 0
 }
 
-# gc_cleanup_run <run-json> <proj-json> <remote:0|1|2> <force:0|1>: removes the run's worktrees,
-# local branches, (with remote=1) remote branches, tmux session and desk folder, and marks it
-# archived. Unsaved work in a worktree keeps the run whole (return 2) unless force=1.
+# gc_cleanup_run <run-json> <proj-json> <remote:0|1|2> <force:0|1> [ledger]: removes the run's
+# worktrees, local branches, (with remote=1) remote branches, tmux session and desk folder, and
+# marks it archived. Unsaved work in a worktree keeps the run whole (return 2) unless force=1.
+# The ledger defaults to the one in the run worktree; without one only the plan branch is known.
 gc_cleanup_run() {
-  local run="$1" proj="$2" remote="$3" force="$4" id pname base path ledger
+  local run="$1" proj="$2" remote="$3" force="$4" ledger="${5:-}" id pname base path
   id=$(jq -r .id <<<"$run")
   pname=$(jq -r .project <<<"$run")
   base=$(jq -r '.worktree // ""' <<<"$run")
   path=$(jq -r .path <<<"$proj")
-  ledger="$base/.nightshift/runs/$id/ledger.yaml"
+  [ -n "$ledger" ] || ledger="$base/.nightshift/runs/$id/ledger.yaml"
 
   local -a wts=() locals=() remotes=()
-  local plan feature b wpath line why dest month src sz basebranch keep=0
+  local plan feature="" b wpath line why dest month src sz basebranch keep=0
   plan=$(jq -r '.branch // ""' <<<"$run")
-  feature=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.feature_branch // ""')
+  if [ -f "$ledger" ]; then
+    feature=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.feature_branch // ""')
+  fi
   if [ -n "$plan" ]; then
     locals+=("$plan")
     remotes+=("$plan")
@@ -125,7 +128,7 @@ gc_cleanup_run() {
     [ -n "$b" ] || continue
     locals+=("$b")
     remotes+=("$b")
-  done < <("$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[]?.branch // empty')
+  done < <(if [ -f "$ledger" ]; then "$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[]?.branch // empty'; fi)
 
   # (a) worktrees: the run's own path or <path>--<suffix>, never a bare prefix
   while IFS= read -r line; do

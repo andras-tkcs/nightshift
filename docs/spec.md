@@ -146,7 +146,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns approve <id>` | Show the diff between the desk copies and the run's branch, ask, then commit the edited Markdown back with trailer `Approved-By: owner` and release the gate. |
 | `ns desk import <path.md> <repo path>` | Copy a desk note to `<repo path>` on a new branch cut from the base branch, push it and open a pull request; never merge it (owner only). |
 | `ns gc [--dry-run]` | Housekeeping (section 12). |
-| `ns rm <id> [--force] [--remote] [--dry-run] [--yes]` / `--all-stopped` (alias `ns purge`) | Remove a stopped, failed, parked or done run: worktrees, local branches, tmux session, desk folder (archived). Refuses live runs and unsaved work unless `--force`; remote branches and an open PR only with `--remote`. |
+| `ns rm <id> [--force] [--remote] [--forget] [--dry-run] [--yes]` / `--all-stopped` (alias `ns purge`) | Remove a stopped, failed, parked or done run: worktrees, local branches, tmux session, desk folder (archived). Refuses live runs and unsaved work unless `--force`; remote branches and an open PR only with `--remote`. A run whose worktree is gone is read from `origin/plan/<id>`. `--forget` also drops the run from `runs.yaml` so the id can be reused; it refuses while `plan/<id>` is on origin unless `--remote` is given too. `ns new` on an archived id names this way out. |
 | `ns doctor` | Check services, logins, tokens (expiry where readable), auto-mode availability, desk, tunnel, timers, disk (warn at 80 %). Non-zero exit if anything is red. |
 | `ns profile check [path]` | R-PRO-1. |
 | `ns help` | List commands; `docs/usage.md` must document each (R-DOC-2). |
