@@ -146,6 +146,18 @@ gap() {
   [ "$(lget sbx-11 .budget.used)" = 0.5 ]
 }
 
+@test "after a reboot, ns up and ns resume --all do not charge the downtime" {
+  new_run sbx-10 T0
+  gap sbx-10 parked
+  run ns up
+  assert_output_contains "parked: sbx-10"
+  [ "$(lget sbx-10 .state)" = parked ]
+  run ns resume --all
+  assert_success
+  [ "$(lget sbx-10 .state)" = running ]
+  [ "$(lget sbx-10 .budget.used)" = 0.5 ]
+}
+
 @test "ns dequeue does not charge the time a run waited in the queue" {
   new_run sbx-11 T1
   gap sbx-11 queued
