@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-06
+
 ### Security
 
 - The live-ledger guard checks the running script's own resolved directory, not only `NS_HOME`: a checkout's `bin/ns-ledger` that inherited a run's `NS_HOME` no longer writes the run's ledger. For a run started from a release, the home is the release the ledger records (`${NS_OPT:-/opt/nightshift}/<release>`), so setting `NS_HOME` or `NS_RUN_HOME` to a checkout, or linking it into `NS_OPT`, no longer passes. `NS_HOME` and `NS_OPT` are both resolved, so a symlinked `NS_OPT` works. Exported shell functions named after the guard's tools do not change its answer. It is a seatbelt against the accidental case, not a boundary: a copy of a checkout under a fake `NS_OPT` named after the tag still passes, and so do writes that bypass `ns-ledger`. `docs/security.md` lists what it trusts (issue #120).
@@ -139,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end harness: `tests/e2e/run.sh` with scenarios t0, t1, t2, t3 and resume against `andras-tkcs/nightshift-sandbox`, run with `--keep` in Build A (ADR 0009); results in `tests/e2e/results.md`.
 - Documentation: the specification, build plan, architecture, usage, ledger, conductor, agents, projects, accounts, server, operations, security, setup and development guides, and architecture decision records 0001 to 0009. The `v0.1.0` tag is set by the owner after merge (ADR 0007).
 
-[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/andras-tkcs/nightshift/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/andras-tkcs/nightshift/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/andras-tkcs/nightshift/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/andras-tkcs/nightshift/compare/v0.1.3...v0.1.4
