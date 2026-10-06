@@ -91,11 +91,19 @@ The guard does not trust the command to be written plainly. It parses a shell co
 
 What it cannot resolve it refuses when it may hide an owner-only command: a command name or an `ns` subcommand built at run time (`$(...) kill`, `ns "$X"`, `xargs ns`), `eval`, `sh -c`, `env -S` or `watch` of a string built at run time, a shell or interpreter that reads commands from a pipe fed by anything but `echo`, `printf` or `cat` of a file it can read, a script that does not exist yet when the line is checked (write it first, then run it), `sed`'s `e` command, and a command line it cannot parse that names an owner-only subcommand. The price is that a few unusual but harmless lines are refused too; write them out plainly.
 
+A shell script the agent runs is held to the same rules as its command line when it is not part of the repository as committed: untracked, changed against `HEAD` (staged or not), or outside any repository. So a script written with one tool call and run with the next cannot use a command name or first argument built at run time. A script tracked and unchanged at `HEAD` is the repository's own code; there only owner-only commands it names (literally or through `ns "$X"`) are refused. `bin/lib/ns-*.sh` given to a viewer, an editor, `awk`, `sed` or as a data file to a script is only read and stays allowed; in program text (`python3 -c`, an awk program, `vim -c`) it is refused.
+
 ### Its limits
 
 The guard is a seatbelt, not a wall (ADR 0006). When it cannot read its input at all, or fails inside, it fails open: it prints `ns guard: not checked: <error>` and lets the action through. The choice is deliberate: a failing guard that blocked everything would stop every Claude session on the machine, for example after a Claude Code update that changes the input format. If you see `ns guard: not checked`, tell the next session to look at it.
 
-It cannot see what never shows up in a tool call it reads: a program that builds a command from data while it runs (Python that decodes a string and calls `ns`), a file the agent wrote that a test runner or build tool later runs (`conftest.py`, a `Makefile`, `package.json` scripts), a binary, or a library preloaded with `LD_PRELOAD`. It reads the profile from the local `origin/<base>` ref, which an indirect command could forge with `git update-ref`. Copies of token files made outside its sight are not seen either. Other ways to read files are not covered.
+What remains outside its sight, precisely:
+
+- programs in other languages that build a command from data while they run: the guard only finds owner-only commands written out in their text, so Python, Perl, Node, Ruby or awk code that decodes or assembles `ns` and its subcommand and runs it is not caught, whether given with `-c`/`-e` or as a script file (shell scripts are parsed; other languages are only scanned);
+- anything it cannot read when the tool call is made: a file the agent wrote that a test runner or build tool later runs (`conftest.py`, a `Makefile`, `package.json` scripts), a binary, a library preloaded with `LD_PRELOAD`, a file larger than 1 MB, a script sourced by a path built at run time inside a tracked script;
+- commands that run later or elsewhere: `at`, cron and systemd timers set up indirectly, or a process started earlier.
+
+So a determined agent can still reach an owner-only action; the guard makes that deliberate and visible, not impossible. The control that has to hold for the owner-only actions with effects on GitHub (merging, tags) or on runs (gate release) is the one tracked in issue #127. It reads the profile from the local `origin/<base>` ref, which an indirect command could forge with `git update-ref`. Copies of token files made outside its sight are not seen either. Other ways to read files are not covered.
 
 ## The real boundary
 

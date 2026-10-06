@@ -99,7 +99,17 @@ class Profile:
         self.data, self.source, self.base, self.guarded = data, source, base, guarded
 
 
+_PROFILES = {}
+
+
 def project_profile(root):
+    """The profile of root, read once per hook call (see read_project_profile)."""
+    if root not in _PROFILES:
+        _PROFILES[root] = read_project_profile(root)
+    return _PROFILES[root]
+
+
+def read_project_profile(root):
     """Profile, where it came from, the base branch and the branches pushes may not reach.
 
     The profile is read from origin/<default branch> (origin/HEAD, else main or master) and,
@@ -986,8 +996,9 @@ def decode_escapes(t):
     return re.sub(r"\\0?([0-7]{3})", lambda m: chr(int(m.group(1), 8) & 0xFF), t)
 
 
-def raw_scan(text):
-    """The reason when text (any language) names an owner-only ns command, else None."""
+def raw_scan(text, libs=True):
+    """The reason when text (any language) names an owner-only ns command, else None.
+    libs=False skips the bin/lib/ns-*.sh file names: for file operands that are only read."""
     if not text:
         return None
     t = decode_escapes(text.replace(DYN, "$")).replace("\\\n", "")
@@ -997,7 +1008,7 @@ def raw_scan(text):
         for k, tok in enumerate(toks):
             base = tok.rstrip("/").rsplit("/", 1)[-1]
             nxt = toks[k + 1] if k + 1 < len(toks) else ""
-            if LIB_RE.match(base) or FUNC_RE.match(tok):
+            if (libs and LIB_RE.match(base)) or FUNC_RE.match(tok):
                 return lib_msg(base)
             if base == "ns-launch":
                 return LAUNCH_MSG
@@ -1079,8 +1090,9 @@ def owner_kind(name, text, ctx):
 def scan_file(path, ctx, depth, shell):
     """Check a script that will run: a raw scan, then (for shell) the parser. The same command
     line may write the script first, so the whole line is scanned too, and a script that does
-    not exist yet is refused: write it first, then run it, so the guard can read it."""
-    hit = raw_scan(ctx.full)
+    not exist yet is refused: write it first, then run it, so the guard can read it. The line
+    may name bin/lib/ns-*.sh as a file to read, so the line scan skips those file names."""
+    hit = raw_scan(ctx.full, libs=False)
     if hit:
         raise Block(hit)
     content = read_text(path)
@@ -1096,7 +1108,20 @@ def scan_file(path, ctx, depth, shell):
         first = content.split("\n", 1)[0]
         shell = not first.startswith("#!") or bool(re.search(r"\b(ba|z|da|k|mk)?sh\b", first))
     if shell:
-        analyze_text(content, ctx.child(False), depth + 1)
+        # the repo's own code (tracked and clean at HEAD) is read leniently; a script the agent
+        # wrote or changed is held to the same rules as its command line
+        analyze_text(content, ctx.child(not tracked_clean(path)), depth + 1)
+
+
+def tracked_clean(path):
+    """True when path is tracked in its repository and unchanged against HEAD."""
+    real = os.path.realpath(path)
+    root = repo_root(real)
+    if not root:
+        return False
+    rel = os.path.relpath(real, os.path.realpath(root))
+    return (git_out(root, "ls-files", "--error-unmatch", "--", rel) is not None
+            and git_out(root, "diff", "--quiet", "HEAD", "--", rel) is not None)
 
 
 # ---------------------------------------------------------------------------
@@ -1140,12 +1165,17 @@ RUNNERS = {"uv", "poetry", "pipenv", "pdm", "hatch", "rye", "conda", "mamba", "m
            "bundle", "pnpm", "yarn", "npm", "pipx", "cargo", "dotnet", "mise", "asdf", "direnv"}
 RAW_ARG_CMDS = {"tmux", "screen", "ssh", "su", "runuser", "script", "at", "batch",
                 "xterm", "dtach", "abduco", "byobu", "sshpass", "mosh", "sg", "newgrp",
-                "vim", "vi", "nvim", "ex", "ed", "emacs", "less", "more", "man", "sqlite3",
+                "vim", "vi", "nvim", "view", "ex", "ed", "emacs", "less", "more", "man", "sqlite3",
                 "psql", "mysql", "gdb", "lldb", "ftp", "lftp"}
 # these also read commands from stdin (a pipe, a here-document or a here-string)
 STDIN_CODE_CMDS = {"vim", "vi", "nvim", "ex", "ed", "sqlite3", "psql", "mysql", "gdb", "lldb",
                    "ftp", "lftp", "at", "batch"}
 CODE_OPT_CMDS = {"su", "runuser", "script"}
+# these show or edit files: bin/lib/ns-*.sh as an operand is only read
+VIEWERS = {"vim", "vi", "nvim", "view", "ex", "ed", "emacs", "less", "more", "man"}
+INTERP_CODE_OPTS = {"-c", "-e", "-E", "--eval", "-p", "--print", "-r", "--command", "--exec"}
+AWK_RE = re.compile(r"^[gmn]?awk$")
+AWK_VALUE_OPTS = {"-v", "-F", "--assign", "--field-separator", "-i", "--include", "-l", "--load"}
 SED_EXEC_RE = re.compile(r"(?:^|[;\n{}])\s*e(?:\s|$|;)|s(.)(?:\\.|(?!\1).)*\1(?:\\.|(?!\1).)*\1[a-zA-Z0-9]*e")
 
 
@@ -1369,9 +1399,38 @@ def check_script(p, rest, ctx, depth, shell):
     scan_file(resolve(p.text, ctx), ctx, depth, shell)
 
 
-def check_interp(args, cmd, ctx, depth):
+def interp_code_args(name, args):
+    """The arguments that are program text: -c/-e/... values, or awk's program operand."""
+    code, k, has_file = [], 0, False
+    while k < len(args):
+        t = args[k].text
+        if t in INTERP_CODE_OPTS and k + 1 < len(args):
+            code.append(args[k + 1].text)
+            k += 2
+            continue
+        m = re.fullmatch(r"-[A-Za-z]*[ceEr](.+)", t) if not t.startswith("--") else None
+        if m and not AWK_RE.match(name):
+            code.append(m.group(1))
+        if AWK_RE.match(name):
+            if t in ("-f", "--file") or t.startswith("-f"):
+                has_file = True
+            if t in AWK_VALUE_OPTS:
+                k += 2
+                continue
+            if not t.startswith("-") and not has_file:
+                code.append(t)
+                break
+        k += 1
+    return code
+
+
+def check_interp(name, args, cmd, ctx, depth):
     for a in args:
-        hit = raw_scan(a.text)
+        hit = raw_scan(a.text, libs=False)
+        if hit:
+            raise Block(hit)
+    for code in interp_code_args(name, args):
+        hit = raw_scan(code)
         if hit:
             raise Block(hit)
     for a in args:
@@ -1539,7 +1598,7 @@ def check_argv(argv, cmd, ctx, depth, xargs=False):
             analyze_text(code, ctx.child(True), depth + 1)
         return
     if INTERP_RE.match(name):
-        check_interp(args, cmd, ctx, depth)
+        check_interp(name, args, cmd, ctx, depth)
         return
     if name == "find":
         check_find(args, ctx, depth)
@@ -1561,7 +1620,7 @@ def check_argv(argv, cmd, ctx, depth, xargs=False):
             for k, t in enumerate(texts[:-1]):
                 if (t == "--command" or re.fullmatch(r"-[A-Za-z]*c", t)) and not args[k + 1].dyn:
                     analyze_text(texts[k + 1], ctx.child(True), depth + 1)
-        hit = raw_scan(" ".join(texts))
+        hit = raw_scan(" ".join(texts), libs=name not in VIEWERS)
         if hit:
             raise Block(hit)
         if name in STDIN_CODE_CMDS:
