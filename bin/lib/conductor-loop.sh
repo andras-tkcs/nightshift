@@ -393,12 +393,16 @@ conductor_review_round() {
   fi
   rf="$wt/.nightshift/runs/$id/review-$phase-$n.md"
   rel="RUN/review-$phase-$n.md"
-  line="" fv="" fh=""
+  line="" fv="" fh="" fhbad=0
   if [ -f "$rf" ]; then
     line=$(awk '{ sub(/\r$/, "") } NF { l = $0 } END { sub(/[ \t]+$/, "", l); print l }' "$rf")
-    if [[ $line =~ ^REVIEW\ verdict=(approve|changes)(\ head=([0-9a-f]{7,40}))?$ ]]; then
+    # the verdict first, then the head on its own, so a malformed head gets its own message
+    if [[ $line =~ ^REVIEW\ verdict=(approve|changes)(\ head=(.*))?$ ]]; then
       fv="${BASH_REMATCH[1]}"
       fh="${BASH_REMATCH[3]}"
+      if [ -n "${BASH_REMATCH[2]}" ] && ! [[ $fh =~ ^[0-9a-f]{7,64}$ ]]; then
+        fhbad=1
+      fi
     fi
   fi
   if [ "$verdict" = approve ] && [ ! -f "$rf" ]; then
@@ -411,6 +415,10 @@ conductor_review_round() {
   fi
   if [ -n "$fv" ] && [ "$fv" != "$verdict" ]; then
     loop_review_refused "$rel ends with '$line', not verdict $verdict"
+    return 9
+  fi
+  if [ "$verdict" = approve ] && [ "$fhbad" = 1 ]; then
+    loop_review_refused "$rel: head='${fh:0:20}' is not 7 to 64 lowercase hex"
     return 9
   fi
   if [ "$verdict" = approve ]; then

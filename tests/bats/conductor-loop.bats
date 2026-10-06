@@ -721,6 +721,24 @@ review_phase() {
   [ "$(pstate p1-alpha reviewed_head)" = "$b" ]
 }
 
+@test "review-round names a malformed head= and still sees the verdict in that line (ns-71 review)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  local bad
+  for bad in ABCDEF1 abc '' abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab; do
+    printf 'REVIEW verdict=approve head=%s\n' "$bad" >"$RUNDIR/review-p1-alpha-1.md"
+    run ns-conductor review-round sbx-12 p1-alpha approve
+    assert_failure 9
+    assert_output_contains "is not 7 to 64 lowercase hex"
+    # the verdict is still read, so `changes` contradicts the file
+    run ns-conductor review-round sbx-12 p1-alpha changes
+    assert_failure 9
+    assert_output_contains "not verdict changes"
+  done
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 0 ]
+}
+
 @test "merge refuses a phase branch with no changes of its own (ns-71)" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null
