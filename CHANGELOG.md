@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `ns-conductor report --rerun` can no longer certify a phase the worker never finished: it refuses a phase branch with no commits beyond the feature branch and records a `report-rerun` event (shown by `ns status` and the run report). `review-round` records the verdict of `RUN/review-<phase>-<n>.md` and the phase head it reviewed, and `merge` exits 8 unless the last round approved exactly the current phase head. The e2e t1 scenario matches Claude Code's own auto mode classifier denial text and reads `notes.md` from the run's worktree (issue #71).
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed

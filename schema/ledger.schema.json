@@ -64,7 +64,9 @@
           "branch": { "$ref": "#/$defs/nullable_string" },
           "worktree": { "$ref": "#/$defs/nullable_string" },
           "attempts": { "type": "integer", "minimum": 0 },
-          "review_rounds": { "type": "integer", "minimum": 0 }
+          "review_rounds": { "type": "integer", "minimum": 0 },
+          "review_verdict": { "enum": ["approve", "changes", "missing"], "description": "Verdict of the last review round, the last line of RUN/review-<phase>-<n>.md; missing when that file has none. Set by ns-conductor review-round." },
+          "reviewed_head": { "$ref": "#/$defs/nullable_string", "description": "origin/<phase branch> when the last review round was counted; ns-conductor merge needs it to equal the current head." }
         }
       }
     },
