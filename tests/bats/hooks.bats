@@ -656,27 +656,52 @@ EOF" "cp /tmp/h .git/hooks/pre-push" "echo x >> .git/config"
 
 # review of PR #130
 
-@test "a script that is not tracked and clean at HEAD is checked as strictly as the command line" {
-  local s="$REPO/run.sh" out="$BATS_TEST_TMPDIR/out.sh"
+@test "a script that is not identical to origin/<base> of the run's repo is checked as strictly as the command line" {
+  local s="$REPO/run.sh" out="$BATS_TEST_TMPDIR/out.sh" other="$BATS_TEST_TMPDIR/other"
   # shellcheck disable=SC2016
   printf '#!/bin/sh\necho start\n$CMD $SUB sbx-12\n' >"$s"
   cp "$s" "$out"
   chmod +x "$s" "$out"
   # untracked
   blocked_all "cannot tell which command" "bash run.sh" "./run.sh" "source run.sh" "bash $out" "$out"
-  # tracked and clean at HEAD: the repo's own code, read non-strict
+  # committed on the run's branch: still the agent's own code (no origin here)
   git -C "$REPO" add run.sh
   git -C "$REPO" commit -q -m "add run.sh"
-  allowed_all "bash run.sh" "./run.sh" "source run.sh"
-  # tracked but modified against HEAD
-  printf 'echo changed\n' >>"$s"
-  blocked_all "cannot tell which command" "bash run.sh" "./run.sh"
-  # staged but not committed
-  git -C "$REPO" add run.sh
-  blocked_all "cannot tell which command" "bash run.sh"
+  blocked_all "cannot tell which command" "bash run.sh" "./run.sh" "source run.sh"
+  # committed in a repository the agent created outside the worktree
+  mkdir -p "$other"
+  git init -q -b main "$other"
+  cp "$s" "$other/run.sh"
+  git -C "$other" add run.sh
+  git -C "$other" commit -q -m "add run.sh"
+  blocked_all "cannot tell which command" "bash $other/run.sh" "$other/run.sh"
+  CWD="$other" blocked_all "cannot tell which command" "bash run.sh"
   # an untracked script that names nothing dynamic stays allowed
   printf '#!/bin/sh\necho fine\n' >"$REPO/ok.sh"
   allowed_all "bash ok.sh"
+}
+
+@test "a script identical to origin/<base> of the run's repo is read leniently; changed or recommitted it is strict" {
+  local src="$BATS_TEST_TMPDIR/src2" bare="$BATS_TEST_TMPDIR/origin2.git" wt="$BATS_TEST_TMPDIR/wt2"
+  mkdir -p "$src/.claude"
+  printf 'git:\n  base_branch: main\n' >"$src/.claude/project-profile.yaml"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\n$CMD $SUB sbx-12\n' >"$src/run.sh"
+  chmod +x "$src/run.sh"
+  git init -q -b main "$src"
+  git -C "$src" add -A
+  git -C "$src" commit -q -m init
+  git clone -q --bare "$src" "$bare"
+  git clone -q "$bare" "$wt"
+  git -C "$wt" switch -q -c feature/x
+  # a repo config that would run a command if the guard let git consult it
+  git -C "$wt" config core.fsmonitor "touch $BATS_TEST_TMPDIR/fsmonitor-ran"
+  CWD="$wt" allowed_all "bash run.sh" "./run.sh"
+  [ ! -e "$BATS_TEST_TMPDIR/fsmonitor-ran" ]
+  printf 'echo changed\n' >>"$wt/run.sh"
+  CWD="$wt" blocked_all "cannot tell which command" "bash run.sh"
+  git -C "$wt" commit -q -am "change run.sh"
+  CWD="$wt" blocked_all "cannot tell which command" "bash run.sh" "./run.sh"
 }
 
 @test "viewers, interpreters and sed may read bin/lib/ns-*.sh as a file" {
