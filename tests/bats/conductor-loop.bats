@@ -78,13 +78,20 @@ push_phase() {
   git -C "$c" push -q origin "feature/12--$1"
 }
 
-# review_phase <phase> <approve|changes>: write RUN/review-<phase>-<n>.md for the next round
-# (n = review_rounds + 1) with that verdict as its last line, then count the round
-review_phase() {
+# review_file <phase> <approve|changes>: write RUN/review-<phase>-<n>.md for the next round
+# (n = review_rounds + 1), its last line the verdict and the current head of the phase branch
+# (created on origin from main when missing, for tests that only count rounds)
+review_file() {
   local n
   n=$(lget "[.phases[] | select(.id == \"$1\") | .review_rounds] | (.[0] // 0)")
   n=$((n + 1))
-  printf -- '- non-blocking · README.md:1 · nothing · none\n\nREVIEW verdict=%s\n' "$2" >"$RUNDIR/review-$1-$n.md"
+  git -C "$BARE" rev-parse -q --verify "refs/heads/feature/12--$1" >/dev/null || git -C "$BARE" branch "feature/12--$1" main
+  printf -- '- non-blocking · README.md:1 · nothing · none\n\nREVIEW verdict=%s head=%s\n' "$2" "$(remote_sha "feature/12--$1")" >"$RUNDIR/review-$1-$n.md"
+}
+
+# review_phase <phase> <approve|changes>: review_file, then count the round
+review_phase() {
+  review_file "$1" "$2"
   ns-conductor review-round sbx-12 "$1" "$2" >/dev/null
 }
 
@@ -319,6 +326,7 @@ review_phase() {
   assert_output_contains "review round 1 of 3"
   run ns-conductor review-round sbx-12 p1-alpha changes
   assert_success
+  review_file p1-alpha approve
   run ns-conductor review-round sbx-12 p1-alpha approve
   assert_success
   assert_output_contains "review round 3 of 3"
@@ -352,6 +360,7 @@ review_phase() {
   assert_output_contains "cap of 2"
   run ns-conductor review-round sbx-12 p2-beta changes
   assert_success
+  review_file p2-beta approve
   run ns-conductor review-round sbx-12 p2-beta approve
   assert_success
   assert_output_contains "review round 2 of 2"
@@ -364,6 +373,7 @@ review_phase() {
   assert_failure 7
   run ns-conductor review-round sbx-12 p1-alpha changes
   assert_failure 7
+  review_file p1-alpha approve
   run ns-conductor review-round sbx-12 p1-alpha approve
   assert_success
   assert_output_contains "review round 5 of 3"
@@ -538,7 +548,7 @@ review_phase() {
   git -C "$BARE" branch feature/12--p1-alpha feature/12
   run ns-conductor report sbx-12 p1-alpha --rerun
   assert_failure 1
-  assert_output_contains "no commits"
+  assert_output_contains "no changes of its own"
   [ ! -f "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl" ]
   [ "$(lget '[.events[] | select(.type == "report-rerun")] | length')" = 0 ]
   # the feature branch moved on and the phase branch is behind it: still nothing of the worker's
@@ -546,7 +556,7 @@ review_phase() {
   git -C "$FWT" push -q origin HEAD:feature/12
   run ns-conductor report sbx-12 p1-alpha --rerun
   assert_failure 1
-  assert_output_contains "no commits"
+  assert_output_contains "no changes of its own"
   [ ! -f "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl" ]
 }
 
@@ -582,7 +592,13 @@ review_phase() {
   [ "$(lget '.events[-1].note')" = "p1-alpha round 2 approve" ]
   run "$NS_REPO_ROOT/bin/ns" status sbx-12
   assert_output_contains "rounds 2  review approve ${head:0:12}"
-  # no review file for round 3: the argument is the verdict (changes at the T2 cap exits 7)
+  # no review file for round 3: an approval is refused and records nothing (exit 9) ...
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  assert_output_contains "review-p1-alpha-3.md does not exist"
+  assert_output_contains "never edit the review file"
+  [ "$(pstate p1-alpha review_rounds)" = 2 ]
+  # ... and changes needs no file: the argument is the verdict (changes at the T2 cap exits 7)
   run ns-conductor review-round sbx-12 p1-alpha changes
   assert_failure 7
   [ "$(pstate p1-alpha review_verdict)" = changes ]
@@ -596,7 +612,7 @@ review_phase() {
   printf -- '- blocking · a.txt:1 · wrong · fix it\n\nREVIEW verdict=changes\n' >"$RUNDIR/review-p1-alpha-1.md"
   events=$(lget '.events | length')
   run ns-conductor review-round sbx-12 p1-alpha approve
-  assert_failure 2
+  assert_failure 9
   assert_output_contains "not verdict approve"
   [ "$(lget '.events | length')" = "$events" ]
   [ "$(lget '[.phases[] | select(.id == "p1-alpha")] | length')" = 0 ]
@@ -605,10 +621,10 @@ review_phase() {
   # an approval needs a verdict line when the review file exists
   printf -- '- non-blocking · a.txt:1 · fine · none\n' >"$RUNDIR/review-p1-alpha-1.md"
   run ns-conductor review-round sbx-12 p1-alpha approve
-  assert_failure 2
+  assert_failure 9
   assert_output_contains "no REVIEW verdict line"
-  # the matching verdict is recorded
-  printf -- '- non-blocking · a.txt:1 · fine · none\n\nREVIEW verdict=approve\n' >"$RUNDIR/review-p1-alpha-1.md"
+  # the matching verdict is recorded (CRLF line ends and trailing blank lines are fine)
+  printf -- '- non-blocking · a.txt:1 · fine · none\r\n\r\nREVIEW verdict=approve head=%s\r\n\r\n\n' "$(remote_sha feature/12--p1-alpha)" >"$RUNDIR/review-p1-alpha-1.md"
   run ns-conductor review-round sbx-12 p1-alpha approve
   assert_success
   [ "$(pstate p1-alpha review_verdict)" = approve ]
@@ -658,4 +674,105 @@ review_phase() {
   run ns-conductor merge sbx-12 p1-alpha
   assert_success
   git -C "$BARE" merge-base --is-ancestor "$b" feature/12
+}
+
+@test "review-round approve needs RUN/review-<phase>-<n>.md of this round ending with verdict approve (ns-71)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  head=$(remote_sha feature/12--p1-alpha)
+  events=$(lget '.events | length')
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  assert_output_contains "review-p1-alpha-1.md"
+  [ "$(lget '.events | length')" = "$events" ]
+  # a file for another round (off by one) does not count
+  printf 'REVIEW verdict=approve head=%s\n' "$head" >"$RUNDIR/review-p1-alpha-2.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  [ "$(lget '.events | length')" = "$events" ]
+  # changes needs no file
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_success
+  [ "$(pstate p1-alpha review_verdict)" = changes ]
+}
+
+@test "review-round refuses an approval whose head= is missing or not the current phase head (ns-71)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  a=$(remote_sha feature/12--p1-alpha)
+  printf 'REVIEW verdict=approve\n' >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  assert_output_contains "head="
+  # the reviewer saw head A, the branch moved to B before the round was counted
+  push_phase p1-alpha b.txt beta
+  printf 'REVIEW verdict=approve head=%s\n' "$a" >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  assert_output_contains "${a:0:12}"
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 0 ]
+  # a short sha of at least 7 characters of the current head is accepted
+  b=$(remote_sha feature/12--p1-alpha)
+  printf 'REVIEW verdict=approve head=%s\n' "${b:0:7}" >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_success
+  [ "$(pstate p1-alpha reviewed_head)" = "$b" ]
+}
+
+@test "merge refuses a phase branch with no changes of its own (ns-71)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  git -C "$BARE" branch feature/12--p1-alpha feature/12
+  review_phase p1-alpha approve
+  fhead=$(remote_sha feature/12)
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_failure 1
+  assert_output_contains "no changes of its own"
+  [ "$(remote_sha feature/12)" = "$fhead" ]
+  [ "$(pstate p1-alpha state)" != merged ]
+  # behind the feature branch: still nothing of its own
+  git -C "$FWT" commit -q --allow-empty -m "other phase"
+  git -C "$FWT" push -q origin HEAD:feature/12
+  fhead=$(remote_sha feature/12)
+  review_phase p1-alpha approve
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_failure 1
+  assert_output_contains "no changes of its own"
+  [ "$(remote_sha feature/12)" = "$fhead" ]
+  [ "$(pstate p1-alpha state)" != merged ]
+}
+
+@test "report --rerun refuses commits that change nothing (ns-71)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  c="$BATS_TEST_TMPDIR/phase-clone"
+  git -C "$c" rm -q a.txt
+  git -C "$c" commit -q -m "drop a.txt"
+  git -C "$c" push -q origin feature/12--p1-alpha
+  run ns-conductor report sbx-12 p1-alpha --rerun
+  assert_failure 1
+  assert_output_contains "no changes of its own"
+  [ ! -f "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl" ]
+}
+
+@test "review-round fix of a T1 run checks the approval against the fix branch head (ns-71)" {
+  "$NS_REPO_ROOT/bin/ns" new sbx-13 --tier T1 --yes >/dev/null
+  R13="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13/.nightshift/runs/sbx-13"
+  ns-conductor fix-branch sbx-13 >/dev/null
+  fx="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13--fix"
+  printf 'fix\n' >"$fx/fix.txt"
+  git -C "$fx" add fix.txt
+  git -C "$fx" commit -q -m "fix"
+  git -C "$fx" push -q origin HEAD:refs/heads/fix/sbx-13
+  head=$(remote_sha fix/sbx-13)
+  run ns-conductor review-round sbx-13 fix approve
+  assert_failure 9
+  assert_output_contains "review-fix-1.md"
+  printf 'REVIEW verdict=approve head=%s\n' "$head" >"$R13/review-fix-1.md"
+  run ns-conductor review-round sbx-13 fix approve
+  assert_success
+  [ "$(ns-ledger get "$R13/ledger.yaml" '(.phases[] | select(.id == "fix") | .reviewed_head)')" = "$head" ]
 }
