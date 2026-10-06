@@ -270,6 +270,19 @@ conductor_note() {
   printf 'note %s\n' "$n"
 }
 
+# loop_has_changes <dir> <feature ref> <phase ref>: exit 0 when the phase branch changes something
+# against its merge base with the feature branch, 1 when it changes nothing (equal, behind, or
+# commits that cancel out); dies when git fails
+loop_has_changes() {
+  local rc=0
+  git -C "$1" diff --quiet "$2...$3" -- || rc=$?
+  case "$rc" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *) ns_die "git diff $2...$3 failed in $1" ;;
+  esac
+}
+
 conductor_report() {
   local u="ns-conductor report <id> <phase> [--rerun]" rerun=false
   if [ $# -eq 3 ] && [ "$3" = --rerun ]; then
@@ -278,7 +291,7 @@ conductor_report() {
   fi
   [ $# -eq 2 ] || ns_usage "$u"
   valid_phase_id "$2" || ns_usage "$u"
-  local phase="$2" log text rep pbranch want got st hd feature base
+  local phase="$2" log text rep pbranch want got st hd feature
   load_run "$1"
   log="$logdir/$phase.jsonl"
   if [ "$rerun" = true ]; then
@@ -293,10 +306,10 @@ conductor_report() {
     # branch head, or behind it, holds no work to certify
     feature=$(lg get "$ledger" '.feature_branch // empty')
     [ -n "$feature" ] || ns_die "no feature branch yet"
-    git -C "$wt" fetch -q origin "$feature" 2>/dev/null || true
-    base=$(git -C "$wt" rev-parse -q --verify "origin/$feature" 2>/dev/null) || ns_die "origin/$feature does not exist"
-    if [ "$(git -C "$wt" rev-list --count "$base..$want")" -eq 0 ]; then
-      printf 'origin/%s has no commits beyond origin/%s: nothing of the worker to report; restart the phase\n' "$pbranch" "$feature"
+    git -C "$wt" fetch -q origin "$feature" || ns_die "could not fetch origin $feature"
+    git -C "$wt" rev-parse -q --verify "origin/$feature" >/dev/null || ns_die "origin/$feature does not exist"
+    if ! loop_has_changes "$wt" "origin/$feature" "origin/$pbranch"; then
+      printf 'origin/%s has no changes of its own against origin/%s: nothing of the worker to report; restart the phase\n' "$pbranch" "$feature"
       return 1
     fi
     mkdir -p "$logdir"
@@ -337,6 +350,12 @@ conductor_report() {
   return 0
 }
 
+# loop_review_refused <message>: print why review-round recorded nothing, and what to do
+loop_review_refused() {
+  printf '%s\n' "$1" >&2
+  printf 'review-round recorded nothing: run the review again; never edit the review file\n' >&2
+}
+
 conductor_review_round() {
   local u="ns-conductor review-round <id> <phase> <approve|changes>"
   [ $# -eq 3 ] || ns_usage "$u"
@@ -345,32 +364,61 @@ conductor_review_round() {
     approve | changes) ;;
     *) ns_usage "$u" ;;
   esac
-  local phase="$2" verdict="$3" tier max n pbranch head rf last hj
+  local phase="$2" verdict="$3" tier max n pbranch head rf rel line fv fh hj
   load_run "$1"
   tier=$(loop_tier)
   max=$(jq -r --arg t "$tier" '.budgets[$t].review_rounds // 3' <<<"$profile")
   n=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .review_rounds] | (.[0] // 0)")
   n=$((n + 1))
-  # cross-check with the review file of this round: its verdict line must agree with the argument,
-  # and an approval needs one when the file exists
-  rf="$wt/.nightshift/runs/$id/review-$phase-$n.md"
-  if [ -f "$rf" ]; then
-    last=$(awk 'NF { l = $0 } END { sub(/[ \t\r]+$/, "", l); print l }' "$rf")
-    case "$last" in
-      "REVIEW verdict=approve" | "REVIEW verdict=changes")
-        [ "${last#REVIEW verdict=}" = "$verdict" ] ||
-          ns_die "RUN/review-$phase-$n.md ends with '$last', not verdict $verdict: pass the review's own verdict" 2
-        ;;
-      *)
-        [ "$verdict" != approve ] ||
-          ns_die "RUN/review-$phase-$n.md has no REVIEW verdict line: an approval needs one" 2
-        ;;
-    esac
+  # the review file of this round must back the verdict: an approval needs
+  # RUN/review-<phase>-<n>.md ending with "REVIEW verdict=approve head=<sha>", <sha> being the
+  # current phase head; a verdict line that says the other verdict refuses either argument
+  # the reviewed branch: the phase branch, or for T0/T1 the run's fix branch (one code branch)
+  case "$tier" in
+    T0 | T1) pbranch=$(lg get "$ledger" '.feature_branch // empty') ;;
+    *) pbranch=$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$phase") ;;
+  esac
+  head=""
+  if [ -n "$pbranch" ]; then
+    if git -C "$wt" fetch -q origin "$pbranch" 2>/dev/null; then
+      head=$(git -C "$wt" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
+    elif [ "$verdict" = approve ]; then
+      # never compare an approval with a stale remote-tracking ref
+      ns_die "could not fetch origin $pbranch"
+    fi
   fi
-  # the head this round reviewed: origin/<phase branch> now (no worker runs during a review)
-  pbranch=$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$phase")
-  git -C "$wt" fetch -q origin "$pbranch" 2>/dev/null || true
-  head=$(git -C "$wt" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
+  rf="$wt/.nightshift/runs/$id/review-$phase-$n.md"
+  rel="RUN/review-$phase-$n.md"
+  line="" fv="" fh=""
+  if [ -f "$rf" ]; then
+    line=$(awk '{ sub(/\r$/, "") } NF { l = $0 } END { sub(/[ \t]+$/, "", l); print l }' "$rf")
+    if [[ $line =~ ^REVIEW\ verdict=(approve|changes)(\ head=([0-9a-f]{7,40}))?$ ]]; then
+      fv="${BASH_REMATCH[1]}"
+      fh="${BASH_REMATCH[3]}"
+    fi
+  fi
+  if [ "$verdict" = approve ] && [ ! -f "$rf" ]; then
+    loop_review_refused "$rel does not exist: an approval needs the review file of round $n"
+    return 9
+  fi
+  if [ "$verdict" = approve ] && [ -z "$fv" ]; then
+    loop_review_refused "$rel has no REVIEW verdict line: an approval needs one"
+    return 9
+  fi
+  if [ -n "$fv" ] && [ "$fv" != "$verdict" ]; then
+    loop_review_refused "$rel ends with '$line', not verdict $verdict"
+    return 9
+  fi
+  if [ "$verdict" = approve ]; then
+    if [ -z "$fh" ]; then
+      loop_review_refused "$rel has no head=<sha> on its verdict line: an approval names the head it reviewed"
+      return 9
+    fi
+    if [ -z "$head" ] || [[ $head != "$fh"* ]]; then
+      loop_review_refused "$rel approved head=${fh:0:12}, but origin/$pbranch is ${head:-missing}: the review is of another head"
+      return 9
+    fi
+  fi
   hj=null
   [ -z "$head" ] || hj=$(jstr "$head")
   phase_update "$phase" ".review_rounds = $n | .review_verdict = $(jstr "$verdict") | .reviewed_head = $hj"
@@ -403,8 +451,16 @@ conductor_merge() {
     return 0
   fi
   git -C "$fw" fetch -q origin || ns_die "could not fetch origin"
-  # only a review round that approved exactly the current phase head lets the phase in
   head=$(git -C "$fw" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
+  if [ -z "$head" ]; then
+    printf 'origin/%s does not exist\n' "$pbranch"
+    return 1
+  fi
+  if ! loop_has_changes "$fw" "origin/$feature" "origin/$pbranch"; then
+    printf 'origin/%s has no changes of its own against origin/%s: nothing to merge\n' "$pbranch" "$feature"
+    return 1
+  fi
+  # only a review round that approved exactly the current phase head lets the phase in
   pj=$(jstr "$phase")
   verdict=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .review_verdict] | (.[0] // \"none\")")
   rhead=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .reviewed_head] | (.[0] // \"\")")
