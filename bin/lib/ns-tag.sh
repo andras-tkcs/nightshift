@@ -110,8 +110,14 @@ ns_tag_main() {
   if [ -n "$cmd" ]; then
     (cd "$repo" && bash -c "$cmd") >&2 || ns_die "project checks failed: not tagging"
   else
-    (cd "$repo" && { [ ! -x tests/lint ] || tests/lint; } && { [ ! -d tests/bats ] || bats tests/bats; }) >&2 ||
-      ns_die "project checks failed: not tagging"
+    # parallel bats needs GNU parallel; without it the suite runs serially
+    (cd "$repo" && { [ ! -x tests/lint ] || tests/lint; } && {
+      [ ! -d tests/bats ] || if command -v parallel >/dev/null 2>&1; then
+        bats --jobs "$(nproc)" tests/bats
+      else
+        bats tests/bats
+      fi
+    }) >&2 || ns_die "project checks failed: not tagging"
   fi
 
   local sha runs

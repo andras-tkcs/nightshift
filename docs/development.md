@@ -10,12 +10,12 @@ claude --plugin-dir ./plugins/ns --plugin-dir ./plugins/ns-python
 
 ```bash
 tests/lint
-bats --jobs 2 tests/bats
+bats --jobs "$(nproc)" tests/bats
 claude plugin validate --strict .
 tests/docs-check --final
 ```
 
-`tests/lint` runs shellcheck over every script. `bats --jobs 2 tests/bats` runs the unit suite in parallel (needs GNU `parallel`, `sudo apt-get install parallel`; CI uses `--jobs "$(nproc)"`). Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`. CI (`.github/workflows/ci.yml`) runs the parallel jobs `lint`, `bats` and `plugin-validate` (plugin validation and docs-check), so a lint or manifest failure shows up without waiting for bats; the aggregate job `checks` needs all three and is the required status check (`REQUIRED_CHECKS="checks"`), so keep that name.
+`tests/lint` runs shellcheck over every script. `bats --jobs "$(nproc)" tests/bats` runs the unit suite in parallel, the same form as CI. It needs GNU `parallel`, which is already installed on ns-main (the agent user has no sudo; on another machine install the `parallel` package). On ns-main (8 vCPU) the suite took 358 seconds with 8 jobs on 2026-10-06, using at most 1.8 GB of RAM. Without `--jobs` it is serial and takes 20 minutes or more, so run single files while you work. Tests work with stdin closed or open: the `claude` stub reads stdin with a 2 second timeout. `claude plugin validate --strict` checks the marketplace and both plugins. `tests/docs-check --final` checks that every command and slash command is documented and that links resolve; CI runs it with `--final`. CI (`.github/workflows/ci.yml`) runs the parallel jobs `lint`, `bats` and `plugin-validate` (plugin validation and docs-check), so a lint or manifest failure shows up without waiting for bats; the aggregate job `checks` needs all three and is the required status check (`REQUIRED_CHECKS="checks"`), so keep that name.
 
 ## End-to-end runs
 
@@ -27,7 +27,7 @@ tests/e2e/run.sh t0                 # one scenario: t0, t1, t2, t3, stack or res
 tests/e2e/run.sh cleanup <branch>   # remove what a failed attempt left behind
 ```
 
-Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take minutes and a little usage, `t2` and `t3` take much longer and use a lot, `stack` runs two T0 runs in a row and checks that the second pull request is stacked on the first (its base is the first branch and its diff shows only its own change), and `resume` kills a conductor and resumes it. Each run appends a line to `tests/e2e/results.md`. `--keep` leaves the pull request and branches in place after a pass. Run one scenario at a time (4 GB RAM).
+Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take minutes and a little usage, `t2` and `t3` take much longer and use a lot, `stack` runs two T0 runs in a row and checks that the second pull request is stacked on the first (its base is the first branch and its diff shows only its own change), and `resume` kills a conductor and resumes it. Each run appends a line to `tests/e2e/results.md`. `--keep` leaves the pull request and branches in place after a pass. Run one scenario at a time (preflight needs 1200 MB of available memory).
 
 ## Conventions
 

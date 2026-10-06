@@ -217,3 +217,40 @@ live_run() {
   run git -C "$REPO" tag -l v0.1.1
   [ -z "$output" ]
 }
+
+# no_test_profile: drop commands.test and add a tests/bats directory, so ns tag uses its fallback;
+# a stub bats records its arguments in bats.args
+no_test_profile() {
+  sed -i '/^  test:/d' "$PROFILE"
+  mkdir -p "$REPO/tests/bats"
+  : >"$REPO/tests/bats/x.bats"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m "no commands.test"
+  git -C "$REPO" push -q origin HEAD
+  mkdir -p "$BATS_TEST_TMPDIR/stub"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >>"%s"\n' "$BATS_TEST_TMPDIR/bats.args" >"$BATS_TEST_TMPDIR/stub/bats"
+  chmod +x "$BATS_TEST_TMPDIR/stub/bats"
+}
+
+@test "ns tag without commands.test runs bats in parallel when GNU parallel is there (issue #116)" {
+  no_test_profile
+  printf '#!/bin/sh\nexit 0\n' >"$BATS_TEST_TMPDIR/stub/parallel"
+  chmod +x "$BATS_TEST_TMPDIR/stub/parallel"
+  PATH="$BATS_TEST_TMPDIR/stub:$PATH" run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run cat "$BATS_TEST_TMPDIR/bats.args"
+  [ "$output" = "--jobs $(nproc) tests/bats" ]
+}
+
+@test "ns tag without commands.test runs bats serially when GNU parallel is missing (issue #116)" {
+  no_test_profile
+  local c p
+  for c in bash env git jq sort tail grep awk sed cat dirname basename mktemp rm mkdir tr head date uname readlink tmux flock gh nproc python3 realpath; do
+    p=$(command -v "$c" 2>/dev/null) || continue
+    [ -e "$BATS_TEST_TMPDIR/stub/$c" ] || ln -sf "$p" "$BATS_TEST_TMPDIR/stub/$c"
+  done
+  PATH="$BATS_TEST_TMPDIR/stub" run "$NS_REPO_ROOT/bin/ns" tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run cat "$BATS_TEST_TMPDIR/bats.args"
+  [ "$output" = "tests/bats" ]
+}

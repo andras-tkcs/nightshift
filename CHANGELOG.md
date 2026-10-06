@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-06
+
 ### Security
 
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed
 
+- Docs and settings describe the 16 GB ns-main (8 vCPU, `max_runs` 3, `max_workers` 4 in its `config.yaml`; the code defaults stay 2, for the 4 GB minimum), and every place that runs the bats suite uses the parallel form `bats --jobs "$(nproc)" tests/bats`: Nightshift's profile `commands.test`, the `ns tag` fallback, the final reviewer and `/implement-local` (issue #116).
 - `ns stack` and `ns-conductor stack-base` treat a base as closed only when the closed PR was closed at or after the dependent PR was created and no open PR has that head name; a fork of run PRs is now several chains (`stack-base` exits 7); the stack e2e scenario only counts open PRs of runs with a `plan/<run id>` branch as leftovers (issue #97).
 
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
@@ -108,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end harness: `tests/e2e/run.sh` with scenarios t0, t1, t2, t3 and resume against `andras-tkcs/nightshift-sandbox`, run with `--keep` in Build A (ADR 0009); results in `tests/e2e/results.md`.
 - Documentation: the specification, build plan, architecture, usage, ledger, conductor, agents, projects, accounts, server, operations, security, setup and development guides, and architecture decision records 0001 to 0009. The `v0.1.0` tag is set by the owner after merge (ADR 0007).
 
-[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/andras-tkcs/nightshift/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/andras-tkcs/nightshift/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/andras-tkcs/nightshift/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/andras-tkcs/nightshift/compare/v0.1.2...v0.1.3
