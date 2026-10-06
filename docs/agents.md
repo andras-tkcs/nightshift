@@ -114,4 +114,4 @@ Skills with a command are started by you or the conductor inside Claude Code. Th
 
 The `ns-python` plugin adds `python-conventions`, `python-packaging` and `python-testing`, loaded for Python paths.
 
-The `ns` plugin also has hooks: a guard that blocks edits to the profile's protected paths, a checkpoint that writes the ledger when a session stops, and a session-start hook.
+The `ns` plugin also has hooks: a guard that blocks edits to the profile's protected paths, token reads, pushes to the base branch and the owner-only commands (docs/security.md), a checkpoint that writes the ledger when a session stops, and a session-start hook.

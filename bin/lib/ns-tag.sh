@@ -131,8 +131,11 @@ ns_tag_main() {
   ns_tag_warn_active_runs
 
   local msg titles
+  # merge commits ("Merge pull request #N", title in the body) and squash merges ("<title> (#N)")
   titles=$(git -C "$repo" log --first-parent --format='%s%x1f%b%x1e' ${last:+"$last..HEAD"} |
-    awk 'BEGIN {RS="\036"; FS="\037"} $1 ~ /^\n?Merge pull request/ {n=split($2, a, "\n"); for (i=1;i<=n;i++) if (a[i] ~ /[^[:space:]]/) {print "- " a[i]; break}}' || true)
+    awk 'BEGIN {RS="\036"; FS="\037"} {sub(/^\n/, "", $1)}
+      $1 ~ /^Merge pull request/ {n=split($2, a, "\n"); for (i=1;i<=n;i++) if (a[i] ~ /[^[:space:]]/) {print "- " a[i]; break}; next}
+      $1 ~ / \(#[0-9]+\)$/ {print "- " $1}' || true)
   msg="Release $tag"
   [ -z "$titles" ] || msg="$msg"$'\n\n'"$titles"
 

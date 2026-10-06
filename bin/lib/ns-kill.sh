@@ -15,7 +15,18 @@ ns_kill_help() {
   printf 'worktree and branches are kept; ns resume restarts it. Owner only.\n'
 }
 
-# ns_kill_group <pid>: TERM, then KILL, the process group led by <pid>
+# ns_kill_group_live <pgid>: succeeds while a process of the group is alive and not a zombie
+ns_kill_group_live() {
+  local p
+  for p in $(pgrep -g "$1" 2>/dev/null); do
+    ns_pool_pid_alive "$p" && return 0
+  done
+  return 1
+}
+
+# ns_kill_group <pid>: TERM, then KILL, the process group led by <pid>, then wait (about 2 s at
+# most) until no live process is left in it, so that a ledger write after this cannot
+# interleave with a conductor that checkpoints on its way out
 ns_kill_group() {
   local pid="$1" pgid i
   [[ $pid =~ ^[0-9]+$ ]] || return 0
@@ -29,13 +40,31 @@ ns_kill_group() {
     i=$((i + 1))
   done
   kill -KILL -- "-$pid" 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 20 ] && ns_kill_group_live "$pid"; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  ! ns_kill_group_live "$pid" || ns_warn "process group $pid is still alive after SIGKILL"
 }
 
-# ns_kill_teardown <id> <ledger> <note> [kill-session] [keep-state]
-# Kills workers (and the session when asked), resets running phases, marks the run stopped.
-# With keep-state (done/failed runs) only the processes are killed; the ledger is untouched.
+# ns_kill_teardown <id> <ledger> <note> [--session] [--keep-state]
+# Kills workers (and the session with --session), resets running phases, marks the run stopped.
+# With --keep-state (done/failed runs) only the processes are killed; the ledger is untouched.
+# The ledger is written only after every killed process group is gone (ns_kill_group waits).
 ns_kill_teardown() {
-  local id="$1" ledger="$2" note="$3" session="${4:-}" keep="${5:-}" pane="" r phase f
+  local u="ns_kill_teardown <id> <ledger> <note> [--session] [--keep-state]"
+  [ $# -ge 3 ] || ns_usage "$u"
+  local id="$1" ledger="$2" note="$3" session="" keep="" pane="" r phase f
+  shift 3
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --session) session=1 ;;
+      --keep-state) keep=1 ;;
+      *) ns_usage "$u" ;;
+    esac
+    shift
+  done
   if [ -n "$session" ] && ns_tmux_has "$id"; then
     pane=$(ns_tmux_pane_pid "$id" 2>/dev/null) || pane=""
     ns_tmux_kill "$id" || true
@@ -68,13 +97,13 @@ ns_kill_main() {
         return 0
       fi
       if [ "$state" != stopped ]; then
-        ns_kill_teardown "$id" "$ledger" "killed by owner" session keep
+        ns_kill_teardown "$id" "$ledger" "killed by owner" --session --keep-state
         printf 'killed leftover processes of %s (state stays %s)\n' "$id" "$state"
         return 0
       fi
       ;;
   esac
-  ns_kill_teardown "$id" "$ledger" "killed by owner" session
+  ns_kill_teardown "$id" "$ledger" "killed by owner" --session
   # best effort: the report of a stopped run, committed with the ledger
   if "$NS_HOME/bin/ns" report "$id" >/dev/null 2>&1; then
     "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push || ns_warn "could not commit the run report"

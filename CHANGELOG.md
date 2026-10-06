@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The guard blocks owner-only commands in every form it can parse, not only a literal `ns kill`: any path to `ns` or a link or copy of it, wrapper words (`env`, `command`, `exec`, `nohup`, `timeout`, `xargs`, `sudo`, `nice`, `time`, `setsid`, `stdbuf`, ...), `bash -c`/`sh -c`/`eval`/`source`, scripts it reads before they run, `$(...)`, backticks, pipes and chains, quoting and escaping tricks, and variables or arrays holding the name; what it cannot resolve is refused when it may hide one. Owner-only are now `ns kill`, `tag`, `desk`, `approve`, `project`, `rm`/`purge`, `gc`, `stack merge`/`drop`, `ns new --allow-outside`, `ns-launch`, `ns-gh apply` and running or sourcing `bin/lib/ns-*.sh`. Pushes and merges hidden in `sh -c`, `eval` or substitutions are checked too; git hooks, `.git/config`, command-running git settings and `NS_HOME` are off limits (issues #16, #58, #81, #117).
+- The guard reads `protected_paths` and the base branch from `origin/<base>:.claude/project-profile.yaml` instead of the worktree (the worktree's file only when origin has none, and the message says so), checks a `Grep` or `Glob` without a path against the working directory, and docs/security.md describes the real boundary: what the token scopes and the ruleset stop, and what only the guard stops (issue #16).
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed
@@ -18,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).
 - `ns_ledger_read` validates and parses a ledger in one Python launch (new `nsyaml.py read <file> <schema.json>`), halving the launches per ledger read (issue #101).
 - The bats suite runs in parallel: CI installs GNU `parallel` and runs `bats --jobs "$(nproc)"`, and CLAUDE.md and docs/development.md document `bats --jobs 2` for local runs (issue #102).
+- `ns_kill_teardown` takes named options `--session` and `--keep-state` instead of the positional words `session` and `keep`; `ns kill` and `ns stop` are updated (issue #58).
+- `ns desk import` refuses a `<repo path>` under `.github/workflows/`, one that is not normalized (`./`, `//`) and one that is or goes through a symlink on the base branch, and prints an open `nightshift/desk-*` pull request for the same `<repo path>` instead of opening a second one; `ns new --allow-outside` without `--from-desk` is a usage error (issue #117).
+- `ns tag` keeps running the project checks locally even when CI on the commit is green (decision recorded in docs/usage.md; issue #81).
 
 ### Added
 
@@ -31,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ns kill` waits after SIGKILL, up to about 2 s, until no live process is left in a killed process group, so the ledger is written only after the conductor is gone and cannot interleave with its last checkpoint; this also fixes the flaky `kill.bats` test (issue #58).
+- The `ns tag` message also lists squash-merged pull requests (`<title> (#N)`), not only merge commits (issue #81).
 - A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
 
 ## [0.1.5] - 2026-10-05

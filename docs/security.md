@@ -12,7 +12,7 @@ ns-main reads untrusted text all day: issue bodies, pull request comments, web p
 - The Linux user `ns` has no sudo and cannot change the installed release in `/opt/nightshift`.
 - Agents never merge pull requests, never tag a release and never run `/cut-release`.
 
-The edge of the boundary is the token scopes and the branch rulesets. The guard hook (below) is an extra layer, not the boundary.
+The edge of the boundary is the token scopes and the branch rulesets. The guard hook (below) is an extra layer, not the boundary; [The real boundary](#the-real-boundary) lists what each of them stops, and what only the guard stops.
 
 ## What lives where
 
@@ -48,19 +48,71 @@ GH_TOKEN=<admin token> ns-gh apply <owner/repo>
 
 ## The guard hook
 
-The Nightshift plugin installs a guard that runs before an agent edits a file, reads a file or runs a shell command. It blocks:
+The Nightshift plugin installs a guard that runs before an agent edits a file, reads a file, searches or runs a shell command. It blocks:
 
-- reading or writing the token folder `~/.config/ns/tokens`, by file tools, by `Grep`, `Glob` and `LS` (any path that equals or contains the folder, or a glob pattern that reaches it), or by a shell command that names it, including `tok*` globs;
+- reading or writing the token folder `~/.config/ns/tokens`, by file tools, by `Grep`, `Glob` and `LS` (any path that equals or contains the folder, or a glob pattern that reaches it; a call without a path searches the working directory, so that directory is checked as the search root), or by a shell command that names it, including `tok*` globs;
 - edits to files that match `protected_paths` in the project's `.claude/project-profile.yaml`, and always edits to that profile itself (file tools and shell redirections such as `>`, `tee`, `cp`, `mv`), so an agent cannot widen its own guard; reading it stays allowed;
-- `git push` to the project's base branch, force pushes (`-f` also inside combined flags like `-uf`, `--force*`, `--mirror`, `+refspec`), `--all`/`--branches`, and pushing tags (`--tags`, `--follow-tags`, `refs/tags/...` or a bare `v1...` name);
+- edits to git hooks and `.git/config` (file tools and shell redirections), and git settings that run commands (`core.hooksPath`, `core.sshCommand`, `core.pager`, `core.editor`, `*.command`, diff, merge and filter drivers, credential helpers) set with `git -c` or `git config`, because git would run them where the guard cannot look;
+- `git push` to the project's base branch or to the repository's default branch, force pushes (`-f` also inside combined flags like `-uf`, `--force*`, `--mirror`, `+refspec`), `--all`/`--branches`, and pushing tags (`--tags`, `--follow-tags`, `refs/tags/...` or a bare `v1...` name);
 - `gh pr merge`, `gh api` calls that write to a `.../merge` path, and `gh release create`;
-- `ns kill`, `ns tag`, `ns desk`, `ns stack merge` and `ns stack drop`, which are the owner's commands.
+- the owner-only commands below, and setting `NS_HOME` or `NS_RUN_HOME`, which decide which Nightshift code runs.
 
-The git and gh checks look through global options (`git -C`, `--git-dir=...`, `gh -R <repo>`), a full path to the program and prefix words (`env`, `command`, `exec`, `nohup`, `time`).
+The guard reads `protected_paths` and `git.base_branch` from the project's base branch on origin, not from the worktree: from `origin/<default branch>:.claude/project-profile.yaml` (the default branch is `origin/HEAD`, else `main` or `master`), and from `origin/<base>` when that profile names another base branch. A run cannot loosen them by changing its own copy. Only when origin has no profile, for example a project that is still being onboarded, does the guard use the worktree's file, and its message says so: `(protected_paths in the worktree's .claude/project-profile.yaml; no origin/<base> profile)`.
 
 It prints `ns guard: <reason>` and the action does not happen.
 
-Its limits: it is a seatbelt, not a wall (ADR 0006). When it cannot understand its input, or fails inside, it fails open: it prints `ns guard: not checked: <error>` and lets the action through. The choice is deliberate: a failing guard that blocked everything would stop every Claude session on the machine, for example after a Claude Code update that changes the input format. It also reads shell commands only as far as splitting and quoting go, so a determined indirect command (a script that pushes, a variable or `eval` building the command, `sh -c`, a copy of a token file made outside its sight) is not seen. Other ways to read files are not covered either. That is why the real boundary is the token scopes and the rulesets on the default branch. If you see `ns guard: not checked`, tell the next session to look at it.
+### Owner-only commands
+
+These commands are the owner's, because each one either decides something only you decide, uses the project owner's GitHub token for something a run must not do, or reaches outside the run:
+
+| Command | Why it is the owner's |
+|---|---|
+| `ns kill` | ends a run's session and kills its processes at once |
+| `ns tag` | tags a release and pushes the tag; Nightshift never tags (R-SEC-2) |
+| `ns desk` (every subcommand) | pushes a branch and opens a pull request with the project owner's token |
+| `ns stack merge`, `ns stack drop` | merge pull requests into the base branch, or close one, revert and push, with the project owner's token |
+| `ns approve` | releases a gate, which is where you decide; for an onboarding run it pushes a branch and opens a pull request with the owner's token |
+| `ns project` | clones a repository with the owner's token, registers it and starts its onboarding run |
+| `ns rm`, `ns purge` | deletes worktrees and branches, with `--remote` also remote branches, and closes pull requests with the owner's token |
+| `ns gc` | the daily housekeeping (run by a timer, not an agent): deletes remote branches of merged runs with the owner's token |
+| `ns new ... --allow-outside` | reads any file user `ns` can read into the run's request, which is pushed to `plan/<id>` on GitHub; the token check only catches a few token shapes |
+| `ns-launch` | starts a run's conductor session with the project owner's token (`ns new` and `ns resume` call it) |
+| `ns-gh apply` | changes repository settings (it needs an admin token, which agents never have; blocked anyway) |
+| `bin/lib/ns-*.sh`, run or sourced directly, and their functions (`ns_*_main`, `ns_stack_merge`, `ns_kill_teardown`, `ns_token_export`, ...) | the code of the commands above; it runs only through `ns` |
+
+Allowed, because runs need them or they change nothing that matters: `ns ls`, `status`, `log`, `report`, `stack` (the list), `stop`, `resume`, `publish`, `profile`, `doctor` (it reads the token files to show their expiry, never their content), `dequeue`, `drain`, `up`, `health-check`, `help`, `ns new` without `--allow-outside`, `--help` of every command, and `ns-conductor`, `ns-ledger`, `ns-notify` and `ns-gh audit`.
+
+The guard does not trust the command to be written plainly. It parses a shell command line the way bash does (quotes, backslashes, `$'...'`, variables and arrays set earlier in the same line, brace expansion, `$(...)`, backticks, `<(...)`, here-documents, `|`, `&&`, `||`, `;`, subshells, groups, functions, `case` branches) and finds an owner-only command in any of these forms:
+
+- by any path: `/usr/local/bin/ns`, `/opt/nightshift/<tag>/bin/ns`, `"$NS_HOME/bin/ns"`, `./bin/ns`, `~/Coding/*/bin/ns`, or a link or copy of the `ns` dispatcher under another name (also through a `PATH=` set in the same line);
+- behind wrapper words: `env` (also `env -S`), `command`, `builtin`, `exec`, `nohup`, `timeout`, `xargs`, `parallel`, `sudo`, `nice`, `time`, `setsid`, `stdbuf`, `ionice`, `flock`, `watch`, `strace`, `uv run` and similar;
+- inside `bash -c`, `sh -c`, `zsh -c`, `eval`, `trap`, `alias`, `find -exec`, a here-document or here-string fed to a shell, a script run with `bash`, `sh`, `source`, `.` or by its path (the guard reads the script), `python3 -c`, `perl -e`, `node -e`, `awk` and their script files, `tmux`, `screen`, `ssh`, `su -c`, `script -c`, editors and database shells, git aliases and `GIT_*` command variables;
+- with quoting and escaping (`'ns'`, `n\s`, `$'\x6e\x73'`, `{ns,stack}`), or with the command name or subcommand in a variable set in the same line.
+
+What it cannot resolve it refuses when it may hide an owner-only command: a command name or an `ns` subcommand built at run time (`$(...) kill`, `ns "$X"`, `xargs ns`), `eval`, `sh -c`, `env -S` or `watch` of a string built at run time, a shell or interpreter that reads commands from a pipe fed by anything but `echo`, `printf` or `cat` of a file it can read, a script that does not exist yet when the line is checked (write it first, then run it), `sed`'s `e` command, and a command line it cannot parse that names an owner-only subcommand. The price is that a few unusual but harmless lines are refused too; write them out plainly.
+
+### Its limits
+
+The guard is a seatbelt, not a wall (ADR 0006). When it cannot read its input at all, or fails inside, it fails open: it prints `ns guard: not checked: <error>` and lets the action through. The choice is deliberate: a failing guard that blocked everything would stop every Claude session on the machine, for example after a Claude Code update that changes the input format. If you see `ns guard: not checked`, tell the next session to look at it.
+
+It cannot see what never shows up in a tool call it reads: a program that builds a command from data while it runs (Python that decodes a string and calls `ns`), a file the agent wrote that a test runner or build tool later runs (`conftest.py`, a `Makefile`, `package.json` scripts), a binary, or a library preloaded with `LD_PRELOAD`. It reads the profile from the local `origin/<base>` ref, which an indirect command could forge with `git update-ref`. Copies of token files made outside its sight are not seen either. Other ways to read files are not covered.
+
+## The real boundary
+
+Behind the guard, this is what stops a fooled agent. Only some of it is enforced outside ns-main:
+
+| What a fooled agent tries | What stops it |
+|---|---|
+| work in another repository or another owner's repositories | the token's repository selection (one owner per token) |
+| change repository settings, secrets, environments, rulesets | the token has no Administration, Secrets or Environments permission |
+| push to the default branch, force-push it, delete it | the ruleset `ns-default-branch` on the default branch (pull request required, force pushes blocked, deletion restricted) |
+| edit `.github/workflows/` | the token's missing Workflows permission, for `privacyfence` only; the `andras-tkcs` token has Workflows |
+| merge an open pull request (`ns stack merge`, `gh pr merge`) | **only the guard**, apart from the required status checks the ruleset names (a pull request with failing required checks cannot be merged). The ruleset requires a pull request with 0 approvals, and the agent token is your own fine-grained token, so GitHub cannot tell its merge from yours. The merge is visible in the pull request's timeline. |
+| push a tag or create a release (`ns tag`) | **only the guard.** Contents write covers tags. A tag changes nothing on ns-main by itself: the upgrade is a root command you run. |
+| read the token files of other owners | **only the guard and the file mode**: the files belong to user `ns`, which agents run as. A leaked token is limited by its scopes above. |
+| stop or remove runs, release a gate, read files outside the desk into a run (`ns kill`, `ns rm`, `ns gc`, `ns approve`, `--allow-outside`) | **only the guard**: these act as user `ns` on ns-main. |
+
+Check the part GitHub enforces in Review 1 and after every onboarding, as root with an admin token: `GH_TOKEN=<admin token> ns-gh audit <owner/repo>` lists the wanted ruleset, merge settings and workflow permissions against the current ones and changes nothing; `ns-gh apply` fixes what differs (see [Token scopes](#token-scopes)).
 
 ## Untrusted text
 
