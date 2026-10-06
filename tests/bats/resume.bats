@@ -181,7 +181,6 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   chmod +x "$NS_OPT/x/bin/ns-launch"
   printf '#!/usr/bin/env bash\necho ../x\n' >"$BATS_TEST_TMPDIR/fakehome/bin/ns-ledger"
   chmod +x "$BATS_TEST_TMPDIR/fakehome/bin/ns-ledger"
-  mkdir -p "$NS_OPT/v1"
   run bash -c 'NS_HOME="$1"; source "$2/bin/lib/common.sh"; source "$2/bin/lib/runs.sh"; ns_release_home /nonexistent' _ \
     "$BATS_TEST_TMPDIR/fakehome" "$NS_REPO_ROOT"
   assert_failure
@@ -209,4 +208,73 @@ EOS
   run ns-launch sbx-12 --resume
   assert_failure
   assert_output_contains "v0.0.1"
+}
+
+# fake_release <tag>: a copy of this checkout's bin/ and plugin dirs under $NS_OPT/<tag>
+fake_release() {
+  local r="$NS_OPT/$1"
+  mkdir -p "$r/plugins/ns" "$r/plugins/ns-python"
+  cp -a "$NS_REPO_ROOT/bin" "$r/"
+  cp "$NS_REPO_ROOT/plugins/ns-python/stack.yaml" "$r/plugins/ns-python/"
+}
+
+@test "ns-launch loads the plugins of the run's release when it is not current (#72)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  fake_release v0.0.9
+  fake_release v0.1.0
+  ln -s v0.1.0 "$NS_OPT/current"
+  ns-ledger set "$LEDGER" '.release="v0.0.9"'
+  run ns-launch sbx-12 --resume
+  assert_success
+  args="$BATS_TEST_TMPDIR/claude/call-1.args"
+  [ "$(grep -A1 -x -- '--plugin-dir' "$args" | grep -v -x -- '--plugin-dir' | grep -v -x -- '--')" = "$NS_OPT/v0.0.9/plugins/ns
+$NS_OPT/v0.0.9/plugins/ns-python" ]
+  # on the current release the marketplace plugins (pinned to current) are used
+  ns-ledger set "$LEDGER" '.release="v0.1.0"'
+  run ns-launch sbx-12 --resume
+  assert_success
+  [ "$(grep -c -x -- '--plugin-dir' "$BATS_TEST_TMPDIR/claude/call-2.args")" = 0 ]
+  # an explicit NS_PLUGIN_DIRS (a dev checkout, the e2e harness) wins
+  ns-ledger set "$LEDGER" '.release="v0.0.9"'
+  NS_PLUGIN_DIRS=/p/one run ns-launch sbx-12 --resume
+  assert_success
+  [ "$(grep -A1 -x -- '--plugin-dir' "$BATS_TEST_TMPDIR/claude/call-3.args" | tail -1)" = /p/one ]
+}
+
+@test "ns new, ns resume and ns approve refuse while the upgrade lock is held (#78)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  printf 'pid=%s\n' "$$" >"$NS_OPT/.upgrade.lock"
+  run ns new sbx-13 --tier T1 --yes
+  assert_failure 1
+  assert_output_contains "upgrade"
+  [ ! -e "$TMUX_STUB_DIR/sbx-13" ]
+  ! grep -q sbx-13 "$NS_CONFIG_DIR/runs.yaml"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  run ns resume sbx-12
+  assert_failure 1
+  assert_output_contains "upgrade"
+  [ "$(lget .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  ns-ledger set "$LEDGER" '.state="waiting" | .gate="1"'
+  before=$(git -C "$WT" rev-parse HEAD)
+  run ns approve sbx-12 --yes
+  assert_failure 1
+  assert_output_contains "upgrade"
+  [ "$(lget .gate)" = 1 ]
+  [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ]
+}
+
+@test "a stale upgrade lock (its bootstrap is gone) is ignored with a warning (#78)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  bash -c 'exit 0' &
+  dead=$!
+  wait "$dead"
+  printf 'pid=%s\n' "$dead" >"$NS_OPT/.upgrade.lock"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  run ns resume sbx-12
+  assert_success
+  assert_output_contains "stale upgrade lock"
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
 }
