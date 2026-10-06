@@ -132,8 +132,8 @@ doc_ntfy() {
     doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_TOPIC not set)"
     return 0
   fi
-  if ns_ntfy_public "${NS_NTFY_URL:-}"; then
-    doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_URL is not set or points at ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+  if ! ns_ntfy_own_url "${NS_NTFY_URL:-}"; then
+    doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
     return 0
   fi
   url="$NS_NTFY_URL"

@@ -35,16 +35,16 @@ args=(-q -sS -m 10 -o /dev/null -w '%{http_code}' -H "Title: Nightshift")
 [ -z "$url" ] || args+=(-H "Click: $url")
 [ -z "$priority" ] || args+=(-H "Priority: $priority")
 args+=(--data-raw "$text")
-endpoint="${NS_NTFY_URL:-https://ntfy.sh}/$NS_NTFY_TOPIC"
-# The token is only for your own ntfy: never sent to ntfy.sh (NS_NTFY_URL unset or ntfy.sh),
-# which then gets the message without it. Otherwise dies on a token file that is not
-# mode 600 or not an ntfy token.
+base_url="${NS_NTFY_URL:-https://ntfy.sh}"
+endpoint="${base_url%/}/$NS_NTFY_TOPIC"
+# The token is only for your own ntfy (ns_ntfy_own_url, an allowlist); any other
+# NS_NTFY_URL, ntfy.sh in any spelling included, gets the message without it. Otherwise
+# dies on a token file that is not mode 600 or not an ntfy token.
 token=""
-if ns_ntfy_public "${NS_NTFY_URL:-}"; then
-  [ ! -e "$(ns_config_dir)/tokens/ntfy" ] ||
-    ns_warn "not sending the ntfy token to ntfy.sh; set NS_NTFY_URL to your own ntfy"
-else
+if ns_ntfy_own_url "${NS_NTFY_URL:-}"; then
   token="$(ns_ntfy_token)"
+elif [ -e "$(ns_config_dir)/tokens/ntfy" ]; then
+  ns_warn "not sending the ntfy token: NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh"
 fi
 errfile="$(mktemp)"
 trap 'rm -f "$errfile"' EXIT

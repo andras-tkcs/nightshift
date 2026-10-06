@@ -145,7 +145,7 @@ hcloud context create nightshift-lab          # interactive: paste the lab token
 
 ### 7. ntfy topic and desk settings
 
-`~ns/.config/ns/env` (mode 600, owner `ns`) gets `NS_NTFY_TOPIC` (generated as `ns-<16 hex digits>` when absent), `NS_DESK_URL` (asked, for example `https://ns-desk.<domain>`) and optionally `NS_HEALTHCHECK_URL` (asked once, not shown). The script prints the topic: subscribe to it in the ntfy app. An ntfy.sh topic is public to anyone who knows the name, so messages only say "gate reached, run 123", never code or findings. The manual way, as `ns`:
+`~ns/.config/ns/env` (mode 600, owner `ns`) gets `NS_NTFY_TOPIC` (generated as `ns-<16 hex digits>` when absent), `NS_DESK_URL` (asked, for example `https://ns-desk.<domain>`) and optionally `NS_HEALTHCHECK_URL` (asked once, not shown). Optional lines you add by hand: `NS_NTFY_URL` (your own ntfy, `https://<host>[:port]`; default `https://ntfy.sh`) and `NS_NTFY_PRIORITY` (ntfy priority for every notification: `min`, `low`, `default`, `high`, `max` or `1` to `5`); see `ns-notify` in usage.md. The script prints the topic: subscribe to it in the ntfy app. An ntfy.sh topic is public to anyone who knows the name, so messages only say "gate reached, run 123", never code or findings. The manual way, as `ns`:
 
 ```bash
 mkdir -p ~/.config/ns && touch ~/.config/ns/env && chmod 600 ~/.config/ns/env

@@ -98,18 +98,16 @@ ns_has_token() {
   printf '%s' "$1" | LC_ALL=C grep -Eq "(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|tk_[$NS_ALNUM]{29})"
 }
 
-# ns_ntfy_public [url]: true when url is empty or its host is ntfy.sh or a subdomain of it,
-# the public server, where the ntfy token must never go.
-ns_ntfy_public() {
-  local host="${1:-}"
-  [ -n "$host" ] || return 0
-  host="${host#*://}"
-  host="${host%%[/?#]*}"
-  host="${host##*@}"
-  host="${host%%:*}"
-  host="${host%.}"
-  host="${host,,}"
-  [ "$host" = ntfy.sh ] || [[ $host == *.ntfy.sh ]]
+# ns_ntfy_own_url [url]: true only when url may get the ntfy token: an allowlist, so no
+# spelling of ntfy.sh slips through. It must be https://<host>[:port][/] with a host of
+# ASCII letters, digits, dots and dashes (no %, @, \ or path), and the host, lowercased and
+# without trailing dots, must not be ntfy.sh or a subdomain of it (the public server).
+ns_ntfy_own_url() {
+  local u="${1:-}" host re="^https://([$NS_ALNUM.-]+)(:[0-9]{1,5})?/?\$"
+  [[ $u =~ $re ]] || return 1
+  host="${BASH_REMATCH[1],,}"
+  while [ "${host%.}" != "$host" ]; do host="${host%.}"; done
+  [ -n "$host" ] && [ "$host" != ntfy.sh ] && [[ $host != *.ntfy.sh ]]
 }
 
 # ns_ntfy_token: prints the ntfy token from tokens/ntfy, or nothing if there is no such file.

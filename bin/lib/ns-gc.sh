@@ -231,7 +231,7 @@ gc_cleanup_run() {
 # gc_run <run-json>: runs gc_run_inner with the project owner's token exported, then
 # restores GH_TOKEN. The token never appears on a command line or in output.
 gc_run() {
-  local run="$1" repo owner id had=0 saved="" rc=0
+  local run="$1" repo owner id err had=0 saved="" rc=0
   id=$(jq -r .id <<<"$run")
   repo=$(ns_project_by_name "$(jq -r .project <<<"$run")" 2>/dev/null | jq -r '.repo // ""') || repo=""
   owner=${repo%%/*}
@@ -240,9 +240,11 @@ gc_run() {
     saved=$GH_TOKEN
   fi
   if [ -n "$owner" ]; then
-    # ns_token_export dies on a wrong file mode, so probe it in a subshell first
-    if ! (ns_token_export "$owner") >/dev/null 2>&1; then
-      gc_needs "$id" "token file for $owner is unusable (must be mode 600)"
+    # ns_token_export dies on a wrong file mode or the name ntfy, so probe it in a subshell
+    # first and pass on its reason (it never contains the token)
+    if ! err=$( (ns_token_export "$owner") 2>&1 >/dev/null); then
+      err="${err%%$'\n'*}"
+      gc_needs "$id" "token file for $owner is unusable: ${err#"${NS_CMD:-ns}: "}"
       return 0
     fi
     ns_token_export "$owner" >/dev/null 2>&1 || true
