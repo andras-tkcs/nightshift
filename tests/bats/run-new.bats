@@ -261,3 +261,56 @@ ns_run_ledger_of() {
   assert_output_contains "token"
   [ ! -d "$SBX-sbx-x1" ]
 }
+
+# launched_running: sbx-12 is running and its conductor log already holds an older session
+launched_running() {
+  ns new sbx-12 --tier T2 --yes >/dev/null
+  L="$SBX-sbx-12/.nightshift/runs/sbx-12/ledger.yaml"
+  ns-ledger set "$L" '.state = "running"'
+  mkdir -p "$NS_CONFIG_DIR/logs/sbx-12"
+  printf '%s\n' '{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'ve hit your session limit · resets 10pm (UTC)"}' >"$NS_CONFIG_DIR/logs/sbx-12/conductor.jsonl"
+}
+
+@test "ns-launch parks a run whose conductor hit a usage limit, paused until the reset" {
+  launched_running
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"You'"'"'ve hit your session limit · resets 11pm (UTC)"}' \
+    run ns-launch sbx-12 --resume
+  [ "$(ns-ledger get "$L" .state)" = parked ]
+  [ "$(ns-ledger get "$L" .budget.paused)" = true ]
+  [ "$(ns-ledger get "$L" .budget.paused_until)" = 2026-10-02T23:01:00Z ]
+  [ "$(ns-ledger get "$L" '[.events[] | select(.type == "usage-pause")] | length')" = 1 ]
+}
+
+@test "ns-launch backs off 15 minutes when the conductor's limit has no reset time" {
+  launched_running
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'ve hit your session limit"}' \
+    run ns-launch sbx-12
+  [ "$(ns-ledger get "$L" .state)" = parked ]
+  [ "$(ns-ledger get "$L" .budget.paused_until)" = 2026-10-02T21:15:00Z ]
+}
+
+@test "ns-launch escalates to gate 1.5 when the conductor hit a limit that does not reset" {
+  launched_running
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'re out of usage credits. Run /usage-credits to keep using Opus."}' \
+    run ns-launch sbx-12
+  [ "$(ns-ledger get "$L" .state)" = waiting ]
+  [ "$(ns-ledger get "$L" .gate)" = 1.5 ]
+  grep -q "out of usage credits" "$SBX-sbx-12/.nightshift/runs/sbx-12/escalation.md"
+  grep -q "^## Owner's answer" "$SBX-sbx-12/.nightshift/runs/sbx-12/escalation.md"
+}
+
+@test "ns-launch parks a run that wait paused when the conductor ends without parking" {
+  launched_running
+  ns-ledger set "$L" '.budget.paused = true | .budget.paused_until = "2026-10-02T22:00:00Z"'
+  run ns-launch sbx-12
+  [ "$(ns-ledger get "$L" .state)" = parked ]
+  [ "$(ns-ledger get "$L" .budget.paused_until)" = 2026-10-02T22:00:00Z ]
+}
+
+@test "ns-launch leaves a run alone after a normal conductor end, whatever the old log says" {
+  launched_running
+  run ns-launch sbx-12
+  assert_success
+  [ "$(ns-ledger get "$L" .state)" = running ]
+  [ "$(ns-ledger get "$L" '.budget.paused')" = false ]
+}
