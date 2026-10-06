@@ -115,25 +115,32 @@ setup() {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }
 
-@test "stack scenario: only run PRs whose chain bottoms out at its base branch are leftovers (sprint #122)" {
+@test "stack scenario: only run PRs whose chain belongs to its base branch are leftovers, by the library's rules (sprint #122, review S2, N5)" {
   # shellcheck source=/dev/null
   source "$E2E/scenarios/stack.sh"
-  local open plans
-  # the sandbox's old e2e PRs on other bases, one stacked PR on this base, one on a closed run branch,
-  # and a non-run PR on this base
+  local open plans closed
+  # old e2e PRs on other bases; a two-PR stack on this base; x9 on a closed run branch whose PR targeted
+  # this base; x3 on a closed run branch whose PR targeted an old base; x4 on a run branch with no PR found
+  # (unknown: counts, conservative); a non-run PR and a run PR without a plan branch on this base
   open='[
- {"head":"fix/sbx-x1","base":"e2e/20261002-1"},
- {"head":"feature/x4","base":"e2e/20261002-5"},
- {"head":"fix/sbx-x6","base":"feature/x4"},
- {"head":"fix/sbx-x7","base":"e2e/20261006-1"},
- {"head":"fix/sbx-x8","base":"fix/sbx-x7"},
- {"head":"fix/sbx-x9","base":"fix/sbx-x5"},
- {"head":"dependabot/x","base":"e2e/20261006-1"}
+ {"number":1,"head":"fix/sbx-x1","base":"e2e/20261002-1","createdAt":"2026-10-02T10:00:00Z"},
+ {"number":2,"head":"fix/sbx-x6","base":"fix/sbx-x1","createdAt":"2026-10-02T11:00:00Z"},
+ {"number":3,"head":"fix/sbx-x7","base":"e2e/20261006-1","createdAt":"2026-10-06T10:00:00Z"},
+ {"number":4,"head":"fix/sbx-x8","base":"fix/sbx-x7","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":5,"head":"fix/sbx-x9","base":"fix/sbx-x5","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":6,"head":"fix/sbx-x3","base":"fix/sbx-x2","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":7,"head":"fix/sbx-x4","base":"fix/sbx-x0","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":8,"head":"dependabot/x","base":"e2e/20261006-1","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":9,"head":"fix/sbx-x10","base":"e2e/20261006-1","createdAt":"2026-10-06T11:00:00Z"}
 ]'
-  plans=$(printf '%s\n' sbx-x1 sbx-x4 sbx-x6 sbx-x7 sbx-x8 sbx-x9)
-  run stack_leftovers "$open" "$plans" e2e/20261006-1 sbx
+  plans=$(printf '%s\n' sbx-x1 sbx-x3 sbx-x4 sbx-x6 sbx-x7 sbx-x8 sbx-x9)
+  closed='[
+ {"number":20,"headRefName":"fix/sbx-x5","baseRefName":"e2e/20261006-1","closedAt":"2026-10-06T12:00:00Z","merged":false},
+ {"number":21,"headRefName":"fix/sbx-x2","baseRefName":"e2e/20261002-3","closedAt":"2026-10-06T12:00:00Z","merged":false}
+]'
+  run stack_leftovers "$open" "$plans" e2e/20261006-1 sbx "fix/{slug}" "feature/{n}" "" "$closed"
   [ "$status" -eq 0 ]
-  [ "$output" = "fix/sbx-x7 fix/sbx-x8 fix/sbx-x9" ]
-  run stack_leftovers "$open" "$plans" e2e/20261002-5 sbx
-  [ "$output" = "feature/x4 fix/sbx-x6 fix/sbx-x9" ]
+  [ "$output" = "fix/sbx-x7 fix/sbx-x8 fix/sbx-x9 fix/sbx-x4" ]
+  run stack_leftovers "$open" "$plans" e2e/20261002-1 sbx "fix/{slug}" "feature/{n}" "" "$closed"
+  [ "$output" = "fix/sbx-x1 fix/sbx-x6 fix/sbx-x4" ]
 }
