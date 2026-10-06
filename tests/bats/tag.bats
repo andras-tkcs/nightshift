@@ -233,3 +233,42 @@ live_run() {
   run git -C "$REPO" tag -l v0.1.1
   [ -z "$output" ]
 }
+
+# changelog <text>: commit CHANGELOG.md with this text on main and push it
+changelog() {
+  printf '%s' "$1" >"$REPO/CHANGELOG.md"
+  git -C "$REPO" add CHANGELOG.md
+  git -C "$REPO" commit -q -m "changelog"
+  git -C "$REPO" push -q origin HEAD
+}
+
+@test "ns tag refuses while [Unreleased] in CHANGELOG.md has entries, and names the fix (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "[Unreleased]"
+  assert_output_contains "## [0.1.1]"
+  run git -C "$REPO" tag -l v0.1.1
+  [ -z "$output" ]
+}
+
+@test "ns tag refuses when CHANGELOG.md has no section for the version (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+}
+
+@test "ns tag tags when [Unreleased] is empty and the version has its section (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n\n[Unreleased]: https://example.invalid/compare/v0.1.1...HEAD\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run git -C "$BARE" tag -l v0.1.1
+  [ "$output" = "v0.1.1" ]
+}
+
+@test "ns tag does not check a repository without CHANGELOG.md (#88)" {
+  [ ! -e "$REPO/CHANGELOG.md" ]
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+}
