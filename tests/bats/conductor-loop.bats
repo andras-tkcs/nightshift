@@ -85,7 +85,7 @@ review_phase() {
   n=$(lget "[.phases[] | select(.id == \"$1\") | .review_rounds] | (.[0] // 0)")
   n=$((n + 1))
   printf -- '- non-blocking · README.md:1 · nothing · none\n\nREVIEW verdict=%s\n' "$2" >"$RUNDIR/review-$1-$n.md"
-  ns-conductor review-round sbx-12 "$1" >/dev/null
+  ns-conductor review-round sbx-12 "$1" "$2" >/dev/null
 }
 
 @test "--help lists the new subcommands and an unknown one still exits 2" {
@@ -569,7 +569,7 @@ review_phase() {
   grep -qE "^- [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}: p1-alpha at ${head:0:12}\$" "$RUNDIR/run-report.md"
 }
 
-@test "review-round records the verdict of RUN/review-<phase>-<n>.md and the reviewed head (ns-71)" {
+@test "review-round records the verdict and the reviewed head (ns-71)" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null
   mkphase p1-alpha a.txt alpha
@@ -579,15 +579,39 @@ review_phase() {
   [ "$(pstate p1-alpha reviewed_head)" = "$head" ]
   review_phase p1-alpha approve
   [ "$(pstate p1-alpha review_verdict)" = approve ]
-  [ "$(lget '.events[-1].note')" = "p1-alpha round 2 approve ${head:0:12}" ]
+  [ "$(lget '.events[-1].note')" = "p1-alpha round 2 approve" ]
   run "$NS_REPO_ROOT/bin/ns" status sbx-12
   assert_output_contains "rounds 2  review approve ${head:0:12}"
-  # no review file for round 3: the round counts, the verdict is missing
-  run ns-conductor review-round sbx-12 p1-alpha
-  assert_success
-  assert_output_contains "no verdict"
-  [ "$(pstate p1-alpha review_verdict)" = missing ]
+  # no review file for round 3: the argument is the verdict (changes at the T2 cap exits 7)
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_failure 7
+  [ "$(pstate p1-alpha review_verdict)" = changes ]
   [ "$(pstate p1-alpha review_rounds)" = 3 ]
+}
+
+@test "review-round refuses a verdict that contradicts RUN/review-<phase>-<n>.md and records nothing (ns-71)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  printf -- '- blocking · a.txt:1 · wrong · fix it\n\nREVIEW verdict=changes\n' >"$RUNDIR/review-p1-alpha-1.md"
+  events=$(lget '.events | length')
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 2
+  assert_output_contains "not verdict approve"
+  [ "$(lget '.events | length')" = "$events" ]
+  [ "$(lget '[.phases[] | select(.id == "p1-alpha")] | length')" = 0 ]
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_failure 8
+  # an approval needs a verdict line when the review file exists
+  printf -- '- non-blocking · a.txt:1 · fine · none\n' >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 2
+  assert_output_contains "no REVIEW verdict line"
+  # the matching verdict is recorded
+  printf -- '- non-blocking · a.txt:1 · fine · none\n\nREVIEW verdict=approve\n' >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_success
+  [ "$(pstate p1-alpha review_verdict)" = approve ]
 }
 
 @test "merge refuses without an approved review of the current phase head (ns-71)" {
