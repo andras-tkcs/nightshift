@@ -2,6 +2,7 @@
 # ns-73: stacked PRs, part 1 (ns-conductor stack-base, ns stack, stacked_on in ns status)
 
 load helpers
+load stack-gh
 
 setup() {
   ns_test_setup
@@ -48,19 +49,11 @@ plan_branch() {
   rm -rf "$w"
 }
 
-# pr_closed <json>: make `gh pr list --state closed` answer with the JSON.
-# The stub takes the first matching map line, so pr_closed must stay ahead of the `^pr list` line.
-pr_closed() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-closed.json"
-  { printf '0\tpr-closed.json\t^pr list .*--state closed\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
-  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
-}
+# pr_closed <json>: make the closed-PR search answer with the JSON (flat `gh pr list` shape)
+pr_closed() { stub_closed_prs "$1"; }
 
-# pr_list <json>: make `gh pr list` answer with the JSON
-pr_list() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-list.json"
-  printf '0\tpr-list.json\t^pr list\n' >>"$GH_STUB_RESPONSES/map"
-}
+# pr_list <json>: make the open-PR query answer with the JSON (flat `gh pr list` shape)
+pr_list() { stub_open_prs "$1" append; }
 
 PRS_ONE='[
  {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
@@ -491,4 +484,30 @@ set_base_branch() {
   assert_failure 7
   assert_output_contains "develop, fix/sbx-11 or fix/sbx-13"
   case "$output" in *main*) echo "names main: $output" >&2; return 1 ;; esac
+}
+
+# #85 item 1: more than 100 open PRs; the run PR is on the second page
+prs_150() {
+  jq -nc '[range(1; 150) | {number: ., headRefName: "dependabot/npm/x\(.)", baseRefName: "main", createdAt: "2026-10-01T10:00:00Z", reviewDecision: "", statusCheckRollup: []}]
+    + [{number: 150, headRefName: "fix/sbx-11", baseRefName: "main", createdAt: "2026-10-02T10:00:00Z", reviewDecision: "", statusCheckRollup: []}]'
+}
+
+@test "stack-base finds a run PR past the first 100 open PRs" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  plan_branch sbx-11
+  pr_list "$(prs_150)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-11 ]
+  grep -q "api graphql --paginate" "$GH_STUB_LOG"
+}
+
+@test "ns stack marks a closed base found past the first 100 closed PRs" {
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$(jq -nc '[range(1; 150) | {number: (1000 + .), headRefName: "old/x\(.)", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]
+    + [{number: 5, headRefName: "fix/sbx-11", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]')"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
 }

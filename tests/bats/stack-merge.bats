@@ -2,6 +2,7 @@
 # ns-74: stacked PRs, part 2 (ns stack merge, ns stack drop)
 
 load helpers
+load stack-gh
 
 setup() {
   ns_test_setup
@@ -44,12 +45,8 @@ plan_branch() {
   rm -rf "$w"
 }
 
-# pr_list <json>: make `gh pr list` answer with the JSON (ahead of the generic lines)
-pr_list() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-list.json"
-  { printf '0\tpr-list.json\t^pr list\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
-  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
-}
+# pr_list <json>: make the open-PR query answer with the JSON (ahead of the generic lines)
+pr_list() { stub_open_prs "$1" prepend; }
 
 # stack3 <review of the middle PR>: sbx-11 (#5) <- sbx-13 (#6) <- sbx-14 (#7) on main
 stack3() {
@@ -269,7 +266,7 @@ set_lint() {
 stack3_and_other() {
   stack3 APPROVED
   plan_branch sbx-15
-  pr_list "$(jq -c '. + [{"number":2,"headRefName":"fix/sbx-15","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]}]' "$GH_STUB_RESPONSES/pr-list.json")"
+  pr_list "$(jq -c '. + [{"number":2,"headRefName":"fix/sbx-15","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]}]' "$GH_STUB_RESPONSES/pr-list.flat.json")"
 }
 
 @test "ns stack merge ignores a run PR on another base branch" {
