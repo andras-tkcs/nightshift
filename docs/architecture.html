@@ -753,7 +753,7 @@ ns status 123           # read the ledger, no attach</div>
 
   <div class="st" style="border-color:var(--infra-line)">
     <div class="st-head"><h3>Start on a CX23, grow later</h3><span class="who ui">when bigger types are sold out</span></div>
-    <p>A CX23 (2 vCPU, 4 GB RAM, 40 GB disk) is enough for phases 2 and 3 and for small runs. It's tight for parallel phases, so start with <b>2 workers</b> in the global pool, not 4. Everything below keeps the same server, IP address and Tailscale identity.</p>
+    <p>A CX23 (2 vCPU, 4 GB RAM, 40 GB disk) is enough for phases 2 and 3 and for small runs. It's tight for parallel phases, so start with <b>2 workers</b> in the global pool, not 4. (Original sizing: ns-main now runs with 8 vCPU and 16 GB, <code>max_runs</code> 3 and <code>max_workers</code> 4; see docs/server.md.) Everything below keeps the same server, IP address and Tailscale identity.</p>
     <div class="tbl-wrap">
       <table style="min-width:640px">
         <thead><tr><th>When</th><th>Do</th><th>Reversible?</th></tr></thead>
@@ -1612,7 +1612,7 @@ apt -y install git tmux mosh curl jq ripgrep unzip build-essential \
   python3 python3-venv python3-pip pipx ufw unattended-upgrades   <span class="c"># python3* and pipx: stack python</span>
 timedatectl set-timezone Europe/Budapest
 
-<span class="c"># 4 GB swap as a safety net</span>
+<span class="c"># 4 GB swap as a safety net (kept on the 16 GB machine)</span>
 fallocate -l 4G /swapfile &amp;&amp; chmod 600 /swapfile &amp;&amp; mkswap /swapfile &amp;&amp; swapon /swapfile
 echo '/swapfile none swap sw 0 0' &gt;&gt; /etc/fstab
 
@@ -1970,7 +1970,7 @@ gh pr create --fill          <span class="c"># merge it yourself on GitHub once 
 ns project add &lt;you&gt;/nightshift --prefix ns</pre><button class="copy" type="button">Copy</button></div>
       <p class="note">No clash with your phase 3 clone: <code>ns project add</code> sees that <code>~/Coding/nightshift</code> already exists with the same origin and adopts it instead of cloning. Runs never work in the main checkout, only in worktrees, and the running Nightshift comes from <code>/opt/nightshift/&lt;tag&gt;</code>, so a run on this repo can't break the version that's executing it.</p>
       <ol start="4">
-        <li>Evening one, before bed: start <b>two</b> runs, a few minutes apart. Not more at once: issue #10 (the worker limit isn't enforced across runs) and 4 GB of RAM make three simultaneous runs risky.</li>
+        <li>Evening one, before bed: start <b>two</b> runs, a few minutes apart. Not more at once: issue #10 (the worker limit isn't enforced across runs) and 4 GB of RAM made three simultaneous runs risky. (Original sizing; ns-main now has 16 GB and <code>max_runs</code> 3.)</li>
       </ol>
       <div class="code"><pre>ns new ns-5 --tier T2      <span class="c"># issue #5: multiline desk HTML check + CSP header in templates/caddy/Caddyfile.tmpl</span>
 ns ls                      <span class="c"># wait until it shows running</span>
@@ -2001,7 +2001,7 @@ ns-notify "@/etc/hostname"     <span class="c"># issue #7: must arrive as the li
           </ul>
         </li>
       </ol>
-      <p class="note">You tag here, not an agent: Nightshift never tags outside a build's release phase. Nightshift's own <code>commands.test</code> is the full bats suite, about 20 minutes per check (issue #17), so these runs are slower than their size suggests. What this review doesn't cover: <code>ns-python</code> and a repo with risk zones, platforms and QA credentials. PrivacyFence is the first test of those, so read its first runs in phase 5 more carefully.</p>
+      <p class="note">You tag here, not an agent: Nightshift never tags outside a build's release phase. Nightshift's own <code>commands.test</code> is the full bats suite, run in parallel with <code>bats --jobs "$(nproc)" tests/bats</code> (issue #116), so the check adds several minutes to every run. What this review doesn't cover: <code>ns-python</code> and a repo with risk zones, platforms and QA credentials. PrivacyFence is the first test of those, so read its first runs in phase 5 more carefully.</p>
     </div>
     <details class="st">
       <summary style="cursor:pointer;font-weight:600">Reference: what bootstrap.sh does, step by step (the manual way)</summary>

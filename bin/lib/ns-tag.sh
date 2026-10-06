@@ -110,7 +110,7 @@ ns_tag_main() {
   if [ -n "$cmd" ]; then
     (cd "$repo" && bash -c "$cmd") >&2 || ns_die "project checks failed: not tagging"
   else
-    (cd "$repo" && { [ ! -x tests/lint ] || tests/lint; } && { [ ! -d tests/bats ] || bats tests/bats; }) >&2 ||
+    (cd "$repo" && { [ ! -x tests/lint ] || tests/lint; } && { [ ! -d tests/bats ] || bats --jobs "$(nproc)" tests/bats; }) >&2 ||
       ns_die "project checks failed: not tagging"
   fi
 

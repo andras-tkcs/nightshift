@@ -7,11 +7,11 @@ This page builds ns-main, a plain hardened Ubuntu server, before Nightshift is p
 | | |
 |---|---|
 | Hetzner project | `nightshift`, firewall `ns-fw`, name `ns-main` |
-| Machine | 2 vCPU, 4 GB RAM (3.8 GB usable), 75 GB disk |
+| Machine | Hetzner Cloud vServer in fsn1 (Falkenstein), 8 shared vCPU (Intel Xeon Skylake), 16 GB RAM (15.2 GB usable), 4 GB swap, 75 GB disk. Read from the machine on 2026-10-06 (`nproc`, `free -m`, `df -h /`, `/sys/class/dmi/id`, the metadata service). The metadata service does not report the server type: 8 shared Intel vCPU and 16 GB match a CX43, rescaled from the original CX23 (2 vCPU, 4 GB) with CPU and RAM only, so the disk kept its size |
 | System | Ubuntu 24.04 |
 | Agent user | `ns`, with no sudo on purpose |
-| Workers | `max_workers` is 2: never more than two at once, because of the 4 GB of RAM |
-| Conductors | `max_runs` is 2 (`config.yaml`): further runs wait as `queued` until a conductor ends (`ns dequeue`) |
+| Workers | `max_workers` is 4 (`config.yaml`; the code default is 2, which fits the 4 GB minimum) |
+| Conductors | `max_runs` is 3 (`config.yaml`; code default 2): further runs wait as `queued` until a conductor ends (`ns dequeue`) |
 | Reachable | only over Tailscale (name `ns-main`, tag `tag:ns-main`) |
 
 ## Do this first
@@ -22,7 +22,7 @@ This page builds ns-main, a plain hardened Ubuntu server, before Nightshift is p
 
 ## Create ns-main
 
-In the Hetzner console, project `nightshift`, Add server: Falkenstein, Ubuntu 24.04, IPv4 and IPv6, your Blink key, firewall `ns-fw`, Backups on, name `ns-main`. Pick a type with 2 vCPU and 4 GB RAM or more.
+In the Hetzner console, project `nightshift`, Add server: Falkenstein, Ubuntu 24.04, IPv4 and IPv6, your Blink key, firewall `ns-fw`, Backups on, name `ns-main`. Pick a type with 2 vCPU and 4 GB RAM or more (the minimum, R-ENV-5). ns-main started as a CX23 and now runs with 8 vCPU and 16 GB.
 
 ## Base system, swap and the agent user
 
@@ -35,7 +35,7 @@ apt -y install git tmux mosh curl jq ripgrep unzip build-essential \
 timedatectl set-timezone Europe/Budapest
 ```
 
-4 GB of swap as a safety net, because the machine has 4 GB of RAM:
+4 GB of swap as a safety net. It was sized for the original 4 GB machine and is kept on the 16 GB one:
 
 ```bash
 fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile

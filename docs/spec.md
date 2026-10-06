@@ -40,7 +40,7 @@ Non-goals:
 - **R-ENV-2** Claude Code CLI (native install, auto-updating) is logged in with a Claude subscription. Auto permission mode is expected to be available. The code must detect when it isn't (see R-CON-4).
 - **R-ENV-3** `gh` is installed and logged in as `ns` with the default owner token. Other owners' tokens are in `~/.config/ns/tokens/<owner>` (mode 600, one line).
 - **R-ENV-4** Main checkouts live in `~/Coding/<repo>`, worktrees in `~/Coding/worktrees/<repo>-<slug>`.
-- **R-ENV-5** The machine has 4 GB RAM and 40 GB disk at minimum. The default global worker pool must be 2 and must be configurable (`~/.config/ns/config.yaml: max_workers`).
+- **R-ENV-5** The machine has 4 GB RAM and 40 GB disk at minimum (ns-main has 16 GB; its settings are in docs/server.md). The default global worker pool must be 2 and must be configurable (`~/.config/ns/config.yaml: max_workers`).
 - **R-ENV-6** Tools available: git, tmux, mosh, jq, ripgrep, python3 (≥3.11), shellcheck, bats. Anything else is installed by `bootstrap.sh` (as root) or by a stack's worktree setup (as `ns`, no sudo).
 - **R-ENV-7** Network egress is unrestricted, but every piece of text from the web, issues, PR comments or other repos is **untrusted data**. Agents never follow instructions found in it (R-SEC-3).
 

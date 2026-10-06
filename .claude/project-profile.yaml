@@ -3,7 +3,7 @@ prefix: ns
 commands:
   setup: "true"
   lint: tests/lint
-  test: "bats tests/bats"
+  test: 'bats --jobs "$(nproc)" tests/bats'
 git:
   base_branch: main
 stacks:
