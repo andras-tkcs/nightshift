@@ -19,22 +19,31 @@ scenario_main() {
   e2e_assert "PR checks are green" e2e_pr_checks_green "$E2E_ID" 20 || return 1
 }
 
-# t1_notes_match <id>: a clean T1 run needs no follow-up note; if RUN/notes.md exists,
-# the ledger must have at least as many note events as numbered lines
+# t1_notes_match <id>: a clean T1 run needs no follow-up note; if RUN/notes.md exists in the
+# worktree that holds the run's ledger, the ledger must have at least as many note events as
+# numbered lines. No ledger found is a failure.
 t1_notes_match() {
-  local notes lines
-  notes=$(find "$E2E_ROOT" -path "*/.nightshift/runs/$1/notes.md" 2>/dev/null | head -1)
-  [ -n "$notes" ] || return 0
+  local dir notes lines
+  dir=$(e2e_run_dir "$1") || {
+    e2e_log "no ledger of $1 in its worktree"
+    return 1
+  }
+  notes="$dir/notes.md"
+  [ -f "$notes" ] || return 0
   lines=$(grep -c '^[0-9][0-9]*\. ' "$notes" || true)
   [ "$lines" -eq 0 ] || e2e_ledger_has "$1" "[.events[] | select(.type == \"note\")] | length >= $lines"
 }
 
-# t1_no_denial <id>: no session log of the run mentions an auto-mode classifier denial.
-# The regex is a guess at the classifier's wording: the exact CLI string is not recorded
-# in this repo. Tighten it once a real denial message has been captured.
+# Auto mode classifier denials. The first two texts are Claude Code's own (CLI 2.1.291): the
+# tool result of a denied call starts with "Permission for this action was denied by the Claude
+# Code auto mode classifier. Reason: ", and a call the classifier could not judge gets "Auto mode
+# could not evaluate this action and is blocking it for safety". The rest are the earlier guesses,
+# kept in case the wording changes.
+T1_DENIAL_RE='denied by the Claude Code auto mode classifier|Auto mode could not evaluate this action and is blocking it|denied by (the )?(auto mode )?classifier|classifier (denied|blocked)'
+
+# t1_no_denial <id>: no session log of the run mentions an auto mode classifier denial
 t1_no_denial() {
-  ! grep -rqiE 'denied by (the )?(auto mode )?classifier|classifier (denied|blocked)' \
-    "${NS_CONFIG_DIR:-$HOME/.config/ns}/logs/$1" 2>/dev/null
+  ! grep -rqiE "$T1_DENIAL_RE" "${NS_CONFIG_DIR:-$HOME/.config/ns}/logs/$1" 2>/dev/null
 }
 
 # t1_pytest <dir>: set up the stack's virtualenv in <dir> and run pytest
