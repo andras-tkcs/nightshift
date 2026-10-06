@@ -210,7 +210,11 @@ To move to a newer release, or back to an older one, as root:
 sudo /opt/nightshift/current/bin/bootstrap.sh --upgrade v0.1.1
 ```
 
-`--upgrade <tag>` runs only steps 8 and 9: it clones that tag to `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current`, and re-pins the marketplace and plugins to the tag. Earlier releases stay in place, so rollback is `--upgrade <old tag>`. A tag that does not exist exits 1 and changes nothing. Your dev clone `~ns/Coding/nightshift` is never touched.
+`--upgrade <tag>` runs only steps 8, 9 and 10: it clones that tag to `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current`, re-pins the marketplace and plugins to the tag, and installs and enables the `ns-gc` and `ns-health` timers with the units of that release. Earlier releases stay in place, so rollback is `--upgrade <old tag>`. A tag that does not exist exits 1 and changes nothing. Your dev clone `~ns/Coding/nightshift` is never touched.
+
+## While runs are live
+
+Every mode that changes the install (a plain run, `--upgrade`, any step) first checks for live jobs: a run's tmux session, its conductor process (`~ns/.config/ns/logs/<id>/conductor.pid`) or a worker (`~ns/.config/ns/workers/*.pid`). If there is one it refuses with exit 1 before step 1 and lists each as `id  state  release  pid`; `--force` proceeds anyway, in every mode. A run that is `running` in its ledger with nothing alive is a warning (`looks dead: ns kill <id> or ns stop <id>`), and runs at a gate, queued or parked are listed as information; neither blocks. `--check` changes nothing and reports the same lists. While it runs, the script holds `/opt/nightshift/.upgrade.lock`; `ns new`, `ns resume`, `ns dequeue` and `ns approve` refuse to start a conductor until it is removed at the end. A second `bootstrap.sh` refuses while the first holds the lock. Plugins are updated only by step 9 of the script, behind this check; see [operations.md](operations.md#updates).
 
 Check afterwards:
 
@@ -221,4 +225,4 @@ bootstrap.sh --check
 
 ## Running it again
 
-`bootstrap.sh` can be rerun at any time, for example after a failed step. `--check` always shows what it would do first.
+`bootstrap.sh` can be rerun at any time, for example after a failed step, but not while a job is live (see above). `--check` always shows what it would do first.
