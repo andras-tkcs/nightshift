@@ -47,7 +47,7 @@ A run on this repo executes the installed release while the checkout holds work 
 
 Releases are tagged by the owner, never by an agent (ADR 0007).
 
-1. In a pull request, move the `[Unreleased]` entries of `CHANGELOG.md` to a new version section `[X.Y.Z]` with the date, and leave an empty `[Unreleased]` above it. Get it reviewed and merged.
+1. In a pull request, move the `[Unreleased]` entries of `CHANGELOG.md` to a new version section `[X.Y.Z]` with the date, and leave an empty `[Unreleased]` above it. Get it reviewed and merged. The tag command refuses while `[Unreleased]` has entries or the version has no section (issue #88).
 2. The owner tags `main` and pushes the tag:
 
    ```bash

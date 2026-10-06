@@ -16,6 +16,9 @@ ns_desk_help() {
   printf 'absolute or relative to the desk directory; its first component names the\n'
   printf 'project. The note is copied to <repo path> on a new branch cut from the base\n'
   printf 'branch, pushed, and a pull request is opened. Nightshift never merges it.\n'
+  printf '<repo path> may not lie under .github/workflows/ or go through a symlink on the\n'
+  printf 'base branch. When a desk pull request for the same <repo path> is already open,\n'
+  printf 'it is printed and no second one is opened.\n'
   printf 'To start a run from a note without touching the repo, use ns new --from-desk.\n'
 }
 
@@ -44,7 +47,12 @@ ns_desk_main() {
   pname="${sub%%/*}"
   [ "$pname" != "$sub" ] || ns_die "$note: the note must be inside a project folder of the desk"
   case "$rel" in
-    /* | ".." | ../* | */.. | */../* | "") ns_die "$rel: repo path must be relative and stay inside the repo" ;;
+    /* | ".." | ../* | */.. | */../* | "" | . | ./* | */. | */./* | *//*)
+      ns_die "$rel: repo path must be relative, normalized and stay inside the repo"
+      ;;
+    .github/workflows | .github/workflows/*)
+      ns_die "$rel: refused: files under .github/workflows/ run as CI; add a workflow by hand"
+      ;;
   esac
   project=$(ns_project_by_name "$pname") || ns_die "project $pname is not registered"
   repo=$(jq -r .repo <<<"$project")
@@ -56,9 +64,32 @@ ns_desk_main() {
   ns_has_token "$(cat "$src")" && ns_die "$note: looks like it contains a token; remove it first"
   ns_token_export "${repo%%/*}"
 
+  # one desk PR per repo path: print an open one instead of opening a second
+  local open
+  if open=$(gh pr list --repo "$repo" --state open --limit 200 --json number,url,title,headRefName 2>/dev/null); then
+    url=$(jq -r --arg t "Add $rel from the desk" \
+      '[.[] | select((.headRefName | startswith("nightshift/desk-")) and .title == $t)][0].url // empty' <<<"$open") || url=""
+    if [ -n "$url" ]; then
+      printf 'already open for %s: %s (no second pull request opened)\n' "$rel" "$url"
+      return 0
+    fi
+  else
+    ns_warn "could not list open pull requests; a desk pull request for $rel may already be open"
+  fi
+
   br="nightshift/desk-$(basename "$rel" | tr -c 'A-Za-z0-9\n' '-' | sed 's/-*$//')-$(date +%s)-$RANDOM"
   pr_wt="$(ns_worktree_root)/${repo#*/}-${br#nightshift/}"
   git -C "$path" fetch -q origin "$base" || ns_die "could not fetch origin $base in $path"
+  # refuse a repo path that goes through (or is) a symlink on the base branch
+  local prefix="" rest="$rel"
+  while :; do
+    prefix="${prefix:+$prefix/}${rest%%/*}"
+    if [ "$(git -C "$path" ls-tree "origin/$base" -- "$prefix" | cut -c1-6)" = 120000 ]; then
+      ns_die "$rel: $prefix is a symlink on $base; refused"
+    fi
+    [ "$rest" != "${rest#*/}" ] || break
+    rest="${rest#*/}"
+  done
   mkdir -p "$(dirname "$pr_wt")"
   git -C "$path" worktree add -q -b "$br" "$pr_wt" "origin/$base" || ns_die "could not create worktree $pr_wt"
   body=$(mktemp)

@@ -94,6 +94,8 @@ ns_new_main() {
     esac
   done
   [ -n "$arg" ] || ns_usage "$NS_NEW_USAGE"
+  # --allow-outside only widens --from-desk; alone it is a mistake
+  [ "$allow_outside" = false ] || [ -n "$desk_file" ] || ns_usage "$NS_NEW_USAGE"
   if [ -n "$desk_file" ]; then
     [ -z "$text" ] && [ "$onboard" = false ] && [[ $arg =~ ^[a-z][a-z0-9]{0,9}$ ]] || ns_usage "$NS_NEW_USAGE"
     case "$desk_file" in

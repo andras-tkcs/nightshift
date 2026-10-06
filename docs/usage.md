@@ -6,6 +6,27 @@ You queue work for Nightshift with the `ns` command on the server, then review w
 
 Exit codes: 0 ok, 1 failure, 2 usage error; every command has --help.
 
+### Owner-only commands
+
+Some commands are yours alone. The guard hook refuses them when an agent runs them, in any form: by a full path, behind `env`, `nohup` or `xargs`, inside `bash -c`, `eval`, a script or `$(...)`, or with the name in a variable. They are:
+
+| Command | Why it is yours |
+|---|---|
+| `ns kill` | stops a run at once and kills its processes |
+| `ns tag` | tags and pushes a release; Nightshift never tags (R-SEC-2) |
+| `ns desk` (every subcommand) | opens a pull request in the project with the project owner's token |
+| `ns stack merge`, `ns stack drop` | merge pull requests into the base branch, or close one and push a revert, with the project owner's token |
+| `ns approve` | releases a gate: the gates are where you decide; for an onboarding run it also opens the pull request |
+| `ns project` | registers a project, clones it with the owner's token and starts its onboarding run |
+| `ns rm` (and `ns purge`) | deletes worktrees and branches, with `--remote` remote branches too, and closes pull requests |
+| `ns gc` | the daily housekeeping: deletes worktrees and remote branches of merged runs |
+| `ns new ... --allow-outside` | reads any file user `ns` can read into a run's request, which is pushed to GitHub |
+| `ns-launch` | starts a run's conductor with the project owner's token; `ns new` and `ns resume` call it |
+| `ns-gh apply` | changes a repository's GitHub settings |
+| `bin/lib/ns-*.sh` and their functions | the code of the commands above; it runs only through `ns` |
+
+Everything else stays open to agents, because runs need it or it changes nothing that matters: `ns ls`, `status`, `log`, `report`, `stack` (the list), `stop`, `resume`, `publish`, `profile`, `doctor`, `dequeue`, `drain`, `up`, `help`, `ns new` without `--allow-outside`, every command's `--help`, and the helpers `ns-conductor`, `ns-ledger`, `ns-notify` and `ns-gh audit`. Why these lines and what the guard cannot see are in [security.md](security.md#owner-only-commands).
+
 ### ns help
 
 ```
@@ -50,7 +71,7 @@ ns project add <owner/repo> --prefix <p> [--sandbox] [--branch <b>]
 
 The profile is read from the base branch (or from `--branch`) and checked in a temporary worktree; an invalid profile registers nothing. The stacks' setup runs there once, then the worktree is removed, the desk folder `/srv/ns-space/<repo>/runs` is created and the project is registered. If the base branch has no `.claude/project-profile.yaml`, the command registers the project and starts the onboarding run `<prefix>-onboard` (see `ns new --onboard` below). `--sandbox` marks the project as an end-to-end test target; `--branch` stores the ref the profile and base branch are read from.
 
-Running it again with the same repo and prefix prints `already registered` and exits 0. A different prefix for a registered repo, or a prefix used by another repo, exits 1.
+Running it again with the same repo and prefix prints `already registered` and exits 0. A different prefix for a registered repo, or a prefix used by another repo, exits 1. Agents cannot run it: the guard hook blocks it.
 
 ### ns new
 
@@ -69,7 +90,7 @@ At most `max_runs` conductors run at once (`~/.config/ns/config.yaml: max_runs`,
 
 If the run already exists, `ns new` prints `already running` and exits 0 when its tmux session is alive, and otherwise exits 1 and points to `ns resume`. A project whose base branch has no `.claude/project-profile.yaml` is refused until it has one: if the onboarding pull request is open, the message names it.
 
-`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The resolved path (symlinks followed) must lie inside the desk directory, else the command refuses with `outside the desk directory`; `--allow-outside` permits a file elsewhere. A note that looks like it contains a token is refused. The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
+`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The resolved path (symlinks followed) must lie inside the desk directory, else the command refuses with `outside the desk directory`; a symlink inside the desk that points outside it is refused the same way. `--allow-outside` permits a file elsewhere; it is only accepted together with `--from-desk` (alone it is a usage error) and only from you: the guard blocks it for agents. A note that looks like it contains a token is refused. The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
 
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
@@ -136,7 +157,7 @@ ns stop <id>
 ns kill <id>
 ```
 
-`ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL), resets `running` phases to `pending`, sets the state to `stopped`, records the state event `stopped: killed by owner`, commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
+`ns kill` stops a run now. It ends the run's tmux session, kills the conductor and every worker process group (SIGTERM, then SIGKILL, then it waits up to about 2 seconds until no live process is left in the group, so the ledger is written only after the conductor is gone), resets `running` phases to `pending`, sets the state to `stopped`, records the state event `stopped: killed by owner`, commits the ledger and sends one notification. The worktree and branches are kept and `ns resume <id>` restarts the run. On a run that is already stopped, done or failed with nothing left running it prints `<id> is already <state>`. Agents cannot run it: the guard hook blocks it.
 
 ### ns tag
 
@@ -144,7 +165,7 @@ ns kill <id>
 ns tag <vX.Y.Z> [--repo <dir>] [--yes]
 ```
 
-`ns tag` tags a release on the base branch (`main` unless the profile's `git.base_branch` says otherwise) of `--repo` (default: the repository of the current directory) and pushes the tag to `origin`. It refuses, with exit 1 and the reason, when the local base branch is dirty or differs from its `origin` counterpart, the name is not `vX.Y.Z`, the tag exists locally or on origin, the version is not the next patch, minor or major step after the newest tag, or the project checks (`commands.test` of the profile, else `tests/lint` and `bats --jobs "$(nproc)" tests/bats`) fail. It warns, but goes on, when CI on the commit is not green, still runs or cannot be read, and when Nightshift runs are active (listed with state and release), because `bootstrap.sh --upgrade` refuses while they are. The annotated tag message is `Release <tag>` plus the merged pull request titles since the last tag. It asks for confirmation unless `--yes` is given, then prints the root command `/opt/nightshift/current/bin/bootstrap.sh --upgrade <tag>`. Agents cannot run it: the guard hook blocks it.
+`ns tag` tags a release on the base branch (`main` unless the profile's `git.base_branch` says otherwise) of `--repo` (default: the repository of the current directory) and pushes the tag to `origin`. It refuses, with exit 1 and the reason, when the local base branch is dirty or differs from its `origin` counterpart, the name is not `vX.Y.Z`, the tag exists locally or on origin, the version is not the next patch, minor or major step after the newest tag, the repository has a `CHANGELOG.md` whose `[Unreleased]` section still has entries or which has no `[X.Y.Z]` section for the version (the message says to move the entries in the release pull request), or the project checks (`commands.test` of the profile, else `tests/lint` and `bats --jobs "$(nproc)" tests/bats`) fail. It warns, but goes on, when CI on the commit is not green, still runs or cannot be read, and when Nightshift runs are active (listed with state and release), because `bootstrap.sh --upgrade` refuses while they are. The annotated tag message is `Release <tag>` plus the merged pull request titles since the last tag: the title from each merge commit (`Merge pull request #N`) and the subject of each squash merge (`<title> (#N)`); other commits on the base branch are left out. The project checks always run locally, even when CI on the same commit is green: a tag cannot be taken back once the upgrade has run, and the suite takes a few minutes now that it runs in parallel. It asks for confirmation unless `--yes` is given, then prints the root command `/opt/nightshift/current/bin/bootstrap.sh --upgrade <tag>`. Agents cannot run it: the guard hook blocks it.
 
 ### ns resume
 
@@ -216,7 +237,7 @@ ns rm <id> [--force] [--remote] [--dry-run] [--yes]
 ns rm --all-stopped [--force] [--remote] [--dry-run] [--yes]
 ```
 
-`ns rm` (alias `ns purge`) removes a run that `ns gc` would not touch: one that is `stopped`, `failed`, `parked` or `done`. A `running` or `queued` run is refused with a pointer to `ns stop` / `ns kill`. It removes the run's worktrees, local branches, tmux session and desk folder (moved to `archive/` on the desk) and marks the run archived, so it only shows in `ns ls --all`. It lists what will go and asks for confirmation unless `--yes` is given; `--dry-run` only prints `would remove ...` lines. A worktree with uncommitted or unpushed work is refused (`needs you: <path>: uncommitted changes`) unless `--force`. Remote branches are deleted only with `--remote`, which also closes an open PR with a comment. `--all-stopped` does this for every non-archived stopped, failed or parked run. GitHub calls use the project owner's token, as `ns gc` does. Exit 0, or 1 when a run was refused or an action failed.
+`ns rm` (alias `ns purge`) removes a run that `ns gc` would not touch: one that is `stopped`, `failed`, `parked` or `done`. A `running` or `queued` run is refused with a pointer to `ns stop` / `ns kill`. It removes the run's worktrees, local branches, tmux session and desk folder (moved to `archive/` on the desk) and marks the run archived, so it only shows in `ns ls --all`. It lists what will go and asks for confirmation unless `--yes` is given; `--dry-run` only prints `would remove ...` lines. A worktree with uncommitted or unpushed work is refused (`needs you: <path>: uncommitted changes`) unless `--force`. Remote branches are deleted only with `--remote`, which also closes an open PR with a comment. `--all-stopped` does this for every non-archived stopped, failed or parked run. GitHub calls use the project owner's token, as `ns gc` does. Exit 0, or 1 when a run was refused or an action failed. Agents cannot run it: the guard hook blocks it.
 
 ### ns gc
 
@@ -232,7 +253,7 @@ For a **closed** PR (not merged) it does the same except that it never deletes t
 
 Desk archive folders older than 90 days are deleted. A worktree with uncommitted or unpushed work is never touched: it is reported as `needs you: <path>: <reason>` and its run is kept whole, as are runs that are not `done` or whose PR is still open. Project `.claude/worktrees/*` holding work are reported too. On the 1st of the month, or with `--monthly`, the stacks' `gc.monthly` targets (for Python `~/.cache/pip`) are removed.
 
-Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed.
+Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove ...` for the same items and changes nothing. The last line is a summary such as `ns gc: freed 1.2MB · 1 item(s) need you · reboot required · disk 85%`; it is sent with `ns-notify` (not in a dry run). When `NS_HEALTHCHECK_URL` is set and nothing failed, that URL is pinged. Exit 0, or 1 when an action failed. Agents cannot run it: the guard hook blocks it (the timer is not an agent).
 
 ### ns desk
 
@@ -240,7 +261,7 @@ Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove .
 ns desk import <path.md> <repo path>
 ```
 
-`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request. Agents cannot run it: the guard hook blocks it.
+`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, normalized, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. A `<repo path>` under `.github/workflows/` is refused (a workflow runs as CI; add one by hand), and so is a path that is, or goes through, a symlink on the base branch. A desk note that is a symlink to a file outside the desk is refused too. When a pull request from a `nightshift/desk-*` branch titled `Add <repo path> from the desk` is already open, the command prints `already open for <repo path>: <url>` and opens no second one; if the open pull requests cannot be listed it warns and goes on. Agents cannot run it: the guard hook blocks it.
 
 ### ns report
 
@@ -272,7 +293,7 @@ ns approve <id> [--yes]
 
 `ns approve` releases the gate a run waits at. For every published Markdown and YAML document it prints a unified diff between the branch copy and your desk copy (labels `branch:<source>` and `desk:<name>`), or `no changes: <name>`. Then it asks `Commit the desk versions and release gate <g> of <id>?`; answering anything but `y` prints `Nothing changed.` and exits 1 without touching files or the ledger. On yes it copies the changed desk files into the run worktree (HTML documents are never copied back), commits them with the trailer `Approved-By: owner` (an empty commit if nothing changed), clears the gate, records an `approved` event, pushes the ledger and runs `ns resume`, which starts the conductor again. A run that is not at a gate prints `<id> is not waiting at a gate; nothing to approve` and exits 0. A finished run at gate 2 (the pull request review) prints `<id> is at gate 2, the pull request review: read the handoff, then merge the PR on GitHub (/ns:review <id>); nothing to approve`, exits 0 and changes nothing. Before anything is copied, `ns approve` refuses with exit 1 if a desk file contains a token-shaped string or if a published source path leads outside the run worktree.
 
-`--yes` skips the question. It is only allowed for projects added with `--sandbox`, otherwise `ns approve` exits 2.
+`--yes` skips the question. It is only allowed for projects added with `--sandbox`, otherwise `ns approve` exits 2. Agents cannot run `ns approve`: the guard hook blocks it, because releasing a gate is your decision.
 
 An onboarding run (`<prefix>-onboard`) is approved differently: the desk files `project-profile.yaml`, `ns-github.env` and `<prefix>-invariants.md` are committed to a new branch `nightshift/onboard` cut from the base branch, as `.claude/project-profile.yaml`, `.claude/ns-github.env` and `.claude/skills/<prefix>-invariants/SKILL.md`. `ns approve` pushes the branch, opens a pull request with `gh pr create`, records its URL in the ledger, sets the run to `done` and does not start a conductor. It never merges the pull request: merge it yourself, then `ns new` works for the project.
 

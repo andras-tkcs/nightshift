@@ -108,6 +108,7 @@ Agents publish every gate document into one folder on `ns-main` (`/srv/ns-space`
 
 - No main: branch protection on `main`; agents never merge, tag a release or push to the base branch.
 - Scoped token: a fine-grained GitHub token per owner, limited to the registered repos.
+- Guard hook: a seatbelt that blocks token reads, protected-path edits, pushes to the base branch and the owner-only `ns` commands in any form it can parse; what only the guard stops is listed in [security.md](security.md#the-real-boundary).
 - No open ports: the server is reachable only inside your tailnet.
 - Untrusted text: issue bodies, PR comments and web pages are data; agents never follow instructions found in them.
 - Budgets: each tier has a wall-clock cap; hitting it stops and escalates.
