@@ -7,7 +7,7 @@ This page builds ns-main, a plain hardened Ubuntu server, before Nightshift is p
 | | |
 |---|---|
 | Hetzner project | `nightshift`, firewall `ns-fw`, name `ns-main` |
-| Machine | Hetzner Cloud vServer in fsn1 (Falkenstein), 8 shared vCPU (Intel Xeon Skylake), 16 GB RAM (15.2 GB usable), 4 GB swap, 75 GB disk. Read from the machine on 2026-10-06 (`nproc`, `free -m`, `df -h /`, `/sys/class/dmi/id`, the metadata service). The metadata service does not report the server type: 8 shared Intel vCPU and 16 GB match a CX43, rescaled from the original CX23 (2 vCPU, 4 GB) with CPU and RAM only, so the disk kept its size |
+| Machine | Hetzner Cloud vServer in fsn1 (Falkenstein), 8 vCPU (Intel Xeon Skylake), 16 GB RAM (15.2 GB usable), 4 GB swap, 80 GB disk (75 GB file system). Read from the machine on 2026-10-06 (`nproc`, `lscpu`, `free -m`, `lsblk`, `df -h /`, `/sys/class/dmi/id`, the metadata service). The server type is not known from the machine: the metadata service does not report it, and the 80 GB disk is neither a CX23 (40 GB) nor a CX43 (160 GB) disk, so it was most likely rescaled with CPU and RAM only from a type with an 80 GB disk |
 | System | Ubuntu 24.04 |
 | Agent user | `ns`, with no sudo on purpose |
 | Workers | `max_workers` is 4 (`config.yaml`; the code default is 2, which fits the 4 GB minimum) |
@@ -22,7 +22,7 @@ This page builds ns-main, a plain hardened Ubuntu server, before Nightshift is p
 
 ## Create ns-main
 
-In the Hetzner console, project `nightshift`, Add server: Falkenstein, Ubuntu 24.04, IPv4 and IPv6, your Blink key, firewall `ns-fw`, Backups on, name `ns-main`. Pick a type with 2 vCPU and 4 GB RAM or more (the minimum, R-ENV-5). ns-main started as a CX23 and now runs with 8 vCPU and 16 GB.
+In the Hetzner console, project `nightshift`, Add server: Falkenstein, Ubuntu 24.04, IPv4 and IPv6, your Blink key, firewall `ns-fw`, Backups on, name `ns-main`. Pick a type with 2 vCPU and 4 GB RAM or more (the minimum, R-ENV-5). ns-main now runs with 8 vCPU and 16 GB.
 
 ## Base system, swap and the agent user
 
@@ -30,7 +30,7 @@ As root over SSH (`ssh root@<ns-main-ipv4>` from Blink):
 
 ```bash
 apt update && apt -y full-upgrade
-apt -y install git tmux mosh curl jq ripgrep unzip build-essential \
+apt -y install git tmux mosh curl jq ripgrep unzip build-essential parallel \
   python3 python3-venv python3-pip pipx ufw unattended-upgrades
 timedatectl set-timezone Europe/Budapest
 ```
