@@ -30,6 +30,7 @@ release: v0.1.0                 # Nightshift release the run started on; null fo
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
 queued_for_slot: false           # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
 stacked_on: null                 # null | the base branch (git.base_branch) | run id of the PR this run is stacked on (ns-conductor stack-base)
+stack_skipped: []                # optional; open run PRs above stacked_on skipped because their checks failed, top first: [{run: sbx-13, number: 6}]
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
 updated: 2026-10-02T21:05:00Z
@@ -40,7 +41,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note`.
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N instead of #M` sentence).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 
