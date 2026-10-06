@@ -263,3 +263,27 @@ set_lint() {
   [ -z "$(line_of "pr close 6")" ]
   [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
 }
+
+# sprint (#122): a stack belongs to one base branch
+# stack3_and_other: stack3 plus sbx-15 (#2), an open run PR on another base branch
+stack3_and_other() {
+  stack3 APPROVED
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":2,"headRefName":"fix/sbx-15","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]}]' "$GH_STUB_RESPONSES/pr-list.json")"
+}
+
+@test "ns stack merge ignores a run PR on another base branch" {
+  stack3_and_other
+  run ns stack merge sbx
+  assert_success
+  [ -n "$(line_of "pr merge 7 ")" ]
+  [ -z "$(line_of "pr merge 2 ")" ]
+}
+
+@test "ns stack drop does not touch a run PR on another base branch" {
+  stack3_and_other
+  run ns stack drop sbx-15
+  assert_failure
+  assert_output_contains "no open run PR for sbx-15"
+  [ -z "$(line_of "pr close 2")" ]
+}

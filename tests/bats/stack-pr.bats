@@ -424,3 +424,47 @@ PRS_FORK='[
   assert_output_contains "fix/sbx-13"
   assert_output_contains "fix/sbx-14"
 }
+
+# sprint (#122): a stack belongs to one base branch; run PRs whose chain targets another base do not count
+PRS_OTHER_BASES='[
+ {"number":1,"headRefName":"fix/sbx-11","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":3,"headRefName":"fix/sbx-13","baseRefName":"e2e/20261002-2","createdAt":"2026-10-02T11:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":4,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T11:30:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "stack-base ignores open run PRs whose chain targets another base branch" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_OTHER_BASES"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+}
+
+@test "stack-base stacks on the chain of its own base branch next to chains on other bases" {
+  other_run_branch fix/sbx-15 main other.txt "from 15"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"main","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_OTHER_BASES")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-15 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-15 ]
+}
+
+@test "ns stack lists only the chains of the base branch and counts the others" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"main","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_OTHER_BASES")"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "#8"
+  case "$output" in *"chain 2"* | *" #1 "* | *" #4 "*) echo "other base listed: $output" >&2; return 1 ;; esac
+  assert_output_contains "3 open run PRs target other base branches"
+}
