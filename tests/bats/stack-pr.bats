@@ -539,3 +539,37 @@ prs_150() {
   run ns-conductor stack-base sbx-12
   case "$output" in *"closed without a merge"*) echo "false warning: $output" >&2; return 1 ;; esac
 }
+
+# #119 item 5: a cycle next to a normal chain, and a leaf above a cycle
+PRS_PARTIAL_CYCLE='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-14","createdAt":"2026-10-02T11:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":7,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "ns stack warns about a partial cycle and still lists the PRs in it" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_PARTIAL_CYCLE"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "cycle"
+  assert_output_contains "#5"
+  assert_output_contains "#6"
+  assert_output_contains "#7"
+}
+
+@test "ns stack lists a leaf above a cycle once per PR, with a warning" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T13:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_PARTIAL_CYCLE")"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "cycle"
+  [ "$(grep -c ' #6 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -c ' #7 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -c ' #8 ' <<<"$output")" -eq 1 ]
+}
