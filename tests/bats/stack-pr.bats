@@ -243,7 +243,7 @@ PRS_CHAINS='[
 PRS_ABOVE_CLOSED='[
  {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
 ]'
-CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null}]'
+CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null}]'
 
 @test "ns stack marks a PR whose base PR was closed unmerged" {
   plan_branch sbx-13
@@ -296,6 +296,8 @@ CLOSED_11_OLD='[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedA
   run ns stack sbx
   assert_success
   case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
+  # no PR of fix/sbx-11 was found for #6, so its base branch is unknown
+  assert_output_contains "base unknown"
 }
 
 @test "ns stack: an open PR with the same head hides the closed one" {
@@ -308,14 +310,18 @@ CLOSED_11_OLD='[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedA
   case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
 }
 
-@test "stack-base: a closed PR that predates the dependent PR gives no warning" {
+@test "stack-base: a closed PR that predates the dependent PR gives no closed warning; the base is unknown: gate 1.5" {
   other_run_branch fix/sbx-13 main top.txt "top"
   plan_branch sbx-13
   pr_list "$PRS_ABOVE_CLOSED"
   pr_closed "$CLOSED_11_OLD"
   run ns-conductor stack-base sbx-12
-  assert_success
   case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+  # review S2: a chain whose base PR is not found may belong to another base branch: escalate
+  assert_failure 7
+  assert_output_contains "#6"
+  assert_output_contains "fix/sbx-11"
+  [ ! -f "$CODE_WT/top.txt" ]
 }
 
 @test "stack-base: an open PR with the same head gives no closed warning" {
@@ -336,8 +342,8 @@ PRS_TWO_DEPS='[
  {"number":8,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-15","createdAt":"2026-10-02T12:30:00Z","reviewDecision":"","statusCheckRollup":[]}
 ]'
 CLOSED_REUSED_AND_TRUE='[
- {"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"},
- {"number":7,"headRefName":"fix/sbx-15","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}
+ {"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"},
+ {"number":7,"headRefName":"fix/sbx-15","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}
 ]'
 
 @test "ns stack: with two dependents only the one on a truly closed base is marked" {
@@ -506,7 +512,7 @@ prs_150() {
   plan_branch sbx-13
   pr_list "$PRS_ABOVE_CLOSED"
   pr_closed "$(jq -nc '[range(1; 150) | {number: (1000 + .), headRefName: "old/x\(.)", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]
-    + [{number: 5, headRefName: "fix/sbx-11", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]')"
+    + [{number: 5, headRefName: "fix/sbx-11", baseRefName: "main", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]')"
   run ns stack sbx
   assert_success
   assert_output_contains "base closed"
@@ -535,9 +541,12 @@ prs_150() {
  {"number":7,"headRefName":"fix/sbx-12","baseRefName":"main","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"","statusCheckRollup":[]},
  {"number":8,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-12","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
 ]'
-  pr_closed '[{"number":4,"headRefName":"fix/sbx-12","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}]'
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-12","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}]'
   run ns-conductor stack-base sbx-12
   case "$output" in *"closed without a merge"*) echo "false warning: $output" >&2; return 1 ;; esac
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
 }
 
 # #119 item 5: a cycle next to a normal chain, and a leaf above a cycle
@@ -592,10 +601,10 @@ prs_two_top() {
   run ns-conductor stack-base sbx-12
   assert_success
   [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
-  assert_output_contains "Stacked on #5 instead of #6 (checks failing on #6)"
+  assert_output_contains "Stacked on #5 (checks failing on #6)"
   [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-11 ]
   [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = 6 ]
-  ns-ledger get "$LEDGER" '.events[] | select(.type == "stack") | .note' | grep -qF "Stacked on #5 instead of #6 (checks failing on #6)"
+  ns-ledger get "$LEDGER" '.events[] | select(.type == "stack") | .note' | grep -qF "Stacked on #5 (checks failing on #6)"
   [ -f "$CODE_WT/other.txt" ]
   [ ! -f "$CODE_WT/top.txt" ]
 }
@@ -609,7 +618,7 @@ prs_two_top() {
   run ns-conductor stack-base sbx-12
   assert_success
   [ "$(tail -n 1 <<<"$output")" = main ]
-  assert_output_contains "Stacked on main instead of #6 (checks failing on #6, #5)"
+  assert_output_contains "Stacked on main (checks failing on #6, #5)"
   [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
   [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = "6,5" ]
   [ ! -f "$CODE_WT/other.txt" ]
@@ -626,4 +635,172 @@ prs_two_top() {
   [ "$output" = fix/sbx-13 ]
   [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
   [ "$(ns-ledger get "$LEDGER" '.stack_skipped // [] | length')" = 0 ]
+}
+
+# review B1: red leaves are pruned before the chains are counted, so a red skip never forces gate 1.5
+# prs <num:head:base:g|r|p>...: open run PRs with green, red or pending checks (createdAt by number)
+prs() {
+  local t json="[]" n h b c roll
+  for t in "$@"; do
+    IFS=: read -r n h b c <<<"$t"
+    case "$c" in r) roll="$FAIL_ROLLUP" ;; p) roll="$PEND_ROLLUP" ;; *) roll='[{"__typename":"CheckRun","name":"tests","conclusion":"SUCCESS","status":"COMPLETED"}]' ;; esac
+    json=$(jq -c --argjson n "$n" --arg h "$h" --arg b "$b" --argjson r "$roll" \
+      '. + [{number: $n, headRefName: $h, baseRefName: $b, createdAt: ("2026-10-02T1\($n % 10):00:00Z"), reviewDecision: "", statusCheckRollup: $r}]' <<<"$json")
+  done
+  printf '%s\n' "$json"
+}
+
+# skipped: the ledger's stack_skipped numbers, sorted
+skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sort | map(tostring) | join(",")'; }
+
+@test "stack-base: a red leaf beside a green leaf is pruned and the run stacks on the green one (B1 a)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-14 fix/sbx-11 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  assert_output_contains "Stacked on #7 (checks failing on #6)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-14 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: two green leaves left after pruning: exit 7 offers only the base and the green tops (B1 b)" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g 8:fix/sbx-15:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "main, fix/sbx-14 or fix/sbx-15"
+  case "$(grep "choose a base" <<<"$output")" in *fix/sbx-13*) echo "offers the red PR: $output" >&2; return 1 ;; esac
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: two chains from the base branch, one all red: stacks on the green top (B1 c)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:main:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: a red PR with a green PR above it is kept; its red sibling leaf is pruned (B1 d)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-14 fix/sbx-11 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:r 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: only tops decide: a red middle PR under a green top prunes nothing (B1 e)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-13 fix/sbx-11 b.txt b
+  other_run_branch fix/sbx-14 fix/sbx-13 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 8:fix/sbx-14:fix/sbx-13:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  [ "$(skipped)" = "" ]
+  case "$output" in *"checks failing"*) echo "skipped something: $output" >&2; return 1 ;; esac
+}
+
+@test "stack-base: red leaves down to a shared green PR stack on it; all red stacks on the base branch (B1 f)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  [ "$(skipped)" = "6,7" ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 5:fix/sbx-11:main:r 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:r)"
+  ns-ledger set "$LEDGER" '.stacked_on = null'
+  git -C "$CODE_WT" reset -q --hard origin/main
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  [ "$(skipped)" = "5,6,7" ]
+}
+
+# review S1: a PR already merged into the code branch is never skipped, nor anything below it
+@test "stack-base rerun keeps the PR it already merged even when its checks turned red (S1)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-13 fix/sbx-11 b.txt b
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
+  [ "$(skipped)" = "" ]
+}
+
+# review S2: a chain whose bottom targets a closed run branch belongs to the base that closed PR targeted
+@test "stack-base ignores a chain whose closed base PR targeted another base branch (S2)" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"e2e/old","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  run ns stack sbx
+  assert_success
+  assert_output_contains "1 open run PRs target other base branches"
+  assert_output_contains "no open run PRs"
+}
+
+@test "ns stack still marks a closed base whose PR targeted the base branch (S2)" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+  assert_output_contains "#8"
+}
+
+@test "stack-base stacks on a PR whose base PR was merged into the base branch, without a closed warning (S2)" {
+  other_run_branch fix/sbx-15 main e.txt e
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"MERGED","mergedAt":"2026-10-02T22:00:00Z","closedAt":"2026-10-02T22:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-15 ]
+  case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+# review N1: a failed closed search is not silent
+@test "stack-base warns when the closed-PR search fails" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  { printf '1\t-\t^api graphql .*ClosedRunPRs\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+  run ns-conductor stack-base sbx-12
+  assert_output_contains "could not search the closed PRs"
 }
