@@ -181,13 +181,13 @@ Set `budget.paused` to true or false and add an event `usage-pause` or `usage-re
 
 ### Usage limits
 
-A run paused on a usage limit does not wait in its session: the conductor parks it (`park`) once no worker is left, which frees its run slot, and `ns health-check` (every 5 minutes, after `ns dequeue`) runs `ns resume <id>` once `budget.paused_until` has passed, for a run with no open gate that is `parked` or `running` with a dead conductor. The resumed session restarts the pending phases and calls `unpause`.
+A run paused on a usage limit does not wait in its session: the conductor parks it (`park`) once no worker is left, which frees its run slot, and `ns health-check` (every 5 minutes, after `ns dequeue`) runs `ns resume <id>` once `budget.paused_until` has passed, for a run with no open gate that is `parked`, or `running` with a dead conductor while still paused (after the next launch has cleared the pause, a dead run is only reported). When a conductor session starts (`ns-launch`) after `paused_until` has passed, it ends the pause first: `budget.paused` false, `paused_until` cleared, `budget.since` now (an event `usage-resume`), so the wall-clock budget counts again even if the session never starts a phase. The resumed session restarts the pending phases; its `unpause` call is then a no-op.
 
 The conductor shares the Claude account with its workers, so its own session often ends on the same limit. When the conductor's session ends and the run is still `running` with no gate, `ns-launch` reads the last `result` of this session in `conductor.jsonl` with `bin/lib/usage_limit.py`:
 
-- A usage limit that resets: `budget.paused` and `budget.paused_until` are set (the reset time plus a minute, or 15 minutes doubling with each conductor limit since the last `unpause`, at most 4 hours; a later `paused_until` already set by `wait` is kept), an event `usage-pause` is added and the run is parked.
-- A limit that does not reset: workers are stopped, `RUN/escalation.md` quotes the message and the run goes to gate 1.5.
-- Any other end while `wait` had already paused the budget with a `paused_until` (the conductor died before `park`): the run is parked.
+- A usage limit that resets: `budget.paused` and `budget.paused_until` are set (the reset time plus a minute, or 15 minutes doubling with each conductor limit since the last progress event, at most 4 hours; a later `paused_until` already set by `wait` is kept), an event `usage-pause` is added and the run is parked.
+- A limit that does not reset, or the fourth conductor-side usage limit since the last progress event (`phase-start`, `phase-end`, `review`, `merge`, `gate`, `approved`, `tier`, `triage`): workers are stopped, `RUN/escalation.md` quotes the message and the run goes to gate 1.5.
+- Any other end while `wait` had paused the budget with a `paused_until` still in the future (the conductor died before `park`): the run is parked. An expired pause was already cleared at launch, so a session that ends normally is not parked and woken again.
 
 `usage_limits` of a phase is not reset when the owner lets the run continue past a gate 1.5 escalation, so a further usage limit of that phase escalates again at once. `ns stop` on a run parked on a usage limit stops it and clears `paused_until`.
 

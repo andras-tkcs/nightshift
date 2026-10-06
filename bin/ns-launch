@@ -35,14 +35,22 @@ after_conductor() {
     cls=$(python3 "$NS_HOME/bin/lib/usage_limit.py" "$now" <<<"$res") || cls=none
     IFS=$'\t' read -r kind until msg <<<"$cls" || true
   fi
+  if [ "$kind" = usage ]; then
+    # conductor-side limits since the last progress event; the 4th escalates like a phase's
+    n=$(ns-ledger get "$ledger" '[.events[] | select((.type == "usage-pause" and (.note | startswith("conductor hit"))) or (.type | IN("phase-start", "phase-end", "review", "merge", "gate", "approved", "tier", "triage")))] | reverse | map(.type == "usage-pause") | (index(false) // length)')
+    if [ "$((n + 1))" -gt 3 ]; then
+      kind=usage-final
+      msg="$((n + 1)) conductor usage limits without progress; last: $msg"
+    fi
+  fi
   case "$kind" in
     usage-final)
       ns-conductor stop "$id" >/dev/null || true
       run_dir="$wt/.nightshift/runs/$id"
       mkdir -p "$run_dir"
       {
-        printf '# Escalation: %s hit a usage limit that does not reset\n\n' "$id"
-        printf 'The conductor session ended on this message from Claude Code:\n\n> %s\n\n' "$msg"
+        printf '# Escalation: %s is stuck on a usage limit\n\n' "$id"
+        printf 'The conductor session ended on a usage limit that does not reset, or on too many in a row:\n\n> %s\n\n' "$msg"
         printf 'The run is waiting with its budget paused. Raise the limit or add usage credits, then approve to continue, or stop the run.\n\n'
         printf "## Owner's answer\n\n"
       } >"$run_dir/escalation.md"
@@ -52,8 +60,7 @@ after_conductor() {
       ;;
     usage)
       if ! [[ $until =~ ^[0-9]+$ ]]; then
-        # conductor limits since the last resume: 15 min, doubling, at most 4 h
-        n=$(ns-ledger get "$ledger" '[.events[] | select(.type == "usage-resume" or (.type == "usage-pause" and (.note | startswith("conductor hit")))) | .type] | reverse | (index("usage-resume") // length)')
+        # 15 min, doubling with each conductor limit since the last progress, at most 4 h
         backoff=$((900 << n))
         [ "$backoff" -le 14400 ] || backoff=14400
         until=$((now + backoff))
@@ -69,7 +76,8 @@ after_conductor() {
       ;;
     *)
       pu=$(ns-ledger get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end')
-      [ -n "$pu" ] || return 0
+      # park only for a pause still ahead; an expired one was cleared at launch
+      [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$now" ] || return 0
       ns-ledger event "$ledger" note "conductor ended during a usage pause until $pu; parked"
       ns-conductor park "$id"
       ;;
@@ -140,6 +148,16 @@ log="$(ns_config_dir)/logs/$id/conductor.jsonl"
 mkdir -p "$(dirname "$log")"
 
 cd "$wt"
+# an expired usage pause ends now: the budget counts again from here (R-BUD-2)
+if [ -f "$ledger" ]; then
+  pu=$(ns-ledger get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end') || pu=""
+  if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -le "$(date -u -d "$(ns_now)" +%s)" ]; then
+    if ! { ns-ledger set "$ledger" ".budget.paused = false | .budget.paused_until = null | .budget.since = \"$(ns_now)\"" &&
+      ns-ledger event "$ledger" usage-resume "usage pause until $pu has passed"; }; then
+      ns_warn "could not clear the expired usage pause"
+    fi
+  fi
+fi
 lines0=0
 [ ! -f "$log" ] || lines0=$(wc -l <"$log")
 rc=0
