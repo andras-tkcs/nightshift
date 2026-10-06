@@ -169,3 +169,40 @@ setup() {
   run stack_diff_is_own 1 1
   [ "$status" -ne 0 ]
 }
+
+@test "stack scenario: every stack_ function it calls is defined (re-review 4: stack_pr_urls was lost)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local f missing=""
+  for f in $(grep -oE '\bstack_[a-z_]+' "$E2E/scenarios/stack.sh" | sort -u); do
+    declare -F "$f" >/dev/null || missing="$missing $f"
+  done
+  [ -z "$missing" ] || { echo "undefined:$missing" >&2; return 1; }
+}
+
+@test "stack scenario: stack_changes credits a deleted file's lines to that file (re-review 5)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local diff
+  diff='diff --git a/KEEP.md b/KEEP.md
+--- a/KEEP.md
++++ b/KEEP.md
+@@ -1 +1 @@
+-old
++new
+diff --git a/GONE.md b/GONE.md
+deleted file mode 100644
+--- a/GONE.md
++++ /dev/null
+@@ -1 +0,0 @@
+-gone line
+diff --git a/NEW.md b/NEW.md
+new file mode 100644
+--- /dev/null
++++ b/NEW.md
+@@ -0,0 +1 @@
++fresh'
+  run stack_changes <<<"$diff"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'KEEP.md\t-old\nKEEP.md\t+new\nGONE.md\t-gone line\nNEW.md\t+fresh')" ]
+}

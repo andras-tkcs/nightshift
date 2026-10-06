@@ -803,4 +803,34 @@ skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sor
   mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
   run ns-conductor stack-base sbx-12
   assert_output_contains "could not search the closed PRs"
+  # the base of #8 cannot be told without the closed list: gate 1.5
+  assert_failure 7
+}
+
+# re-review 1: a red PR whose base is unknown is not pruned (it may belong to another base): it escalates
+@test "stack-base does not prune a red PR whose base is unknown; it escalates instead" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:r)"
+  pr_closed '[]'
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  case "$output" in *"Stacked on"* | *"skipped (checks failing)"*) echo "pruned an unknown-base PR: $output" >&2; return 1 ;; esac
+  [ "$(skipped)" = "" ]
+}
+
+# re-review 2: ns stack searches the closed PRs once per project
+@test "ns stack searches the closed PRs once and warns once when the search fails" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+  [ "$(grep -c "ClosedRunPRs" "$GH_STUB_LOG")" -eq 1 ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  { printf '1\t-\t^api graphql .*ClosedRunPRs\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+  run ns stack sbx
+  [ "$(grep -c "could not search the closed PRs" <<<"$output")" -eq 1 ]
 }
