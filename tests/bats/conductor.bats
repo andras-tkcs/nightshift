@@ -184,15 +184,64 @@ EOF
   grep -q 'PHASE-REPORT p1-alpha' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl"
 }
 
-@test "wait on a usage limit pauses the budget and resets the phase" {
-  CLAUDE_STUB_RESULT="You hit your usage limit" run ns-conductor start sbx-12 p1-alpha
-  assert_success
-  run ns-conductor wait sbx-12 --timeout 30
-  assert_success
+# assert_usage_limit: the phase finished on a usage limit
+assert_usage_limit() {
   [ "$output" = "finished p1-alpha usage-limit" ]
   [ "$(lget .budget.paused)" = true ]
   [ "$(pstate p1-alpha state)" = pending ]
   [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" = 1 ]
+}
+
+# assert_normal_finish: the phase finished normally and went to review
+assert_normal_finish() {
+  [ "$output" = "finished p1-alpha exit 0" ]
+  [ "$(lget '.budget.paused // false')" = false ]
+  [ "$(pstate p1-alpha state)" = review ]
+  [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" = 0 ]
+}
+
+@test "wait on a usage limit pauses the budget and resets the phase" {
+  # the shape claude -p prints when a subscription limit ends the turn
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"num_turns":3,"stop_reason":"stop_sequence","result":"You'"'"'ve hit your session limit · resets 3pm (Europe/Budapest)"}' \
+    run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_usage_limit
+}
+
+@test "wait on an older usage-limit error text without a status pauses the budget" {
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1759750000"}' \
+    run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_usage_limit
+}
+
+@test "wait: a successful result that mentions a rate limiter is not a usage limit" {
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"result":"Added the rate limiter; a client over the usage limit gets a 429 (rate limit exceeded).\n\nPHASE-REPORT p1-alpha status=done head=abc"}' \
+    run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_normal_finish
+}
+
+@test "wait: an error result for another reason is not a usage limit" {
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":40,"errors":["Reached maximum number of turns (40)"]}' \
+    run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_normal_finish
+  ns-ledger set "$LEDGER" '.phases |= map(.state = "pending")'
+  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"api_error_status":500,"result":"API Error: 500 Internal server error while the rate limiter test ran"}' \
+    run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_normal_finish
 }
 
 @test "wait with a sleeping worker times out with 124" {

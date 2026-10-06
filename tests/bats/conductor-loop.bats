@@ -290,17 +290,56 @@ mkphase() {
   assert_output_contains "status=blocked"
 }
 
-@test "review-round counts rounds and exits 7 on the fourth for T2" {
-  run ns-conductor review-round sbx-12 p1-alpha
+@test "review-round counts rounds; a T2 approve on round 3 does not escalate" {
+  run ns-conductor review-round sbx-12 p1-alpha changes
   assert_success
-  ns-conductor review-round sbx-12 p1-alpha >/dev/null
-  run ns-conductor review-round sbx-12 p1-alpha
+  assert_output_contains "review round 1 of 3"
+  run ns-conductor review-round sbx-12 p1-alpha changes
   assert_success
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_success
+  assert_output_contains "review round 3 of 3"
   [ "$(pstate p1-alpha review_rounds)" = 3 ]
-  run ns-conductor review-round sbx-12 p1-alpha
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 3 ]
+  [ "$(lget '[.events[] | select(.type == "review")] | last | .note')" = "p1-alpha round 3 approve" ]
+}
+
+@test "review-round: a T2 changes verdict on round 3 exits 7 without a fourth review" {
+  ns-conductor review-round sbx-12 p1-alpha changes >/dev/null
+  ns-conductor review-round sbx-12 p1-alpha changes >/dev/null
+  run ns-conductor review-round sbx-12 p1-alpha changes
   assert_failure 7
-  [ "$(pstate p1-alpha review_rounds)" = 4 ]
-  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 4 ]
+  assert_output_contains "round 3"
+  assert_output_contains "cap of 3"
+  [ "$(pstate p1-alpha review_rounds)" = 3 ]
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 3 ]
+}
+
+@test "review-round honours a configured cap exactly" {
+  local c="$BATS_TEST_TMPDIR/profile-clone"
+  git clone -q "$BARE" "$c"
+  printf 'budgets:\n  T2: {hours: 8, review_rounds: 2}\n' >>"$c/.claude/project-profile.yaml"
+  git -C "$c" commit -q -am "profile: two review rounds"
+  git -C "$c" push -q origin main
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_success
+  assert_output_contains "review round 1 of 2"
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_failure 7
+  assert_output_contains "cap of 2"
+  run ns-conductor review-round sbx-12 p2-beta changes
+  assert_success
+  run ns-conductor review-round sbx-12 p2-beta approve
+  assert_success
+  assert_output_contains "review round 2 of 2"
+}
+
+@test "review-round needs a verdict of approve or changes" {
+  run ns-conductor review-round sbx-12 p1-alpha
+  assert_failure 2
+  run ns-conductor review-round sbx-12 p1-alpha maybe
+  assert_failure 2
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 0 ]
 }
 
 @test "merge makes a --no-ff merge with the trailer, pushes, removes the phase worktree, marks merged" {
