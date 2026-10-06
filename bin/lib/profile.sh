@@ -23,3 +23,35 @@ ns_profile_json() {
       '.git.base_branch = $b | .project = $p | .prefix = $x | .stacks = [] | .checks = []'
   return 3
 }
+
+# ns_profile_checks_run <dir> <profile json> <log file>: run the profile's checks in <dir> in a clean
+# environment, one line per check on stdout (PASS|SKIP|FAIL <stack> <name>), their output to the log.
+# A python test (or any pytest command) exiting 5 collected no tests: SKIP. Without checks it prints
+# "SKIP no checks configured". Returns 1 when a check failed, else 0.
+ns_profile_checks_run() {
+  local dir="$1" prof="$2" log="$3" n total stack name cmd crc failed=0
+  total=$(jq '(.checks // []) | length' <<<"$prof")
+  if [ "$total" -eq 0 ]; then
+    printf 'SKIP no checks configured\n'
+    return 0
+  fi
+  : >"$log"
+  for ((n = 0; n < total; n++)); do
+    stack=$(jq -r ".checks[$n].stack" <<<"$prof")
+    name=$(jq -r ".checks[$n].name" <<<"$prof")
+    cmd=$(jq -r ".checks[$n].cmd" <<<"$prof")
+    printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
+    crc=0
+    (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
+      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
+    if [ "$crc" -eq 0 ]; then
+      printf 'PASS %s %s\n' "$stack" "$name"
+    elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
+      printf 'SKIP %s %s\n' "$stack" "$name"
+    else
+      printf 'FAIL %s %s\n' "$stack" "$name"
+      failed=1
+    fi
+  done
+  return "$failed"
+}

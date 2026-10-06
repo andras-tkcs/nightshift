@@ -101,10 +101,10 @@ conductor_feature() {
 # conductor_stack_base <id>: print the base branch for the run's PR. With open PRs of other
 # runs it merges the top of the stack into the code branch (never a rebase), records
 # stacked_on and prints that branch; exit 6 on a conflict (the merge is left in progress), exit 7
-# when the open run PRs form more than one chain.
+# when, after pruning red leaves, the open run PRs form more than one chain or a chain's base is unknown.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since skipped row msg rem changed chains choices unknown
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
@@ -112,20 +112,33 @@ conductor_stack_base() {
   fixpat=$(jq -r '.git.fix_branch' <<<"$profile")
   featpat=$(jq -r '.git.feature_branch' <<<"$profile")
   prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$(jq -r .path <<<"$project")") || ns_die "could not list the pull requests of $repo"
-  others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
   own_on=$(lg get "$ledger" '.stacked_on // empty')
+  # the run has no PR yet: fall back to the time the run was created
+  own_created=$(jq -r --arg me "$id" '[.[] | select(.run == $me) | .createdAt][0] // empty' <<<"$prs")
+  [ -n "$own_created" ] || own_created=$(lg get "$ledger" '.created // empty')
+  # the closed list (closed and merged PRs) is only needed for a base that is a run branch without an open PR,
+  # or for a run stacked on another run; the candidates come from the full list, so this run's own open PR
+  # hides a reused head name. One search serves the base-branch check and the closed-base warnings.
+  cands=$(ns_stack_closed_candidates "$prs" "$base" "$fixpat" "$featpat" "$prefix")
   clist="[]"
-  if [ "$others" != "[]" ] || { [ -n "$own_on" ] && [ "$own_on" != "$base" ]; }; then clist=$(ns_stack_closed_list "$repo"); fi
-  closed=$(ns_stack_closed_heads "$repo" "$others" "$base" "$clist")
+  if [ "$cands" != "[]" ] || { [ -n "$own_on" ] && [ "$own_on" != "$base" ]; }; then
+    since=$(ns_stack_closed_since "$prs" "$cands")
+    if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
+      since=$( { [ -z "$since" ] || printf '%s\n' "$since"; [ -z "$own_created" ] || printf '%s\n' "$own_created"; } | sort | head -n 1)
+      [ -n "$own_created" ] || since=""
+    fi
+    clist=$(ns_stack_closed_list "$repo" "$since")
+  fi
+  # a stack belongs to one base branch: chains that bottom out at another base do not count
+  prs=$(ns_stack_on_base "$prs" "$base" "$fixpat" "$featpat" "$prefix" "$repo" "$clist")
+  others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
+  closed=$(ns_stack_closed_heads "$repo" "$prs" "$base" "$clist")
   while IFS= read -r c; do
     [ -n "$c" ] || continue
     printf 'warning: the base of %s (%s) is a PR closed without a merge: use ns stack drop\n' \
       "$(jq -r --arg c "$c" '[.[] | select(.base == $c)][0].run' <<<"$others")" "$c" >&2
   done < <(jq -r '.[].base' <<<"$others" | sort -u | grep -xFf <(printf '%s\n' "$closed") || true)
   if [ -n "$own_on" ] && [ "$own_on" != "$base" ]; then
-    # the run has no PR yet: fall back to the time the run was created
-    own_created=$(jq -r --arg me "$id" '[.[] | select(.run == $me) | .createdAt][0] // empty' <<<"$prs")
-    [ -n "$own_created" ] || own_created=$(lg get "$ledger" '.created // empty')
     while IFS= read -r c; do
       [ -n "$c" ] || continue
       if [ "$(ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$c" || true)" = "$own_on" ] &&
@@ -133,14 +146,58 @@ conductor_stack_base() {
         printf 'warning: %s is stacked on %s (%s), a PR closed without a merge: use ns stack drop\n' "$id" "$own_on" "$c" >&2
         break
       fi
-    done < <(jq -r --arg t "$own_created" '.[] | select(.closedAt >= $t) | .headRefName' <<<"$clist")
+    done < <(jq -r --arg t "$own_created" '.[] | select((.merged | not) and .closedAt >= $t) | .headRefName' <<<"$clist")
   fi
-  if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
-    tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')
-    printf 'more than one chain of open run PRs (tops: %s): choose a base by hand (gate 1.5)\n' "$tops" >&2
+  # red base: prune red leaves until nothing changes. A leaf is a PR no remaining run PR is based on; it is
+  # pruned when its checks fail (pending and no checks count as not red) and its head is not already merged
+  # into the code branch (a PR this run stacked on before stays, and so does everything below it). Only tops
+  # decide: a red PR with a remaining PR above it is never pruned.
+  dir=$(loop_code_wt)
+  rem="$others"
+  skipped="[]"
+  changed=1
+  while [ "$changed" -eq 1 ]; do
+    changed=0
+    while IFS= read -r row; do
+      [ -n "$row" ] || continue
+      [ "$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")" = fail ] || continue
+      # a PR whose base is unknown may belong to another base branch: it escalates below, it is not skipped
+      [ "$(jq -r '.base_unknown // false' <<<"$row")" != true ] || continue
+      head=$(jq -r .head <<<"$row")
+      if [ -d "$dir" ] && git -C "$dir" fetch -q origin "$head" 2>/dev/null &&
+        git -C "$dir" merge-base --is-ancestor "origin/$head" HEAD 2>/dev/null; then
+        continue
+      fi
+      rem=$(jq -c --argjson n "$(jq .number <<<"$row")" 'map(select(.number != $n))' <<<"$rem")
+      skipped=$(jq -c --argjson r "$row" '. + [{run: $r.run, number: $r.number}]' <<<"$skipped")
+      changed=1
+    done < <(jq -c '. as $all | [.[] | . as $p | select(any($all[]; .base == $p.head) | not)] | sort_by(.number) | reverse | .[]' <<<"$rem")
+  done
+  lg set "$ledger" ".stack_skipped = $skipped"
+  [ "$skipped" = "[]" ] || printf 'skipped (checks failing): %s\n' "$(jq -r 'map("#\(.number)") | join(", ")' <<<"$skipped")" >&2
+  chains=$(ns_stack_chains "$rem")
+  tops=$(jq -c '[.[] | last | .head]' <<<"$chains")
+  choices=$(jq -r --arg b "$base" '[$b] + . | if length == 1 then .[0] else (.[:-1] | join(", ")) + " or " + .[-1] end' <<<"$tops")
+  unknown=$(jq -r '. as $all | [.[] | select(.base_unknown == true) | . as $p
+    | select(any($all[]; .head == $p.base) | not) | "#\(.number) (base \(.base))"] | join(", ")' <<<"$rem")
+  if [ -n "$unknown" ]; then
+    lg checkpoint "$ledger"
+    printf 'cannot tell which base branch the chain of %s belongs to (no open or closed PR found for that base): choose a base by hand (gate 1.5): %s\n' \
+      "$unknown" "$choices" >&2
     exit 7
   fi
-  top=$(jq -c 'last // empty' <<<"$others")
+  if [ "$(jq length <<<"$chains")" -gt 1 ]; then
+    lg checkpoint "$ledger"
+    printf 'more than one chain of open run PRs on %s (tops: %s): choose a base by hand (gate 1.5): %s\n' \
+      "$base" "$(jq -r 'join(", ")' <<<"$tops")" "$choices" >&2
+    exit 7
+  fi
+  top=$(jq -c '.[0][-1] // empty' <<<"$chains")
+  if [ "$skipped" != "[]" ]; then
+    msg="Stacked on $(if [ -n "$top" ]; then jq -r '"#\(.number)"' <<<"$top"; else printf '%s' "$base"; fi) (checks failing on $(jq -r 'map("#\(.number)") | join(", ")' <<<"$skipped"))"
+    printf '%s\n' "$msg" >&2
+    lg event "$ledger" stack "$msg"
+  fi
   if [ -z "$top" ]; then
     lg set "$ledger" ".stacked_on = $(jstr "$base")"
     lg checkpoint "$ledger"
@@ -149,7 +206,6 @@ conductor_stack_base() {
   fi
   head=$(jq -r .head <<<"$top")
   stacked=$(jq -r .run <<<"$top")
-  dir=$(loop_code_wt)
   [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
   own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
   if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
@@ -200,37 +256,12 @@ loop_checks() {
 }
 
 loop_checks_body() {
-  local target="$1" dir log n stack name cmd failed=0 total crc
+  local target="$1" dir log
   dir=$(loop_phase_wt "$target")
   [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
-  total=$(jq '(.checks // []) | length' <<<"$profile")
-  if [ "$total" -eq 0 ]; then
-    printf 'no checks configured\n'
-    return 0
-  fi
   ns_private_dir "$logdir"
   log="$logdir/$target.checks.log"
-  : >"$log"
-  n=0
-  while [ "$n" -lt "$total" ]; do
-    stack=$(jq -r ".checks[$n].stack" <<<"$profile")
-    name=$(jq -r ".checks[$n].name" <<<"$profile")
-    cmd=$(jq -r ".checks[$n].cmd" <<<"$profile")
-    printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
-    crc=0
-    (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
-      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
-    if [ "$crc" -eq 0 ]; then
-      printf 'PASS %s %s\n' "$stack" "$name"
-    elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
-      printf 'SKIP %s %s\n' "$stack" "$name"
-    else
-      printf 'FAIL %s %s\n' "$stack" "$name"
-      failed=1
-    fi
-    n=$((n + 1))
-  done
-  if [ "$failed" -eq 1 ]; then
+  if ! ns_profile_checks_run "$dir" "$profile" "$log"; then
     tail -n 40 "$log"
     return 1
   fi

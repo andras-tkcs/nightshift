@@ -2,6 +2,7 @@
 # ns-74: stacked PRs, part 2 (ns stack merge, ns stack drop)
 
 load helpers
+load stack-gh
 
 setup() {
   ns_test_setup
@@ -44,12 +45,8 @@ plan_branch() {
   rm -rf "$w"
 }
 
-# pr_list <json>: make `gh pr list` answer with the JSON (ahead of the generic lines)
-pr_list() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-list.json"
-  { printf '0\tpr-list.json\t^pr list\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
-  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
-}
+# pr_list <json>: make the open-PR query answer with the JSON (ahead of the generic lines)
+pr_list() { stub_open_prs "$1" prepend; }
 
 # stack3 <review of the middle PR>: sbx-11 (#5) <- sbx-13 (#6) <- sbx-14 (#7) on main
 stack3() {
@@ -159,7 +156,7 @@ set_lint() {
   stack3 APPROVED
   run ns stack merge sbx
   assert_success
-  assert_output_contains "check python lint: pass"
+  assert_output_contains "PASS python lint"
   [ -n "$(line_of "pr merge 7 ")" ]
 }
 
@@ -262,4 +259,57 @@ set_lint() {
   assert_output_contains "conflict"
   [ -z "$(line_of "pr close 6")" ]
   [ "$(git -C "$REMOTE" rev-parse fix/sbx-14)" = "$before" ]
+}
+
+# sprint (#122): a stack belongs to one base branch
+# stack3_and_other: stack3 plus sbx-15 (#2), an open run PR on another base branch
+stack3_and_other() {
+  stack3 APPROVED
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":2,"headRefName":"fix/sbx-15","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[]}]' "$GH_STUB_RESPONSES/pr-list.flat.json")"
+}
+
+@test "ns stack merge ignores a run PR on another base branch" {
+  stack3_and_other
+  run ns stack merge sbx
+  assert_success
+  [ -n "$(line_of "pr merge 7 ")" ]
+  [ -z "$(line_of "pr merge 2 ")" ]
+}
+
+@test "ns stack drop does not touch a run PR on another base branch" {
+  stack3_and_other
+  run ns stack drop sbx-15
+  assert_failure
+  assert_output_contains "no open run PR for sbx-15"
+  [ -z "$(line_of "pr close 2")" ]
+}
+
+# #119 item 2: tell apart a check that failed, no checks configured, and checks that could not run
+@test "ns stack merge prints a visible SKIP when the profile has no checks, then merges" {
+  stack3 APPROVED
+  local w commit
+  w="$(mktemp -d "$BATS_TEST_TMPDIR/prof.XXXXXX")"
+  git clone -q "$REMOTE" "$w"
+  sed -i 's/^stacks: .*/stacks: []/' "$w/.claude/project-profile.yaml"
+  git -C "$w" commit -q -am "profile: no stacks"
+  commit=$(git -C "$w" rev-parse HEAD)
+  git -C "$REMOTE" fetch -q "$w" HEAD
+  git -C "$REMOTE" update-ref HEAD "$commit"
+  rm -rf "$w"
+  run ns stack merge sbx
+  assert_success
+  assert_output_contains "SKIP no checks configured"
+  [ -n "$(line_of "pr merge 7 ")" ]
+}
+
+@test "ns stack merge says the checks could not run when the top branch is missing, not that they failed" {
+  stack3 APPROVED
+  git -C "$REMOTE" branch -q -D fix/sbx-14
+  run ns stack merge sbx
+  assert_failure
+  assert_output_contains "could not create a worktree of fix/sbx-14"
+  assert_output_contains "could not run the checks on top of the stack (#7)"
+  case "$output" in *"checks failed"*) echo "reported as failed: $output" >&2; return 1 ;; esac
+  [ -z "$(line_of "pr merge")" ]
 }

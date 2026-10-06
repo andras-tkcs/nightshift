@@ -2,6 +2,7 @@
 # ns-73: stacked PRs, part 1 (ns-conductor stack-base, ns stack, stacked_on in ns status)
 
 load helpers
+load stack-gh
 
 setup() {
   ns_test_setup
@@ -48,19 +49,11 @@ plan_branch() {
   rm -rf "$w"
 }
 
-# pr_closed <json>: make `gh pr list --state closed` answer with the JSON.
-# The stub takes the first matching map line, so pr_closed must stay ahead of the `^pr list` line.
-pr_closed() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-closed.json"
-  { printf '0\tpr-closed.json\t^pr list .*--state closed\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
-  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
-}
+# pr_closed <json>: make the closed-PR search answer with the JSON (flat `gh pr list` shape)
+pr_closed() { stub_closed_prs "$1"; }
 
-# pr_list <json>: make `gh pr list` answer with the JSON
-pr_list() {
-  printf '%s\n' "$1" >"$GH_STUB_RESPONSES/pr-list.json"
-  printf '0\tpr-list.json\t^pr list\n' >>"$GH_STUB_RESPONSES/map"
-}
+# pr_list <json>: make the open-PR query answer with the JSON (flat `gh pr list` shape)
+pr_list() { stub_open_prs "$1" append; }
 
 PRS_ONE='[
  {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
@@ -250,7 +243,7 @@ PRS_CHAINS='[
 PRS_ABOVE_CLOSED='[
  {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-11","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
 ]'
-CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null}]'
+CLOSED_11='[{"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null}]'
 
 @test "ns stack marks a PR whose base PR was closed unmerged" {
   plan_branch sbx-13
@@ -303,6 +296,8 @@ CLOSED_11_OLD='[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedA
   run ns stack sbx
   assert_success
   case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
+  # no PR of fix/sbx-11 was found for #6, so its base branch is unknown
+  assert_output_contains "base unknown"
 }
 
 @test "ns stack: an open PR with the same head hides the closed one" {
@@ -315,14 +310,18 @@ CLOSED_11_OLD='[{"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedA
   case "$output" in *"base closed"*) echo "false base closed: $output" >&2; return 1 ;; esac
 }
 
-@test "stack-base: a closed PR that predates the dependent PR gives no warning" {
+@test "stack-base: a closed PR that predates the dependent PR gives no closed warning; the base is unknown: gate 1.5" {
   other_run_branch fix/sbx-13 main top.txt "top"
   plan_branch sbx-13
   pr_list "$PRS_ABOVE_CLOSED"
   pr_closed "$CLOSED_11_OLD"
   run ns-conductor stack-base sbx-12
-  assert_success
   case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+  # review S2: a chain whose base PR is not found may belong to another base branch: escalate
+  assert_failure 7
+  assert_output_contains "#6"
+  assert_output_contains "fix/sbx-11"
+  [ ! -f "$CODE_WT/top.txt" ]
 }
 
 @test "stack-base: an open PR with the same head gives no closed warning" {
@@ -343,8 +342,8 @@ PRS_TWO_DEPS='[
  {"number":8,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-15","createdAt":"2026-10-02T12:30:00Z","reviewDecision":"","statusCheckRollup":[]}
 ]'
 CLOSED_REUSED_AND_TRUE='[
- {"number":4,"headRefName":"fix/sbx-11","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"},
- {"number":7,"headRefName":"fix/sbx-15","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}
+ {"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"},
+ {"number":7,"headRefName":"fix/sbx-15","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}
 ]'
 
 @test "ns stack: with two dependents only the one on a truly closed base is marked" {
@@ -423,4 +422,415 @@ PRS_FORK='[
   assert_failure 7
   assert_output_contains "fix/sbx-13"
   assert_output_contains "fix/sbx-14"
+}
+
+# sprint (#122): a stack belongs to one base branch; run PRs whose chain targets another base do not count
+PRS_OTHER_BASES='[
+ {"number":1,"headRefName":"fix/sbx-11","baseRefName":"e2e/20261002-1","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":3,"headRefName":"fix/sbx-13","baseRefName":"e2e/20261002-2","createdAt":"2026-10-02T11:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":4,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T11:30:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "stack-base ignores open run PRs whose chain targets another base branch" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_OTHER_BASES"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+}
+
+@test "stack-base stacks on the chain of its own base branch next to chains on other bases" {
+  other_run_branch fix/sbx-15 main other.txt "from 15"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"main","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_OTHER_BASES")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-15 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-15 ]
+}
+
+@test "ns stack lists only the chains of the base branch and counts the others" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"main","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_OTHER_BASES")"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "#8"
+  case "$output" in *"chain 2"* | *" #1 "* | *" #4 "*) echo "other base listed: $output" >&2; return 1 ;; esac
+  assert_output_contains "3 open run PRs target other base branches"
+}
+
+# set_base_branch <branch>: publish a profile with that base branch on origin/main
+set_base_branch() {
+  local clone
+  clone=$(ns_project_path)
+  printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\n  test: "true"\ngit:\n  base_branch: %s\nstacks: [python]\n' "$1" >"$clone/.claude/project-profile.yaml"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "base branch $1"
+  git -C "$clone" push -q origin HEAD:main
+}
+
+@test "stack-base exit 7 names the profile's base branch as a choice, not main" {
+  set_base_branch develop
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list '[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"develop","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"develop","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "develop, fix/sbx-11 or fix/sbx-13"
+  case "$output" in *main*) echo "names main: $output" >&2; return 1 ;; esac
+}
+
+# #85 item 1: more than 100 open PRs; the run PR is on the second page
+prs_150() {
+  jq -nc '[range(1; 150) | {number: ., headRefName: "dependabot/npm/x\(.)", baseRefName: "main", createdAt: "2026-10-01T10:00:00Z", reviewDecision: "", statusCheckRollup: []}]
+    + [{number: 150, headRefName: "fix/sbx-11", baseRefName: "main", createdAt: "2026-10-02T10:00:00Z", reviewDecision: "", statusCheckRollup: []}]'
+}
+
+@test "stack-base finds a run PR past the first 100 open PRs" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  plan_branch sbx-11
+  pr_list "$(prs_150)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-11 ]
+  grep -q "api graphql --paginate" "$GH_STUB_LOG"
+}
+
+@test "ns stack marks a closed base found past the first 100 closed PRs" {
+  plan_branch sbx-13
+  pr_list "$PRS_ABOVE_CLOSED"
+  pr_closed "$(jq -nc '[range(1; 150) | {number: (1000 + .), headRefName: "old/x\(.)", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]
+    + [{number: 5, headRefName: "fix/sbx-11", baseRefName: "main", state: "CLOSED", mergedAt: null, closedAt: "2026-10-02T13:00:00Z"}]')"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+}
+
+# #119 item 6: no closed list when no base can be a closed PR and the run is not stacked on another run
+@test "stack-base does not fetch the closed PRs when every base is the base branch or an open PR" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_TWO"
+  pr_closed "$CLOSED_11"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  run grep -E "ClosedRunPRs|--state closed" "$GH_STUB_LOG"
+  assert_failure 1
+}
+
+# #119 item 7: this run's own open PR hides a closed PR with the same head (a reused name)
+@test "stack-base: a closed PR with the head of this run's own open PR gives no closed warning" {
+  other_run_branch fix/sbx-13 main top.txt "top"
+  git ls-remote --exit-code "$REMOTE" refs/heads/plan/sbx-12 >/dev/null || plan_branch sbx-12
+  plan_branch sbx-13
+  pr_list '[
+ {"number":7,"headRefName":"fix/sbx-12","baseRefName":"main","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":8,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-12","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-12","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  case "$output" in *"closed without a merge"*) echo "false warning: $output" >&2; return 1 ;; esac
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
+}
+
+# #119 item 5: a cycle next to a normal chain, and a leaf above a cycle
+PRS_PARTIAL_CYCLE='[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"main","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-14","createdAt":"2026-10-02T11:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":7,"headRefName":"fix/sbx-14","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+
+@test "ns stack warns about a partial cycle and still lists the PRs in it" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$PRS_PARTIAL_CYCLE"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "cycle"
+  assert_output_contains "#5"
+  assert_output_contains "#6"
+  assert_output_contains "#7"
+}
+
+@test "ns stack lists a leaf above a cycle once per PR, with a warning" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(jq -c '. + [{"number":8,"headRefName":"fix/sbx-15","baseRefName":"fix/sbx-13","createdAt":"2026-10-02T13:00:00Z","reviewDecision":"","statusCheckRollup":[]}]' <<<"$PRS_PARTIAL_CYCLE")"
+  run ns stack sbx
+  assert_success
+  assert_output_contains "cycle"
+  [ "$(grep -cE '^  sbx-[0-9]+ +#6 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -cE '^  sbx-[0-9]+ +#7 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -cE '^  sbx-[0-9]+ +#8 ' <<<"$output")" -eq 1 ]
+}
+
+# #85 item 2 (owner's decision): stack on the nearest PR below a red one, and say so
+FAIL_ROLLUP='[{"__typename":"CheckRun","name":"tests","conclusion":"FAILURE","status":"COMPLETED"}]'
+PEND_ROLLUP='[{"__typename":"CheckRun","name":"tests","conclusion":null,"status":"IN_PROGRESS"}]'
+
+# prs_two_top <rollup of the top PR> [rollup of the bottom PR]: PRS_TWO with those check states
+prs_two_top() {
+  jq -c --argjson t "$1" --argjson b "${2:-[]}" 'map(if .number == 6 then .statusCheckRollup = $t else .statusCheckRollup = $b end)' <<<"$PRS_TWO"
+}
+
+@test "stack-base skips a top PR with failing checks and stacks on the PR below" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$FAIL_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  assert_output_contains "Stacked on #5 (checks failing on #6)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-11 ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = 6 ]
+  ns-ledger get "$LEDGER" '.events[] | select(.type == "stack") | .note' | grep -qF "Stacked on #5 (checks failing on #6)"
+  [ -f "$CODE_WT/other.txt" ]
+  [ ! -f "$CODE_WT/top.txt" ]
+}
+
+@test "stack-base stacks on the base branch when every PR of the chain is red" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$FAIL_ROLLUP" "$FAIL_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  assert_output_contains "Stacked on main (checks failing on #6, #5)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped | map(.number) | join(",")')" = "6,5" ]
+  [ ! -f "$CODE_WT/other.txt" ]
+}
+
+@test "stack-base stacks on a top PR whose checks are pending (pending is not red)" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs_two_top "$PEND_ROLLUP")"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" '.stack_skipped // [] | length')" = 0 ]
+}
+
+# review B1: red leaves are pruned before the chains are counted, so a red skip never forces gate 1.5
+# prs <num:head:base:g|r|p>...: open run PRs with green, red or pending checks (createdAt by number)
+prs() {
+  local t json="[]" n h b c roll
+  for t in "$@"; do
+    IFS=: read -r n h b c <<<"$t"
+    case "$c" in r) roll="$FAIL_ROLLUP" ;; p) roll="$PEND_ROLLUP" ;; *) roll='[{"__typename":"CheckRun","name":"tests","conclusion":"SUCCESS","status":"COMPLETED"}]' ;; esac
+    json=$(jq -c --argjson n "$n" --arg h "$h" --arg b "$b" --argjson r "$roll" \
+      '. + [{number: $n, headRefName: $h, baseRefName: $b, createdAt: ("2026-10-02T1\($n % 10):00:00Z"), reviewDecision: "", statusCheckRollup: $r}]' <<<"$json")
+  done
+  printf '%s\n' "$json"
+}
+
+# skipped: the ledger's stack_skipped numbers, sorted
+skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sort | map(tostring) | join(",")'; }
+
+@test "stack-base: a red leaf beside a green leaf is pruned and the run stacks on the green one (B1 a)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-14 fix/sbx-11 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  assert_output_contains "Stacked on #7 (checks failing on #6)"
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-14 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: two green leaves left after pruning: exit 7 offers only the base and the green tops (B1 b)" {
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  plan_branch sbx-15
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g 8:fix/sbx-15:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "main, fix/sbx-14 or fix/sbx-15"
+  case "$(grep "choose a base" <<<"$output")" in *fix/sbx-13*) echo "offers the red PR: $output" >&2; return 1 ;; esac
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: two chains from the base branch, one all red: stacks on the green top (B1 c)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:main:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: a red PR with a green PR above it is kept; its red sibling leaf is pruned (B1 d)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-14 fix/sbx-11 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:r 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  [ "$(skipped)" = 6 ]
+}
+
+@test "stack-base: only tops decide: a red middle PR under a green top prunes nothing (B1 e)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-13 fix/sbx-11 b.txt b
+  other_run_branch fix/sbx-14 fix/sbx-13 c.txt c
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 8:fix/sbx-14:fix/sbx-13:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-14 ]
+  [ "$(skipped)" = "" ]
+  case "$output" in *"checks failing"*) echo "skipped something: $output" >&2; return 1 ;; esac
+}
+
+@test "stack-base: red leaves down to a shared green PR stack on it; all red stacks on the base branch (B1 f)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  plan_branch sbx-11
+  plan_branch sbx-13
+  plan_branch sbx-14
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-11 ]
+  [ "$(skipped)" = "6,7" ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 5:fix/sbx-11:main:r 6:fix/sbx-13:fix/sbx-11:r 7:fix/sbx-14:fix/sbx-11:r)"
+  ns-ledger set "$LEDGER" '.stacked_on = null'
+  git -C "$CODE_WT" reset -q --hard origin/main
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  [ "$(skipped)" = "5,6,7" ]
+}
+
+# review S1: a PR already merged into the code branch is never skipped, nor anything below it
+@test "stack-base rerun keeps the PR it already merged even when its checks turned red (S1)" {
+  other_run_branch fix/sbx-11 main a.txt a
+  other_run_branch fix/sbx-13 fix/sbx-11 b.txt b
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:g)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 5:fix/sbx-11:main:g 6:fix/sbx-13:fix/sbx-11:r)"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-13 ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = sbx-13 ]
+  [ "$(skipped)" = "" ]
+}
+
+# review S2: a chain whose bottom targets a closed run branch belongs to the base that closed PR targeted
+@test "stack-base ignores a chain whose closed base PR targeted another base branch (S2)" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"e2e/old","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = main ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  run ns stack sbx
+  assert_success
+  assert_output_contains "1 open run PRs target other base branches"
+  assert_output_contains "no open run PRs"
+}
+
+@test "ns stack still marks a closed base whose PR targeted the base branch (S2)" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+  assert_output_contains "#8"
+}
+
+@test "stack-base stacks on a PR whose base PR was merged into the base branch, without a closed warning (S2)" {
+  other_run_branch fix/sbx-15 main e.txt e
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"MERGED","mergedAt":"2026-10-02T22:00:00Z","closedAt":"2026-10-02T22:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(tail -n 1 <<<"$output")" = fix/sbx-15 ]
+  case "$output" in *"ns stack drop"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
+
+# review N1: a failed closed search is not silent
+@test "stack-base warns when the closed-PR search fails" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  { printf '1\t-\t^api graphql .*ClosedRunPRs\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+  run ns-conductor stack-base sbx-12
+  assert_output_contains "could not search the closed PRs"
+  # the base of #8 cannot be told without the closed list: gate 1.5
+  assert_failure 7
+}
+
+# re-review 1: a red PR whose base is unknown is not pruned (it may belong to another base): it escalates
+@test "stack-base does not prune a red PR whose base is unknown; it escalates instead" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:r)"
+  pr_closed '[]'
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  case "$output" in *"Stacked on"* | *"skipped (checks failing)"*) echo "pruned an unknown-base PR: $output" >&2; return 1 ;; esac
+  [ "$(skipped)" = "" ]
+}
+
+# re-review 2: ns stack searches the closed PRs once per project
+@test "ns stack searches the closed PRs once and warns once when the search fails" {
+  plan_branch sbx-15
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-11","baseRefName":"main","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T23:00:00Z"}]'
+  run ns stack sbx
+  assert_success
+  assert_output_contains "base closed"
+  [ "$(grep -c "ClosedRunPRs" "$GH_STUB_LOG")" -eq 1 ]
+  : >"$GH_STUB_RESPONSES/map"
+  pr_list "$(prs 8:fix/sbx-15:fix/sbx-11:g)"
+  { printf '1\t-\t^api graphql .*ClosedRunPRs\n'; cat "$GH_STUB_RESPONSES/map"; } >"$GH_STUB_RESPONSES/map.new"
+  mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
+  run ns stack sbx
+  [ "$(grep -c "could not search the closed PRs" <<<"$output")" -eq 1 ]
 }

@@ -114,3 +114,95 @@ setup() {
 @test "the fixture README has the typo exactly once" {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }
+
+@test "stack scenario: only run PRs whose chain belongs to its base branch are leftovers, by the library's rules (sprint #122, review S2, N5)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local open plans closed
+  # old e2e PRs on other bases; a two-PR stack on this base; x9 on a closed run branch whose PR targeted
+  # this base; x3 on a closed run branch whose PR targeted an old base; x4 on a run branch with no PR found
+  # (unknown: counts, conservative); a non-run PR and a run PR without a plan branch on this base
+  open='[
+ {"number":1,"head":"fix/sbx-x1","base":"e2e/20261002-1","createdAt":"2026-10-02T10:00:00Z"},
+ {"number":2,"head":"fix/sbx-x6","base":"fix/sbx-x1","createdAt":"2026-10-02T11:00:00Z"},
+ {"number":3,"head":"fix/sbx-x7","base":"e2e/20261006-1","createdAt":"2026-10-06T10:00:00Z"},
+ {"number":4,"head":"fix/sbx-x8","base":"fix/sbx-x7","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":5,"head":"fix/sbx-x9","base":"fix/sbx-x5","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":6,"head":"fix/sbx-x3","base":"fix/sbx-x2","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":7,"head":"fix/sbx-x4","base":"fix/sbx-x0","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":8,"head":"dependabot/x","base":"e2e/20261006-1","createdAt":"2026-10-06T11:00:00Z"},
+ {"number":9,"head":"fix/sbx-x10","base":"e2e/20261006-1","createdAt":"2026-10-06T11:00:00Z"}
+]'
+  plans=$(printf '%s\n' sbx-x1 sbx-x3 sbx-x4 sbx-x6 sbx-x7 sbx-x8 sbx-x9)
+  closed='[
+ {"number":20,"headRefName":"fix/sbx-x5","baseRefName":"e2e/20261006-1","closedAt":"2026-10-06T12:00:00Z","merged":false},
+ {"number":21,"headRefName":"fix/sbx-x2","baseRefName":"e2e/20261002-3","closedAt":"2026-10-06T12:00:00Z","merged":false}
+]'
+  run stack_leftovers "$open" "$plans" e2e/20261006-1 sbx "fix/{slug}" "feature/{n}" "" "$closed"
+  [ "$status" -eq 0 ]
+  [ "$output" = "fix/sbx-x7 fix/sbx-x8 fix/sbx-x9 fix/sbx-x4" ]
+  run stack_leftovers "$open" "$plans" e2e/20261002-1 sbx "fix/{slug}" "feature/{n}" "" "$closed"
+  [ "$output" = "fix/sbx-x1 fix/sbx-x6 fix/sbx-x4" ]
+}
+
+@test "stack scenario: the second PR's own extra files pass, a repeated change of the first PR fails (sprint #122, check 2)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local d="$BATS_TEST_TMPDIR/diffs"
+  mkdir -p "$d"
+  printf '%s\n' 'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -1 +1 @@' \
+    '-It helps you recieve text' '+It helps you receive text' >"$d/1"
+  # an agent's own extras: a README pointer and a test with a common import line
+  printf '%s\n' 'diff --git a/NOTES.md b/NOTES.md' '--- /dev/null' '+++ b/NOTES.md' '@@ -0,0 +1 @@' '+second run' \
+    'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -15 +15,2 @@' '+See NOTES.md' >"$d/2"
+  # the first PR's change leaked into the second
+  printf '%s\n' 'diff --git a/NOTES.md b/NOTES.md' '--- /dev/null' '+++ b/NOTES.md' '@@ -0,0 +1 @@' '+second run' \
+    'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -1 +1 @@' \
+    '-It helps you recieve text' '+It helps you receive text' >"$d/3"
+  e2e_pr_url() { printf '%s\n' "$1"; }
+  gh() { cat "$d/$3"; }
+  e2e_log() { :; }
+  run stack_diff_is_own 1 2
+  [ "$status" -eq 0 ]
+  run stack_diff_is_own 1 3
+  [ "$status" -ne 0 ]
+  run stack_diff_is_own 1 1
+  [ "$status" -ne 0 ]
+}
+
+@test "stack scenario: every stack_ function it calls is defined (re-review 4: stack_pr_urls was lost)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local f missing=""
+  for f in $(grep -oE '\bstack_[a-z_]+' "$E2E/scenarios/stack.sh" | sort -u); do
+    declare -F "$f" >/dev/null || missing="$missing $f"
+  done
+  [ -z "$missing" ] || { echo "undefined:$missing" >&2; return 1; }
+}
+
+@test "stack scenario: stack_changes credits a deleted file's lines to that file (re-review 5)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local diff
+  diff='diff --git a/KEEP.md b/KEEP.md
+--- a/KEEP.md
++++ b/KEEP.md
+@@ -1 +1 @@
+-old
++new
+diff --git a/GONE.md b/GONE.md
+deleted file mode 100644
+--- a/GONE.md
++++ /dev/null
+@@ -1 +0,0 @@
+-gone line
+diff --git a/NEW.md b/NEW.md
+new file mode 100644
+--- /dev/null
++++ b/NEW.md
+@@ -0,0 +1 @@
++fresh'
+  run stack_changes <<<"$diff"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'KEEP.md\t-old\nKEEP.md\t+new\nGONE.md\t-gone line\nNEW.md\t+fresh')" ]
+}
