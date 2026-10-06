@@ -259,7 +259,7 @@ EOS
   [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
 }
 
-@test "a failed checkpoint after the state was set rolls the run back (#96)" {
+@test "a failed ledger commit (ns-ledger checkpoint exits non-zero) after the state was set rolls the run back (#96)" {
   fake_home
   ns-ledger set "$LEDGER" '.state="parked"'
   NS_LEDGER_FAIL='checkpoint *' run "$FH/bin/ns" resume sbx-12

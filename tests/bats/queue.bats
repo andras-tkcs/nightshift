@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load helpers
+bats_require_minimum_version 1.5.0
 
 setup() {
   ns_test_setup
@@ -226,8 +227,8 @@ server_env_clean() {
   local out
   out=$(tmux show-environment -g)
   [ -n "$out" ]
-  ! grep -q '^GH_TOKEN=' <<<"$out"
-  ! grep -qF "$FAKE_TOKEN" <<<"$out"
+  run ! grep -q '^GH_TOKEN=' <<<"$out"
+  run ! grep -qF "$FAKE_TOKEN" <<<"$out"
 }
 
 @test "no tmux server started by ns inherits GH_TOKEN (#96)" {
@@ -256,7 +257,7 @@ server_env_clean() {
   ns dequeue >/dev/null
   [ -f "$TMUX_STUB_DIR/sbx-42" ]
   server_env_clean
-  ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-42"
+  run ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-42"
 }
 
 @test "the dequeue pushes carry the run owner's token, the session does not (#96)" {
@@ -277,12 +278,12 @@ EOS
   run env -u GH_TOKEN "$NS_REPO_ROOT/bin/ns" dequeue
   assert_success
   assert_output_contains "1 started"
+  assert_output_not_contains "$FAKE_TOKEN"
   [ -f "$TMUX_STUB_DIR/sbx-12" ]
   [ "$(grep -c . "$BATS_TEST_TMPDIR/push.env")" -ge 2 ]
   [ "$(sort -u "$BATS_TEST_TMPDIR/push.env")" = "$FAKE_TOKEN" ]
-  ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-12"
+  run ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-12"
   server_env_clean
-  assert_output_not_contains "$FAKE_TOKEN"
 }
 
 @test "ns-launch keeps logs/<id> private: directory 700, dequeue.log 600 (#96)" {
@@ -317,4 +318,44 @@ EOS
   assert_success
   [ -L "$NS_CONFIG_DIR/queue.lock" ]
   [ "$(cat "$BATS_TEST_TMPDIR/target")" = "keep me" ]
+}
+
+# push_hook: record the GH_TOKEN every git push of the ledger sees in $BATS_TEST_TMPDIR/push.env
+push_hook() {
+  mkdir -p "$BATS_TEST_TMPDIR/hooks"
+  cat >"$BATS_TEST_TMPDIR/hooks/pre-push" <<EOS
+#!/usr/bin/env bash
+printf '%s\n' "\${GH_TOKEN:-none}" >>"$BATS_TEST_TMPDIR/push.env"
+EOS
+  chmod +x "$BATS_TEST_TMPDIR/hooks/pre-push"
+  git config --file "$GIT_CONFIG_GLOBAL" core.hooksPath "$BATS_TEST_TMPDIR/hooks"
+}
+
+@test "a foreign GH_TOKEN never reaches the resume push when the owner has no token file (#96)" {
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  end_session 12
+  push_hook
+  OTHER="ghp_$(printf 'o%.0s' {1..36})"
+  GH_TOKEN="$OTHER" run ns resume sbx-12
+  assert_success
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ -s "$BATS_TEST_TMPDIR/push.env" ]
+  run ! grep -qF "$OTHER" "$BATS_TEST_TMPDIR/push.env"
+  [ "$(sort -u "$BATS_TEST_TMPDIR/push.env")" = none ]
+}
+
+@test "with two owners, each run is pushed with its own owner's token only (#96)" {
+  fake_token
+  B_TOKEN="ghp_$(printf 'b%.0s' {1..36})"
+  printf '%s\n' "$B_TOKEN" >"$NS_CONFIG_DIR/tokens/acme"
+  chmod 600 "$NS_CONFIG_DIR/tokens/acme"
+  make_remote acme/other
+  ns project add acme/other --prefix oth >/dev/null
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  end_session 12
+  push_hook
+  GH_TOKEN="$B_TOKEN" run ns resume sbx-12
+  assert_success
+  [ -s "$BATS_TEST_TMPDIR/push.env" ]
+  [ "$(sort -u "$BATS_TEST_TMPDIR/push.env")" = "$FAKE_TOKEN" ]
 }
