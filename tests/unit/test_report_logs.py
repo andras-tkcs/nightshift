@@ -65,3 +65,38 @@ def test_checks_log_with_and_without_times(tmp_path):
     rows = report_logs.read_checks_log(str(tmp_path / "feature.checks.log"))
     assert [(r["name"], r["result"]) for r in rows] == [("lint", None), ("test", "SKIP")]
     assert rows[1]["end"] - rows[1]["start"] == 7
+
+
+def test_non_finite_numbers_and_deep_nesting_are_skipped(tmp_path):
+    write(tmp_path / "conductor.jsonl", [
+        '{"type":"result","session_id":"z","total_cost_usd":1,"num_turns":1e400}',
+        '{"type":"result","session_id":"y","total_cost_usd":NaN}',
+        "[" * 100000 + "]" * 100000,
+    ])
+    agent, _, _ = report_logs.read_session_log(str(tmp_path / "conductor.jsonl"))
+    assert agent["cost"] == 1 and agent["turns"] == 0 and agent["bad"] == 1
+
+
+def test_background_subagents_are_counted_with_their_type(tmp_path):
+    write(tmp_path / "conductor.jsonl", [
+        {"type": "assistant", "session_id": "a", "timestamp": "2026-10-02T10:00:00Z",
+         "message": {"id": "x", "model": "m", "usage": {}, "content": [
+             {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"subagent_type": "ns:triage"}}]}},
+        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1"}]},
+         "tool_use_result": {"status": "async_launched", "resolvedModel": "m2"}},
+    ])
+    _, _, subs = report_logs.read_session_log(str(tmp_path / "conductor.jsonl"))
+    assert subs == [{"type": "ns:triage", "by": "conductor", "model": "m2", "s": None}]
+
+
+def test_message_tokens_are_scaled_to_the_session_model_usage(tmp_path):
+    # stream events carry partial output_tokens; modelUsage of the last result is the truth
+    write(tmp_path / "conductor.jsonl", [
+        {"type": "assistant", "session_id": "a", "timestamp": "2026-10-02T10:00:00Z",
+         "message": {"id": "x", "model": "m", "usage": {"input_tokens": 1, "output_tokens": 2}}},
+        {"type": "assistant", "session_id": "a", "timestamp": "2026-10-02T10:01:00Z",
+         "message": {"id": "y", "model": "m", "usage": {"input_tokens": 1, "output_tokens": 2}}},
+        result("a", 1.0, 2, {"m": mu(2, 40, 1.0)}),
+    ])
+    _, msgs, _ = report_logs.read_session_log(str(tmp_path / "conductor.jsonl"))
+    assert sum(m["tok"] for m in msgs) == 42

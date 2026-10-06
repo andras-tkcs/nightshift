@@ -860,14 +860,27 @@ review_phase() {
 
 @test "finish on T2: a failed run report publish only warns, the handoff is published (#118)" {
   printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
-  # a token-shaped model name in the log puts a token into the report: ns publish refuses it
-  mkdir -p "$NS_CONFIG_DIR/logs/sbx-12"
-  printf '{"type":"result","session_id":"s","total_cost_usd":1,"modelUsage":{"ghp_abcdefghijklmnopqrstuvwxyz0123":{"costUSD":1}}}\n' \
-    >"$NS_CONFIG_DIR/logs/sbx-12/conductor.jsonl"
+  # a directory in the way on the desk: copying the run report fails, the handoff copy does not
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_success
   assert_output_contains "could not publish RUN/run-report.md"
   [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
   [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
   git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md >/dev/null
+}
+
+@test "gate 1.5: the question in the note has no control characters and is cut at 200 characters, not bytes (#157 review)" {
+  long=$(printf 'a%.0s' $(seq 1 199))
+  printf '# Escalation\n\n## Question\nWhy\r\tnot \033[31mred?\n%sé more\n' "$long" >"$RUNDIR/escalation.md"
+  run ns-conductor gate sbx-12 1.5 RUN/escalation.md
+  assert_success
+  note=$(lget '[.events[] | select(.type == "gate")][-1].note')
+  python3 - "$note" <<'PY2'
+import sys
+q = sys.argv[1].split("waiting for the owner: ", 1)[1]
+assert not any(ord(c) < 32 or ord(c) == 127 for c in q), repr(q)
+assert len(q) == 200, len(q)
+assert q.startswith("Why not [31mred? a"), repr(q[:30])
+PY2
 }

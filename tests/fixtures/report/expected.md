@@ -38,7 +38,7 @@ Escalations:
 | escalation (gate 1.5) | 2026-10-02 11:40 | 10m | 0s | 10m | 0 | $0.00 |
 | p2-docs review round 1 | 2026-10-02 11:56 | 24m | 24m | 0s | 0 | $0.00 |
 | p2-docs merge | 2026-10-02 12:20 | 35m | 5m | 0s | 0 | $0.00 |
-| conductor work | 2026-10-02 12:55 | 5m | 5m | 0s | 111 | $0.09 |
+| conductor work | 2026-10-02 12:55 | 5m | 5m | 0s | 167 | at least $0.09 |
 | gate 2 wait | 2026-10-02 13:00 | 20m | 0s | 20m | 0 | $0.00 |
 
 ## Tokens and cost
@@ -51,6 +51,7 @@ By agent. A subagent's tokens and cost are part of the agent that started it.
 | p1-core worker | p1-core.jsonl | 1 | 5 | 4 | 40 | 400 | 40 | $0.20 |
 | p2-docs worker | p2-docs.jsonl | 1 | 2 | 2 | 20 | 100 | 10 | $0.10 |
 
+- conductor.jsonl: 1 session has no result event (cut off); its tokens and cost are not in the totals.
 - p2-docs.jsonl: 1 line is not JSON and was skipped.
 
 By model:
@@ -65,8 +66,10 @@ Subagents:
 
 | Subagent | Started by | Model | Runs | Time |
 |---|---|---|---|---|
+| ns:code-reviewer | conductor | claude-opus-5-5 | 1 | no data |
 | ns:code-reviewer | conductor | claude-sonnet-5-5 | 1 | 5m |
 | ns:planner | conductor | claude-sonnet-5-5 | 1 | 10m |
+| ns:triage | conductor | claude-sonnet-5-5 | 1 | 2m |
 
 ## Checks
 

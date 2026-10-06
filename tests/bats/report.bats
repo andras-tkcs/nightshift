@@ -131,3 +131,30 @@ ev() { printf -- '"""- time: '"'"'%s'"'"'\n  type: %s\n  note: '"'"'%s'"'"'\n"""
   grep -qF -- '- 2026-10-02 10:30 (gate 1.5): Which \| table style?' "$RUNDIR/run-report.md"
   [ "$(grep -c -- '(gate 1.5): Which \\| table style?$' "$RUNDIR/run-report.md")" = 2 ]
 }
+
+@test "ns report: one malformed line (huge number, deep nesting) does not wipe the other log data (#157 review)" {
+  printf '{"type":"result","session_id":"z","total_cost_usd":1,"num_turns":1e400}\n' >>"$LOGS/conductor.jsonl"
+  python3 -c 'print("[" * 100000 + "]" * 100000)' >>"$LOGS/conductor.jsonl"
+  printf '{"type":"result","session_id":"y","total_cost_usd":1e400}\n{"type":"result","session_id":"x","total_cost_usd":NaN}\n' >>"$LOGS/p1-core.jsonl"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| Cost | $3.40 |' "$RUNDIR/run-report.md"
+  ! grep -q 'null\|inf\|NaN' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: 999960 tokens is 1.00M, not 1000.0k (#157 review)" {
+  rm -f "$LOGS"/*.jsonl
+  printf '{"type":"result","session_id":"s","total_cost_usd":1,"modelUsage":{"m":{"cacheReadInputTokens":999960,"costUSD":1}}}\n' >"$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| m | 0 | 0 | 1.00M | 0 | $1.00 |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report redacts a token-shaped string before the report is written (#157 review)" {
+  jq -c 'if .type == "result" then .modelUsage = {"ghp_abcdefghijklmnopqrstuvwxyz0123": .modelUsage["claude-sonnet-5-5"]} else . end' \
+    "$NS_REPO_ROOT/tests/fixtures/report/logs/p1-core.jsonl" >"$LOGS/p1-core.jsonl"
+  run ns report sbx-12
+  assert_success
+  ! grep -q 'ghp_' "$RUNDIR/run-report.md"
+  grep -qF '| [redacted] | 4 | 40 |' "$RUNDIR/run-report.md"
+}
