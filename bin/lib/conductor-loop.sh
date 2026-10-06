@@ -400,17 +400,25 @@ conductor_finish() {
   tier=$(loop_tier)
   lg set "$ledger" ".pr = $(jstr "$url") | .step = \"done\""
   case "$tier" in
-    T2 | T3)
-      lg state "$ledger" "done" --gate 2 --note "pull request $url"
-      handoff="$wt/.nightshift/runs/$id/handoff.html"
-      if [ -f "$handoff" ]; then
-        "$NS_HOME/bin/ns" publish "$id" "RUN/handoff.html"
-      fi
-      ;;
+    T2 | T3) lg state "$ledger" "done" --gate 2 --note "pull request $url" ;;
     *) lg state "$ledger" "done" --note "pull request $url" ;;
   esac
   lg event "$ledger" finish "run finished: $url"
+  # the run report is best effort: a failure here never fails the run
+  local -a docs=()
+  if "$NS_HOME/bin/ns" report "$id" >/dev/null; then
+    docs+=("RUN/run-report.md")
+  else
+    ns_warn "could not write the run report for $id"
+  fi
+  handoff="$wt/.nightshift/runs/$id/handoff.html"
+  case "$tier" in
+    T2 | T3) [ ! -f "$handoff" ] || docs=("RUN/handoff.html" "${docs[@]}") ;;
+  esac
   lg checkpoint "$ledger" --push
+  if [ "${#docs[@]}" -gt 0 ]; then
+    "$NS_HOME/bin/ns" publish "$id" "${docs[@]}" || ns_warn "could not publish ${docs[*]}"
+  fi
   printf 'finished %s: %s\n' "$id" "$url"
 }
 

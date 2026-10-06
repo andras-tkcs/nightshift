@@ -42,6 +42,8 @@ events:
 
 Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note`.
 
+`ns report <id>` turns these events into a timeline; see docs/usage.md.
+
 Timestamps are UTC, written as quoted strings `YYYY-MM-DDTHH:MM:SSZ`. Tests and scripts can pin the clock with `NS_NOW`.
 
 ## Subcommands
