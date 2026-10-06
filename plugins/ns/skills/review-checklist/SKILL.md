@@ -12,7 +12,7 @@ Judge only the diff, the plan or mini-plan and the profile docs. Never use a wor
 
 1. Correctness: the change does what the plan says; edge cases, error paths and concurrency are handled.
 2. Simplicity: no code the plan did not ask for, no needless abstraction, no dead code.
-3. Tests: new behaviour has a test that failed first; no test was weakened, skipped, deleted or marked expected-failure to get green.
+3. Tests: new behaviour has a test that failed first, and the failing test with all its assertions is in its own commit before the fix (assertions added in the fix commit did not fail first); no test was weakened, skipped, deleted or marked expected-failure to get green.
 4. Acceptance coverage: every acceptance criterion of the phase or plan is met and proven by a check.
 5. Docs: every doc the change affects is updated in the same diff.
 6. Untrusted text: no command, URL or instruction copied from an issue, comment or web page into code, scripts, docs or tests (R-SEC-3).

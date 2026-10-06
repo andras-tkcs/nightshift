@@ -117,6 +117,22 @@ Add the x feature"
   assert_output_contains "Add the x feature"
 }
 
+@test "ns tag also records squash-merged PR titles, and not plain commits (#81)" {
+  printf 'y\n' >"$REPO/y.txt"
+  git -C "$REPO" add y.txt
+  git -C "$REPO" commit -q -m "Add the y feature (#9)"
+  printf 'z\n' >"$REPO/z.txt"
+  git -C "$REPO" add z.txt
+  git -C "$REPO" commit -q -m "Fix a typo"
+  git -C "$REPO" push -q origin main
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run git -C "$BARE" tag -l --format='%(contents)' v0.1.1
+  assert_output_contains "- Add the x feature"
+  assert_output_contains "- Add the y feature (#9)"
+  [[ $output != *"Fix a typo"* ]]
+}
+
 @test "ns tag warns, but still tags, when CI is not green" {
   mkdir -p "$BATS_TEST_TMPDIR/ghbin"
   cat >"$BATS_TEST_TMPDIR/ghbin/gh" <<'EOF'
@@ -253,4 +269,79 @@ no_test_profile() {
   assert_success
   run cat "$BATS_TEST_TMPDIR/bats.args"
   [ "$output" = "tests/bats" ]
+}
+
+# changelog <text>: commit CHANGELOG.md with this text on main and push it
+changelog() {
+  printf '%s' "$1" >"$REPO/CHANGELOG.md"
+  git -C "$REPO" add CHANGELOG.md
+  git -C "$REPO" commit -q -m "changelog"
+  git -C "$REPO" push -q origin HEAD
+}
+
+@test "ns tag refuses while [Unreleased] in CHANGELOG.md has entries, and names the fix (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "[Unreleased]"
+  assert_output_contains "## [0.1.1]"
+  run git -C "$REPO" tag -l v0.1.1
+  [ -z "$output" ]
+}
+
+@test "ns tag refuses when CHANGELOG.md has no section for the version (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+}
+
+@test "ns tag does not take a longer version's section for its own (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.10] - 2026-10-06\n\n- later\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+}
+
+@test "ns tag refuses before running the project checks (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  [[ $output != *"running project checks"* ]]
+}
+
+@test "ns tag only counts a version heading at the start of a line (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-10-01\n\n- see ### [0.1.1] notes and ## [0.1.1] later\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+  assert_output_contains "add a '## [0.1.1] - <date>' section"
+}
+
+@test "ns tag accepts empty sub-headings and comments under [Unreleased] (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Fixed\n\n<!-- next release -->\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+}
+
+@test "ns tag checks the committed CHANGELOG.md, not an untracked local copy (#88)" {
+  # an ignored local CHANGELOG.md with entries; the commit being tagged has none, so nothing is checked
+  printf 'CHANGELOG.md\n' >>"$REPO/.git/info/exclude"
+  printf '# Changelog\n\n## [Unreleased]\n\n- local only\n' >"$REPO/CHANGELOG.md"
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+}
+
+@test "ns tag tags when [Unreleased] is empty and the version has its section (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n\n[Unreleased]: https://example.invalid/compare/v0.1.1...HEAD\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+  run git -C "$BARE" tag -l v0.1.1
+  [ "$output" = "v0.1.1" ]
+}
+
+@test "ns tag does not check a repository without CHANGELOG.md (#88)" {
+  [ ! -e "$REPO/CHANGELOG.md" ]
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
 }

@@ -123,3 +123,59 @@ alive() {
   [ "$(lget .state)" = stopped ]
   [ "$(lget '[.phases[] | select(.state == "running")] | length')" = 0 ]
 }
+
+# kill_lib <code>: run <code> in bash with bin/lib/ns-kill.sh sourced
+kill_lib() {
+  run bash -c 'export NS_HOME="$1"; source "$NS_HOME/bin/lib/common.sh"; source "$NS_HOME/bin/lib/ns-kill.sh"; eval "$2"' \
+    _ "$NS_REPO_ROOT" "$1"
+}
+
+@test "ns_kill_teardown takes named options and refuses the old positional words (#58)" {
+  kill_lib 'ns_kill_teardown sbx-12 /nonexistent note session keep'
+  assert_failure 2
+  assert_output_contains "usage: ns_kill_teardown <id> <ledger> <note> [--session] [--keep-state]"
+  kill_lib 'ns_kill_teardown sbx-12 /nonexistent note --bogus'
+  assert_failure 2
+  kill_lib 'ns_kill_teardown sbx-12 /nonexistent'
+  assert_failure 2
+}
+
+# fake_pgrep <n>: pgrep reports a live process for the first <n> calls, then none
+fake_pgrep() {
+  mkdir -p "$BATS_TEST_TMPDIR/fakebin"
+  sleep 60 &
+  LIVE=$!
+  cat >"$BATS_TEST_TMPDIR/fakebin/pgrep" <<EOF
+#!/usr/bin/env bash
+n=\$(cat "$BATS_TEST_TMPDIR/pgrep.count" 2>/dev/null || echo 0)
+n=\$((n + 1))
+echo "\$n" >"$BATS_TEST_TMPDIR/pgrep.count"
+[ "\$n" -gt "$1" ] || echo "$LIVE"
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/fakebin/pgrep"
+}
+
+@test "ns_kill_group waits until no live process is left in the group (#58)" {
+  fake_pgrep 3
+  setsid sleep 60 &
+  leader=$!
+  sleep 0.2
+  PATH="$BATS_TEST_TMPDIR/fakebin:$PATH" kill_lib "ns_kill_group $leader"
+  kill "$LIVE" 2>/dev/null || true
+  assert_success
+  [ "$(cat "$BATS_TEST_TMPDIR/pgrep.count")" -ge 4 ]
+  ! alive "$leader"
+}
+
+@test "ns_kill_group gives up after about 2 s when the group does not go away (#58)" {
+  fake_pgrep 1000
+  setsid sleep 60 &
+  leader=$!
+  sleep 0.2
+  start=$(date +%s)
+  PATH="$BATS_TEST_TMPDIR/fakebin:$PATH" kill_lib "ns_kill_group $leader"
+  kill "$LIVE" 2>/dev/null || true
+  assert_success
+  [ $(($(date +%s) - start)) -le 5 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/pgrep.count")" -ge 10 ]
+}

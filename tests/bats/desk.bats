@@ -30,6 +30,15 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
 tok() { printf 'ghp_%s' "abcdefghijklmnopqrstuvwxyz0123456789"; }
 
+NTFY_TOKEN=tk_abcdefghijklmnopqrstuvwxyz012
+
+# ntfy_token [mode] [token]: writes an ntfy token (valid by default) to tokens/ntfy
+ntfy_token() {
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf '%s\n' "${2:-$NTFY_TOKEN}" >"$NS_CONFIG_DIR/tokens/ntfy"
+  chmod "${1:-600}" "$NS_CONFIG_DIR/tokens/ntfy"
+}
+
 # refused <printf %b text>: publishing it as x.html fails with the R-DSK-2 message and copies nothing
 refused() {
   printf '%b' "$1" >"$RUNDIR/x.html"
@@ -262,7 +271,7 @@ published() {
   long=$(printf 'a%.0s' $(seq 1 300))
   run ns-notify "$long"
   assert_success
-  grep -qE -- "(-d|--data-raw) a{200} " "$NS_STUB_LOG"
+  grep -qE -- "--data-raw a{200} " "$NS_STUB_LOG"
   ! grep -qE -- "a{201}" "$NS_STUB_LOG"
 }
 
@@ -282,14 +291,13 @@ published() {
 }
 
 @test "ns-notify passes the ntfy token via stdin or a file, never argv" {
-  export NS_NTFY_TOPIC=topic1
-  mkdir -p "$NS_CONFIG_DIR/tokens"
-  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token
   run ns-notify "hello"
   assert_success
-  grep -qE '^curl-(stdin|file) .*Authorization: Bearer tk_secrettoken123' "$NS_STUB_LOG"
-  ! grep '^curl ' "$NS_STUB_LOG" | grep -q tk_secrettoken123
-  ! grep -q tk_secrettoken123 <<<"$output"
+  grep -qE "^curl-(stdin|file) .*Authorization: Bearer $NTFY_TOKEN" "$NS_STUB_LOG"
+  ! grep '^curl ' "$NS_STUB_LOG" | grep -q "$NTFY_TOKEN"
+  ! grep -q "$NTFY_TOKEN" <<<"$output"
 }
 
 @test "ns-notify without a token file sends no Authorization header" {
@@ -307,13 +315,64 @@ published() {
 }
 
 @test "ns-notify fails on a non-2xx answer and keeps the token out of the output" {
-  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403
-  mkdir -p "$NS_CONFIG_DIR/tokens"
-  printf 'tk_secrettoken123\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token
   run ns-notify "hello"
   assert_failure 1
   assert_output_contains "ns-notify:"
-  ! grep -q tk_secrettoken123 <<<"$output"
+  ! grep -q "$NTFY_TOKEN" <<<"$output"
+}
+
+@test "ns-notify refuses a token file that is not mode 600 (#34)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token 644
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: token file $NS_CONFIG_DIR/tokens/ntfy must be mode 600"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify refuses a token with a quote before it reaches the curl config (#34)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token 600 'tk_abcdefghijklmnopqrstuvwxy"1'
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: token file $NS_CONFIG_DIR/tokens/ntfy does not hold an ntfy token"
+  assert_output_not_contains 'tk_abcdefghijklmnopqrstuvwxy'
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify refuses a token that is too short or spans lines (#34)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token 600 tk_short
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  printf 'tk_abcdefghijklmn\nopqrstuvwxyz012\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify prints curl's reason after its own message for an unreachable host (#34)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.invalid CURL_STUB_EXIT=6
+  export CURL_STUB_STDERR='curl: (6) Could not resolve host: ntfy.invalid'
+  run ns-notify "hello"
+  assert_failure 1
+  [ "${lines[0]}" = "ns-notify: could not reach ntfy" ]
+  [ "${lines[1]}" = "curl: (6) Could not resolve host: ntfy.invalid" ]
+}
+
+@test "ns-notify keeps curl's reason with a token, and the token stays out of it (#34)" {
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_EXIT=28 NS_NTFY_URL=https://ntfy.example:8444
+  export CURL_STUB_STDERR='curl: (28) Connection timed out after 10001 milliseconds'
+  ntfy_token
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: could not reach ntfy"
+  assert_output_contains "curl: (28) Connection timed out"
+  assert_output_not_contains "$NTFY_TOKEN"
 }
 
 @test "publishing at gate 1.5 puts the escalation question in the notification (ns-47)" {
@@ -380,4 +439,168 @@ desk_leftovers() {
   assert_failure
   assert_output_contains "gh pr create failed"
   desk_leftovers
+}
+
+@test "a ~/.curlrc with verbose and stderr - never puts the token in the output (review 1)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444 CURL_STUB_HTTP_CODE=403
+  ntfy_token
+  printf 'verbose\nstderr -\n' >"$HOME/.curlrc"
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_not_contains "$NTFY_TOKEN"
+  assert_output_contains "ns-notify: ntfy answered HTTP 403; not sent"
+  grep -q '^curl -q ' "$NS_STUB_LOG"
+}
+
+@test "ns-notify prints HTTP ? for an answer that is not a 3-digit code (review 1)" {
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE='> x'
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: ntfy answered HTTP ?; not sent"
+}
+
+@test "ns-notify refuses a token with a non-ASCII letter in a UTF-8 locale (review 3)" {
+  local loc=C.UTF-8
+  if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then loc=en_US.UTF-8; fi
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token 600 "tk_é$(printf 'a%.0s' $(seq 1 28))"
+  LC_ALL=$loc run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify never sends the token to ntfy.sh and says so (review 4)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  for u in "" https://ntfy.sh https://NTFY.sh/ https://ntfy.sh:443 http://user@ntfy.sh https://x.ntfy.sh; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_contains "ns-notify: warning: not sending the ntfy token: NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh"
+    grep -q '^curl ' "$NS_STUB_LOG"
+    ! grep -qi 'Authorization' "$NS_STUB_LOG"
+    ! grep -q "$NTFY_TOKEN" "$NS_STUB_LOG"
+  done
+}
+
+@test "ns-notify sends the token to a host that only contains ntfy.sh (review 4)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.sh.example.org
+  ntfy_token
+  run ns-notify "hello"
+  assert_success
+  grep -qF "Authorization: Bearer $NTFY_TOKEN" "$NS_STUB_LOG"
+}
+
+@test "NS_NTFY_PRIORITY sets the Priority header; an invalid value is refused (review 6)" {
+  export NS_NTFY_TOPIC=topic1
+  NS_NTFY_PRIORITY=min run ns-notify "hello"
+  assert_success
+  grep -qF -- '-H Priority: min' "$NS_STUB_LOG"
+  : >"$NS_STUB_LOG"
+  NS_NTFY_PRIORITY=$'min\nX-Evil: 1' run ns-notify "hello"
+  assert_failure 2
+  assert_output_contains "NS_NTFY_PRIORITY must be one of min low default high max 1 2 3 4 5"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+  run ns-notify "hello"
+  ! grep -q 'Priority' "$NS_STUB_LOG"
+}
+
+@test "ns-notify and ns publish refuse text holding an ntfy token (review 7)" {
+  export NS_NTFY_TOPIC=topic1
+  run ns-notify "oops tk_abcdefghijklmnopqrstuvwxyz012"
+  assert_failure 1
+  assert_output_contains "ns-notify: refusing to send something that looks like a token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+  printf 'key tk_abcdefghijklmnopqrstuvwxyz012\n' >"$RUNDIR/plan.md"
+  run ns publish sbx-12 RUN/plan.md
+  assert_failure 1
+  assert_output_contains "plan.md: looks like it contains a token; not published"
+}
+
+@test "ns-notify sends the token only to an https URL of a host that is not ntfy.sh (re-review 1)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  local u
+  for u in 'https:/ntfy.sh' 'https://ntfy%2esh' 'https://ntfy.sh%2e' 'https://NTFY.sh%2E' 'https://ntfy.sh.' \
+    'http://ntfy.example:8444' 'https://user@ntfy.example' 'https://ntfy.example\@ntfy.sh' \
+    'https://ntfy.example:123456' 'https://ntfy.example/x'; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_contains "ns-notify: warning: not sending the ntfy token: NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh"
+    ! grep -qi 'Authorization' "$NS_STUB_LOG"
+    ! grep -q "$NTFY_TOKEN" "$NS_STUB_LOG"
+  done
+}
+
+@test "ns-notify sends the token to the owner's https://<host>.ts.net:8444 (re-review 1)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  local u
+  for u in https://ns-main.tail1a2b3c.ts.net:8444 https://ns-main.tail1a2b3c.ts.net:8444/; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_not_contains "warning"
+    grep -qF "curl-stdin header = \"Authorization: Bearer $NTFY_TOKEN\"" "$NS_STUB_LOG"
+    grep -qF "https://ns-main.tail1a2b3c.ts.net:8444/topic1" "$NS_STUB_LOG"
+  done
+}
+
+@test "ns desk import refuses a repo path under .github/workflows/ (#117)" {
+  mkdir -p "$DESK/notes"
+  printf 'on: push\n' >"$DESK/notes/ci.md"
+  for rel in .github/workflows/ci.yml .github/workflows ./.github/workflows/ci.yml .github//workflows/ci.yml docs/./x.md; do
+    run ns desk import nightshift-sandbox/notes/ci.md "$rel"
+    assert_failure
+  done
+  run ns desk import nightshift-sandbox/notes/ci.md .github/workflows/ci.yml
+  assert_output_contains ".github/workflows"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+}
+
+@test "ns desk import refuses a repo path through a symlink on the base branch (#117)" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  co="$NS_CODING_DIR/nightshift-sandbox"
+  ln -s /tmp "$co/link"
+  ln -s ../README.md "$co/readme-link.md"
+  git -C "$co" add link readme-link.md
+  git -C "$co" commit -q -m "symlinks"
+  git -C "$co" push -q origin HEAD:main
+  run ns desk import nightshift-sandbox/notes/idea.md link/x.md
+  assert_failure
+  assert_output_contains "symlink"
+  run ns desk import nightshift-sandbox/notes/idea.md readme-link.md
+  assert_failure
+  assert_output_contains "symlink"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+}
+
+@test "ns desk import refuses a desk note that is a symlink to a file outside the desk (#117)" {
+  mkdir -p "$DESK/notes"
+  printf 'secret\n' >"$BATS_TEST_TMPDIR/outside.md"
+  ln -s "$BATS_TEST_TMPDIR/outside.md" "$DESK/notes/link.md"
+  run ns desk import nightshift-sandbox/notes/link.md docs/x.md
+  assert_failure
+  assert_output_contains "not inside the desk"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+}
+
+@test "ns desk import prints an open desk PR for the same repo path instead of opening another (#117)" {
+  mkdir -p "$DESK/notes" "$BATS_TEST_TMPDIR/resp"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  printf '[{"number":5,"url":"https://github.com/andras-tkcs/nightshift-sandbox/pull/5","title":"Add docs/idea.md from the desk","headRefName":"nightshift/desk-idea-md-1-2"},{"number":6,"url":"https://github.com/andras-tkcs/nightshift-sandbox/pull/6","title":"Add docs/other.md from the desk","headRefName":"nightshift/desk-other-md-1-2"}]\n' \
+    >"$BATS_TEST_TMPDIR/resp/open.json"
+  printf '0\topen.json\t^pr list\n0\t-\t^pr create\n' >"$BATS_TEST_TMPDIR/resp/map"
+  GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/resp" run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
+  assert_success
+  assert_output_contains "already open for docs/idea.md: https://github.com/andras-tkcs/nightshift-sandbox/pull/5"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+  remote="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  [ -z "$(git -C "$remote" for-each-ref --format='%(refname:short)' 'refs/heads/nightshift/*')" ]
 }

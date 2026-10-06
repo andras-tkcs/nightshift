@@ -30,6 +30,7 @@ release: v0.1.0                 # Nightshift release the run started on; null fo
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
 queued_for_slot: false           # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
 stacked_on: null                 # null | the base branch (git.base_branch) | run id of the PR this run is stacked on (ns-conductor stack-base)
+stack_skipped: []                # optional; red leaf run PRs stack-base pruned (checks failing), in pruning order: [{run: sbx-13, number: 6}]
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
 updated: 2026-10-02T21:05:00Z
@@ -40,7 +41,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note`.
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 
@@ -160,7 +161,15 @@ ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --
 
 An unknown top-level key (for example one written by a newer or older release) is not corruption: `ns-ledger get`, `ns ls`, `ns status` and `ns resume` read the ledger, print `ledger has unknown field <k>; kept` and keep the key on write. A missing required field or a wrong type is an error that names the field; run `ns-ledger validate <ledger>` to see it.
 
-`ns-launch` exports `NS_RUN_HOME`, the home that launched the run. A command whose `NS_HOME` differs from `NS_RUN_HOME` (a different checkout) refuses to write the ledger that `NS_LEDGER` names while `NS_RUN_ID` is set, because that ledger belongs to a live run. Without `NS_RUN_HOME`, only an installed release (`NS_HOME` under `${NS_OPT:-/opt/nightshift}/`) may write it. Any other ledger (a test fixture or temp file) can still be written.
+After a recovery the warning names the unknown fields of the restored version, which are kept. Unknown fields that only the corrupt version had are lost with it and are not reported; the `restored from <sha>` warning already says that everything since that commit is gone.
+
+While `NS_RUN_ID` is set, the ledger that `NS_LEDGER` names belongs to a live run, and only the home that launched the run may write it. The check uses the running script's own directory (the resolved directory of the `ns-ledger` that bash is executing), not only `NS_HOME`, so a checkout's `bin/ns-ledger` that inherited the run's `NS_HOME` is refused too. The script must be `<home>/bin`, `NS_HOME` must resolve to the same home, and the home is:
+
+- the release the ledger records (`release: vX.Y.Z`): `${NS_OPT:-/opt/nightshift}/vX.Y.Z`, resolved, whose real directory is named `vX.Y.Z`. `NS_RUN_HOME` does not count for such a run;
+- for a run launched from a checkout (`release: null`): `NS_RUN_HOME`, which `ns-launch` exports, resolved;
+- without either: any home under the resolved `${NS_OPT:-/opt/nightshift}/`.
+
+Symlinks (`/opt/nightshift/current`, a symlinked `NS_OPT`, `~/.local/bin/ns-ledger`) are resolved on both sides. This is intended: in a run pinned to an older release, an explicit `/usr/local/bin/ns-ledger` or `~/.local/bin/ns-ledger` (which goes to `/opt/nightshift/current`, a newer release) is refused for the live ledger. Inside a run, use `ns-ledger` from `PATH`, where `ns-launch` puts the run's release first. The refusal reads `refusing to write <ledger>: it belongs to live run <id> and this command runs from <dir> (NS_HOME=<home>), not from the home that launched it (<home>/bin); test new code against a temp ledger`. Any other ledger (a test fixture or temp file) can still be written. The check is a seatbelt against running a checkout on a live run by mistake, not a boundary. What it trusts, and what gets past it, is in `docs/security.md`, section "Live-ledger guard".
 
 ## Recovery
 

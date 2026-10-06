@@ -28,7 +28,7 @@ ns_dequeue_main() {
     elif [ "$rc" -eq 0 ]; then
       ledger=$(ns_run_ledger "$id")
       "$NS_HOME/bin/ns-ledger" event "$ledger" dequeued "started from the queue" || ns_warn "ledger event failed for $id"
-      "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push || ns_warn "checkpoint failed for $id"
+      ns_resume_push "$id" "$ledger" || ns_warn "checkpoint failed for $id"
       "$NS_HOME/bin/ns-notify" "ns: $id left the queue and started" || ns_warn "notification failed"
       started=$((started + 1))
     else

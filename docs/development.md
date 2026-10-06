@@ -41,13 +41,13 @@ The requirements are in [spec.md](spec.md).
 
 ## Developing Nightshift with Nightshift
 
-A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. Nightshift enforces this for writes: a command whose `NS_HOME` differs from `NS_RUN_HOME` refuses to write the live run's ledger. Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
+A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. A seatbelt catches the accidental case for writes: a `bin/ns-ledger` that does not run from the run's own release (or, for a run launched from a checkout, from `NS_RUN_HOME`) refuses to write the live run's ledger, even when it inherited the run's `NS_HOME`. It is not a boundary: a copy of the checkout placed under a fake `NS_OPT` in a directory named after the release tag passes, and so does any write that does not go through `ns-ledger` (see `docs/security.md`, "Live-ledger guard"). Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
 
 ## Releasing
 
 Releases are tagged by the owner, never by an agent (ADR 0007).
 
-1. In a pull request, move the `[Unreleased]` entries of `CHANGELOG.md` to a new version section `[X.Y.Z]` with the date, and leave an empty `[Unreleased]` above it. Get it reviewed and merged.
+1. In a pull request, move the `[Unreleased]` entries of `CHANGELOG.md` to a new version section `[X.Y.Z]` with the date, and leave an empty `[Unreleased]` above it. Get it reviewed and merged. The tag command refuses while `[Unreleased]` has entries or the version has no section (issue #88).
 2. The owner tags `main` and pushes the tag:
 
    ```bash

@@ -35,6 +35,8 @@ The generic layer ships as Claude Code plugins from the Nightshift repo, which i
 
 `project-profile.yaml` is the only contract between the layers. Generic agents never hard-code project facts; they read commands, protected paths, risk zones, compliance regimes and domain skills from the profile. See [profile-reference.md](profile-reference.md). The agents and skills are described in [agents.md](agents.md).
 
+The bash tooling handles YAML through one Python helper, `bin/lib/nsyaml.py`, plus `jq` (ADR 0004). Its subcommands are `to-json`, `from-json`, `validate` and `read` (validate and print as JSON in one launch, used for ledger reads).
+
 The specialist bench (database expert, data analyst, UI/UX designer) is Build B, together with the skills they use.
 
 ## Languages and platforms
@@ -106,6 +108,7 @@ Agents publish every gate document into one folder on `ns-main` (`/srv/ns-space`
 
 - No main: branch protection on `main`; agents never merge, tag a release or push to the base branch.
 - Scoped token: a fine-grained GitHub token per owner, limited to the registered repos.
+- Guard hook: a seatbelt that blocks token reads, protected-path edits, pushes to the base branch and the owner-only `ns` commands in any form it can parse; what only the guard stops is listed in [security.md](security.md#the-real-boundary).
 - No open ports: the server is reachable only inside your tailnet.
 - Untrusted text: issue bodies, PR comments and web pages are data; agents never follow instructions found in them.
 - Budgets: each tier has a wall-clock cap; hitting it stops and escalates.

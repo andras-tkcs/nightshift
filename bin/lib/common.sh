@@ -20,6 +20,15 @@ ns_now() {
 
 ns_config_dir() { printf '%s\n' "${NS_CONFIG_DIR:-$HOME/.config/ns}"; }
 ns_desk_dir() { printf '%s\n' "${NS_DESK_DIR:-/srv/ns-space}"; }
+# ns_private_dir <dir>: create <dir> (missing parents too) readable by the owner only; an
+# existing <dir> is set to 700 as well
+ns_private_dir() { (umask 077 && mkdir -p "$1") && chmod 700 "$1"; }
+# ns_run_logdir <id>: create logs/ and logs/<id> private (700) and print logs/<id>
+ns_run_logdir() {
+  local d
+  d="$(ns_config_dir)/logs"
+  ns_private_dir "$d/$1" && chmod 700 "$d" && printf '%s\n' "$d/$1"
+}
 ns_coding_dir() { printf '%s\n' "${NS_CODING_DIR:-$HOME/Coding}"; }
 ns_worktree_root() { printf '%s/worktrees\n' "$(ns_coding_dir)"; }
 
@@ -90,8 +99,42 @@ ns_age() {
   fi
 }
 
+# ASCII letters and digits, spelled out: a range like [A-Za-z0-9] depends on the locale
+# (en_US.UTF-8 lets it match é).
+NS_ALNUM=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+
 ns_has_token() {
-  printf '%s' "$1" | grep -Eq '(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})'
+  printf '%s' "$1" | LC_ALL=C grep -Eq "(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|tk_[$NS_ALNUM]{29})"
+}
+
+# ns_ntfy_own_url [url]: true only when url may get the ntfy token: an allowlist, so no
+# spelling of ntfy.sh slips through. It must be https://<host>[:port][/] with a host of
+# ASCII letters, digits, dots and dashes (no %, @, \ or path), and the host, lowercased and
+# without trailing dots, must not be ntfy.sh or a subdomain of it (the public server).
+ns_ntfy_own_url() {
+  local u="${1:-}" host re="^https://([$NS_ALNUM.-]+)(:[0-9]{1,5})?/?\$"
+  [[ $u =~ $re ]] || return 1
+  host="${BASH_REMATCH[1],,}"
+  while [ "${host%.}" != "$host" ]; do host="${host%.}"; done
+  [ -n "$host" ] && [ "$host" != ntfy.sh ] && [[ $host != *.ntfy.sh ]]
+}
+
+# ns_ntfy_token: prints the ntfy token from tokens/ntfy, or nothing if there is no such file.
+# Dies, never printing the token, if the file is not mode 600 (the ns_token_export message)
+# or its first line is not an ntfy token, so the token is safe inside a quoted curl config.
+ns_ntfy_token() {
+  local file mode tok re="^tk_[$NS_ALNUM]{29}\$"
+  file="$(ns_config_dir)/tokens/ntfy"
+  [ -f "$file" ] || return 0
+  mode=$(stat -c %a "$file")
+  [ "$mode" = 600 ] || ns_die "token file $file must be mode 600"
+  tok=""
+  IFS= read -r tok <"$file" || true
+  tok="${tok#"${tok%%[![:space:]]*}"}"
+  tok="${tok%"${tok##*[![:space:]]}"}"
+  [[ $tok =~ $re ]] ||
+    ns_die "token file $file does not hold an ntfy token (tk_ and 29 letters or digits)"
+  printf '%s\n' "$tok"
 }
 
 ns_plugin_args() {

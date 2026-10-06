@@ -31,7 +31,7 @@ ns_ls_main() {
     ledger="$wt/.nightshift/runs/$id/ledger.yaml"
     led=""
     if [ -d "$wt" ] && [ -f "$ledger" ]; then
-      led=$({ "$NS_HOME/bin/ns-ledger" get "$ledger" 2>&1 1>&3 | grep 'warning:' >&2 || true; } 3>&1) || led=""
+      led=$({ "$NS_HOME/bin/ns-ledger" get "$ledger" 2>&1 1>&3 | grep 'warning:' >&2 || true; } 3>&1)
     fi
     if [ -n "$led" ]; then
       row=$(jq -c --argjson e "$entry" '{id: $e.id, project: $e.project, tier, state, gate, step,

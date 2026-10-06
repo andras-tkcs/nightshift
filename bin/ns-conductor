@@ -200,7 +200,8 @@ conductor_start() {
     ns_stack_setup "$pwt" "$profile" >&2 || ns_die "setup failed in $pwt"
   fi
   # 6. prompt
-  mkdir -p "$logdir" "$workers"
+  ns_private_dir "$logdir"
+  mkdir -p "$workers"
   prompt="$logdir/$phase.prompt.md"
   log="$logdir/$phase.jsonl"
   docs=$(jq -r '.docs // {} | to_entries[] | .value' <<<"$profile" | sed 's/^/- /')
@@ -290,7 +291,7 @@ finish_worker() {
     [[ $code =~ ^[0-9]+$ ]] || code=137
   fi
   done_dir="$logdir/done"
-  mkdir -p "$done_dir"
+  ns_private_dir "$done_dir"
   mv -f "$f" "$done_dir/$base.pid"
   [ ! -f "$ef" ] || mv -f "$ef" "$done_dir/$base.exit"
   lastres=""

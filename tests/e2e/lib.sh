@@ -278,7 +278,7 @@ e2e_close_prs_on_base() {
   while IFS= read -r n; do
     [ -n "$n" ] || continue
     gh pr close "$n" -R "$E2E_REPO" --delete-branch >/dev/null 2>&1 || true
-  done < <(gh pr list -R "$E2E_REPO" --base "$1" --state open --json number --jq '.[].number')
+  done < <(gh api --paginate "repos/$E2E_REPO/pulls?state=open&base=$1&per_page=100" --jq '.[].number')
 }
 
 # e2e_close_issues_naming <base>

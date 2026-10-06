@@ -51,26 +51,54 @@ doc_gh_auth() {
   fi
 }
 
+# doc_owners: prints the owners of the registered projects, one per line. Only a token
+# file named after one of them (tokens/<owner>, as ns_token_export reads it) is a GitHub token.
+doc_owners() {
+  ns_projects_json 2>/dev/null | jq -r '.[].repo // empty | split("/")[0]' 2>/dev/null |
+    LC_ALL=C grep -E "^[$NS_ALNUM][$NS_ALNUM-]*\$" | sort -u || true
+}
+
 doc_tokens() {
-  local dir f name mode tok hdr exp now e days
+  local dir f base name mode tok hdr exp now e days owners o known re="^[$NS_ALNUM][$NS_ALNUM-]*\$"
   dir="$(ns_config_dir)/tokens"
   if [ ! -d "$dir" ] || [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
     doc_warn tokens "no token files in $dir"
     return 0
   fi
   now=$(date -u -d "$(ns_now)" +%s)
+  owners=$(doc_owners)
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
-    name="token $(basename "$f")"
+    base=$(basename "$f")
+    name="token $base"
     mode=$(stat -c %a "$f")
     if [ "$mode" != 600 ]; then
       doc_fail "$name" "mode is $mode, must be 600"
+      continue
+    fi
+    # tokens/ntfy is checked by doc_ntfy and never goes to GitHub, nor does any file
+    # that is not named after a registered project owner.
+    [ "$base" != ntfy ] || continue
+    # A whole-name match against each owner; a name with a newline or any other
+    # character never matches.
+    known=0
+    if [[ $base =~ $re ]]; then
+      while IFS= read -r o; do
+        [ "$o" != "$base" ] || known=1
+      done <<<"$owners"
+    fi
+    if [ "$known" = 0 ]; then
+      doc_warn "$name" "not named after a registered project owner, not checked"
       continue
     fi
     tok=""
     IFS= read -r tok <"$f" || true
     tok="${tok#"${tok%%[![:space:]]*}"}"
     tok="${tok%"${tok##*[![:space:]]}"}"
+    if [[ $tok == tk_* ]]; then
+      doc_fail "$name" "holds an ntfy token, not sent to GitHub"
+      continue
+    fi
     hdr=$(GH_TOKEN="$tok" gh api -i user 2>/dev/null | tr -d '\r' |
       grep -i '^github-authentication-token-expiration:' | head -n1) || hdr=""
     exp="${hdr#*:}"
@@ -88,6 +116,32 @@ doc_tokens() {
       doc_ok "$name" "mode 600, expires in $days days"
     fi
   done
+}
+
+# doc_ntfy: checks tokens/ntfy (mode 600 is checked by doc_tokens): it must hold an ntfy
+# token, and a test publish with it to NS_NTFY_URL must succeed (R-NOT-5).
+doc_ntfy() {
+  local f out url
+  f="$(ns_config_dir)/tokens/ntfy"
+  [ -f "$f" ] && [ "$(stat -c %a "$f")" = 600 ] || return 0
+  if ! (ns_ntfy_token) >/dev/null 2>&1; then
+    doc_fail "token ntfy" "not an ntfy token (tk_ and 29 letters or digits)"
+    return 0
+  fi
+  if [ -z "${NS_NTFY_TOPIC:-}" ]; then
+    doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_TOPIC not set)"
+    return 0
+  fi
+  if ! ns_ntfy_own_url "${NS_NTFY_URL:-}"; then
+    doc_warn "token ntfy" "mode 600, test publish skipped (NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+    return 0
+  fi
+  url="$NS_NTFY_URL"
+  if out=$(NS_NTFY_PRIORITY=min "$NS_HOME/bin/ns-notify" "ns doctor: test publish" 2>&1); then
+    doc_ok "token ntfy" "mode 600, test publish to $url ok"
+  else
+    doc_fail "token ntfy" "test publish failed: $(printf '%s\n' "$out" | awk 'NF { printf "%s%s", s, $0; s = "; " }')"
+  fi
 }
 
 doc_projects() {
@@ -234,6 +288,7 @@ ns_doctor_main() {
   doc_commands
   doc_gh_auth
   doc_tokens
+  doc_ntfy
   doc_projects
   doc_desk
   doc_env

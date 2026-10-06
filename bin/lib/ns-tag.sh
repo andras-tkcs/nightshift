@@ -12,7 +12,8 @@ ns_tag_help() {
   printf 'usage: ns tag <vX.Y.Z> [--repo <dir>] [--yes]\n\n'
   printf 'Tag the base branch of a repository as a release and push the tag. Refuses when\n'
   printf 'the local branch is dirty or differs from origin, the name is not vX.Y.Z or is not\n'
-  printf 'the next version, the tag exists, or the project checks fail. Warns when CI is not\n'
+  printf 'the next version, the tag exists, CHANGELOG.md still has [Unreleased] entries or no\n'
+  printf 'section for the version, or the project checks fail. Warns when CI is not\n'
   printf 'green or Nightshift runs are active (the upgrade refuses while they are). Prints the\n'
   printf 'root upgrade command. --yes skips the confirmation. Owner only.\n'
 }
@@ -48,6 +49,22 @@ ns_tag_warn_active_runs() {
   done < <(ns_runs_json | jq -c '.[] | select(.archived | not)' 2>/dev/null || true)
   [ -z "$lines" ] ||
     ns_warn "Nightshift runs are active (bootstrap.sh --upgrade refuses while they run):$lines"
+}
+
+# ns_tag_changelog_ok <repo> <tag>: dies unless CHANGELOG.md (when the repository has one) has an
+# empty [Unreleased] section and a section for the version (issue #88)
+# The file is read from the commit being tagged. Empty "###" sub-headings and HTML comments under
+# [Unreleased] do not count as entries.
+ns_tag_changelog_ok() {
+  local text ver="${2#v}"
+  text=$(git -C "$1" show HEAD:CHANGELOG.md 2>/dev/null) || return 0
+  if awk '/^## \[/ {inside = ($0 ~ /^## \[Unreleased\]/); next}
+      inside && /[^[:space:]]/ && !/^###/ && !/^[[:space:]]*<!--.*-->[[:space:]]*$/ {found = 1}
+      END {exit !found}' <<<"$text"; then
+    ns_die "CHANGELOG.md: [Unreleased] still has entries: move them to '## [$ver] - <date>' in the release pull request (docs/development.md, Releasing)"
+  fi
+  awk -v h="## [$ver]" 'index($0, h) == 1 {f = 1} END {exit !f}' <<<"$text" ||
+    ns_die "CHANGELOG.md has no ## [$ver] section: add a '## [$ver] - <date>' section in the release pull request (docs/development.md, Releasing)"
 }
 
 ns_tag_main() {
@@ -104,6 +121,8 @@ ns_tag_main() {
     ns_die "$tag is not the next version after $last (expected next patch, minor or major)"
   fi
 
+  ns_tag_changelog_ok "$repo" "$tag"
+
   local cmd
   cmd=$(jq -r '.commands.test // ""' <<<"$profile" 2>/dev/null) || cmd=""
   printf 'running project checks...\n'
@@ -137,8 +156,11 @@ ns_tag_main() {
   ns_tag_warn_active_runs
 
   local msg titles
+  # merge commits ("Merge pull request #N", title in the body) and squash merges ("<title> (#N)")
   titles=$(git -C "$repo" log --first-parent --format='%s%x1f%b%x1e' ${last:+"$last..HEAD"} |
-    awk 'BEGIN {RS="\036"; FS="\037"} $1 ~ /^\n?Merge pull request/ {n=split($2, a, "\n"); for (i=1;i<=n;i++) if (a[i] ~ /[^[:space:]]/) {print "- " a[i]; break}}' || true)
+    awk 'BEGIN {RS="\036"; FS="\037"} {sub(/^\n/, "", $1)}
+      $1 ~ /^Merge pull request/ {n=split($2, a, "\n"); for (i=1;i<=n;i++) if (a[i] ~ /[^[:space:]]/) {print "- " a[i]; break}; next}
+      $1 ~ / \(#[0-9]+\)$/ {print "- " $1}' || true)
   msg="Release $tag"
   [ -z "$titles" ] || msg="$msg"$'\n\n'"$titles"
 

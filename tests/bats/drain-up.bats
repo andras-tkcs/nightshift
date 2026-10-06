@@ -106,3 +106,10 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   grep -qxF 'Persistent=true' "$NS_REPO_ROOT/templates/systemd/ns-gc.timer"
   grep -qxF 'WantedBy=timers.target' "$NS_REPO_ROOT/templates/systemd/ns-gc.timer"
 }
+
+@test "drain keeps an owner's pending ns stop, so resume --all leaves the run stopped (#96)" {
+  ns-ledger set "$LEDGER" '.state="running" | .stop_requested="stopped"'
+  : >"$TMUX_STUB_DIR/sbx-12"
+  run ns drain --timeout 1
+  [ "$(lget .stop_requested)" = stopped ]
+}

@@ -97,35 +97,83 @@ gc_run_inner() {
   gc_cleanup_run "$run" "$proj" "$remote" 0 || return 0
 }
 
-# gc_cleanup_run <run-json> <proj-json> <remote:0|1|2> <force:0|1>: removes the run's worktrees,
-# local branches, (with remote=1) remote branches, tmux session and desk folder, and marks it
-# archived. Unsaved work in a worktree keeps the run whole (return 2) unless force=1.
+# gc_run_profile <proj-json>: the project's resolved profile JSON, empty when it cannot be read
+gc_run_profile() {
+  local out rc=0
+  out=$(ns_profile_json "$(jq -r .path <<<"$1")" "$(jq -r .prefix <<<"$1")" "$(jq -r '.branch // ""' <<<"$1")" 2>/dev/null) || rc=$?
+  if { [ "$rc" = 0 ] || [ "$rc" = 3 ]; } && jq -e '.git | type == "object"' >/dev/null 2>&1 <<<"$out"; then
+    printf '%s\n' "$out"
+  fi
+}
+
+# gc_own_branch <profile-json> <id> <code|phase> <branch>: 0 when the branch is the run's own
+# fix or feature branch (code) or a phase branch of it (phase), as the profile names them
+gc_own_branch() {
+  local prof="$1" id="$2" kind="$3" b="$4" t pre suf mid
+  case "$b" in "" | -*) return 1 ;; esac
+  [ -n "$prof" ] || return 1
+  if [ "$kind" = code ]; then
+    for t in fix_branch feature_branch; do
+      t=$(jq -r ".git.$t // empty" <<<"$prof")
+      [ -z "$t" ] || [ "$b" != "$(ns_branch_name "$t" "$id")" ] || return 0
+    done
+    return 1
+  fi
+  t=$(jq -r '.git.phase_branch // empty' <<<"$prof")
+  [[ $t == *"{phase}"* ]] || return 1
+  pre=$(ns_branch_name "${t%%"{phase}"*}" "$id")
+  suf=$(ns_branch_name "${t#*"{phase}"}" "$id")
+  [[ $b == "$pre"*"$suf" ]] || return 1
+  mid=${b#"$pre"}
+  mid=${mid%"$suf"}
+  [[ $mid =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+# gc_cleanup_run <run-json> <proj-json> <remote:0|1|2> <force:0|1> [ledger]: removes the run's
+# worktrees, local branches, (with remote=1) remote branches, tmux session and desk folder, and
+# marks it archived. Unsaved work in a worktree keeps the run whole (return 2) unless force=1.
+# The ledger defaults to the one in the run worktree; without one only the plan branch is known.
 gc_cleanup_run() {
-  local run="$1" proj="$2" remote="$3" force="$4" id pname base path ledger
+  local run="$1" proj="$2" remote="$3" force="$4" ledger="${5:-}" id pname base path
   id=$(jq -r .id <<<"$run")
   pname=$(jq -r .project <<<"$run")
   base=$(jq -r '.worktree // ""' <<<"$run")
   path=$(jq -r .path <<<"$proj")
-  ledger="$base/.nightshift/runs/$id/ledger.yaml"
+  [ -n "$ledger" ] || ledger="$base/.nightshift/runs/$id/ledger.yaml"
 
-  local -a wts=() locals=() remotes=()
-  local plan feature b wpath line why dest month src sz basebranch keep=0
+  local -a wts=() locals=() remotes=() phases=()
+  local plan feature="" b wpath line why dest month src sz basebranch keep=0 prof="" n
   plan=$(jq -r '.branch // ""' <<<"$run")
-  feature=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.feature_branch // ""')
+  if [ -f "$ledger" ]; then
+    feature=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.feature_branch // ""')
+    mapfile -t phases < <("$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[]?.branch // empty')
+  fi
+  # the ledger is written by agents: only branch names the profile gives this run are touched
+  if [ -n "$feature" ] || [ "${#phases[@]}" -gt 0 ]; then
+    prof=$(gc_run_profile "$proj")
+  fi
   if [ -n "$plan" ]; then
     locals+=("$plan")
     remotes+=("$plan")
   fi
   if [ -n "$feature" ]; then
-    locals+=("$feature")
-    # ns rm (remote=2) also deletes the feature branch on origin; gc leaves it to the merge
-    if [ "$remote" = 2 ]; then remotes+=("$feature"); fi
+    if gc_own_branch "$prof" "$id" code "$feature"; then
+      locals+=("$feature")
+      # ns rm (remote=2) also deletes the feature branch on origin; gc leaves it to the merge
+      if [ "$remote" = 2 ]; then remotes+=("$feature"); fi
+    else
+      ns_warn "$id: skipped branch $feature: not a branch of $id"
+    fi
   fi
-  while IFS= read -r b; do
+  for b in "${phases[@]}"; do
     [ -n "$b" ] || continue
-    locals+=("$b")
-    remotes+=("$b")
-  done < <("$NS_HOME/bin/ns-ledger" get "$ledger" '.phases[]?.branch // empty')
+    if gc_own_branch "$prof" "$id" phase "$b"; then
+      locals+=("$b")
+      remotes+=("$b")
+    else
+      ns_warn "$id: skipped branch $b: not a branch of $id"
+    fi
+  done
 
   # (a) worktrees: the run's own path or <path>--<suffix>, never a bare prefix
   while IFS= read -r line; do
@@ -209,6 +257,12 @@ gc_cleanup_run() {
   src=$(ns_desk_run_dir "$pname" "$id")
   month=$(ns_now | cut -c1-7)
   dest="$(ns_desk_dir)/$pname/archive/$month/$id"
+  # a forgotten id can be used and removed again in the same month
+  n=2
+  while [ -e "$dest" ]; do
+    dest="$(ns_desk_dir)/$pname/archive/$month/$id-$n"
+    n=$((n + 1))
+  done
   if [ -d "$src" ]; then
     gc_say desk "$src"
     if [ "$GC_DRY" = 0 ]; then
@@ -231,7 +285,7 @@ gc_cleanup_run() {
 # gc_run <run-json>: runs gc_run_inner with the project owner's token exported, then
 # restores GH_TOKEN. The token never appears on a command line or in output.
 gc_run() {
-  local run="$1" repo owner id had=0 saved="" rc=0
+  local run="$1" repo owner id err had=0 saved="" rc=0
   id=$(jq -r .id <<<"$run")
   repo=$(ns_project_by_name "$(jq -r .project <<<"$run")" 2>/dev/null | jq -r '.repo // ""') || repo=""
   owner=${repo%%/*}
@@ -240,9 +294,11 @@ gc_run() {
     saved=$GH_TOKEN
   fi
   if [ -n "$owner" ]; then
-    # ns_token_export dies on a wrong file mode, so probe it in a subshell first
-    if ! (ns_token_export "$owner") >/dev/null 2>&1; then
-      gc_needs "$id" "token file for $owner is unusable (must be mode 600)"
+    # ns_token_export dies on a wrong file mode or the name ntfy, so probe it in a subshell
+    # first and pass on its reason (it never contains the token)
+    if ! err=$( (ns_token_export "$owner") 2>&1 >/dev/null); then
+      err="${err%%$'\n'*}"
+      gc_needs "$id" "token file for $owner is unusable: ${err#"${NS_CMD:-ns}: "}"
       return 0
     fi
     ns_token_export "$owner" >/dev/null 2>&1 || true

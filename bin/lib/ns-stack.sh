@@ -13,7 +13,8 @@ ns_stack_help() {
   printf '       ns stack merge [project] [--dry-run]\n'
   printf '       ns stack drop <id> [--dry-run]\n\n'
   printf 'List the open pull requests of runs, bottom to top (main <- a <- b), one block per chain: run, PR, base,\n'
-  printf 'checks, review state and age. project is a prefix or name; without it every project is shown.\n'
+  printf 'checks, review state and age. project is a prefix or name; without it every project is shown. Only chains on\n'
+  printf 'the profile base branch count (for merge and drop too). A new run skips red top PRs (prunes red leaves).\n'
   printf 'merge lands the stack bottom to top (owner only): the profile checks run once on the top of the stack, then each PR must be approved, have no failing checks and be\n'
   printf 'mergeable; the next PR is retargeted to the base branch before the one below it is merged. It stops at the\n'
   printf 'first PR that is not ready and says what is left. drop closes the PR of run <id> and restacks the PR above it\n'
@@ -66,14 +67,24 @@ ns_stack_list() {
     fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
     featpat=$(jq -r '.git.feature_branch' <<<"$prof")
     prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$path") || ns_die "could not list the pull requests of $repo"
+    local row age chains nch ci closed note all basebr off cands clist
+    basebr=$(jq -r '.git.base_branch // ""' <<<"$prof")
+    all="$prs"
+    # one closed search per project serves the base-branch check and the base closed marks
+    cands=$(ns_stack_closed_candidates "$all" "$basebr" "$fixpat" "$featpat" "$prefix")
+    clist="[]"
+    [ "$cands" = "[]" ] || clist=$(ns_stack_closed_list "$repo" "$(ns_stack_closed_since "$all" "$cands")")
+    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix" "$repo" "$clist")
     printf '%s\n' "$repo"
+    off=$(jq -c --argjson on "$prs" '[.[] | select(. as $p | any($on[]; .number == $p.number) | not) | "#\(.number)"]' <<<"$all")
+    [ "$off" = "[]" ] || printf '  %s open run PRs target other base branches than %s (not shown): %s\n' \
+      "$(jq length <<<"$off")" "$basebr" "$(jq -r 'join(", ")' <<<"$off")"
     n=$(jq length <<<"$prs")
     if [ "$n" = 0 ]; then
       printf '  no open run PRs\n'
       continue
     fi
-    local row age chains nch ci closed note
-    closed=$(ns_stack_closed_heads "$repo" "$prs" "$(jq -r '.git.base_branch // ""' <<<"$prof")")
+    closed=$(ns_stack_closed_heads "$repo" "$prs" "$basebr" "$clist")
     chains=$(ns_stack_chains "$prs")
     nch=$(jq length <<<"$chains")
     for ((ci = 0; ci < nch; ci++)); do
@@ -83,6 +94,7 @@ ns_stack_list() {
         age=$(ns_age "$(jq -r .createdAt <<<"$row")" 2>/dev/null) || age="-"
         note=""
         if [ -n "$closed" ] && grep -qxF -- "$(jq -r .base <<<"$row")" <<<"$closed"; then note="  base closed"; fi
+        if [ "$(jq -r '.base_unknown // false' <<<"$row")" = true ]; then note="$note  base unknown"; fi
         printf '  %-12s %-6s %-22s %-8s %-18s %s%s\n' "$(jq -r .run <<<"$row")" "#$(jq -r .number <<<"$row")" \
           "$(jq -r .base <<<"$row")" "$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")" \
           "$(jq -r 'if .reviewDecision == "" then "-" else .reviewDecision end' <<<"$row")" "$age" "$note"
@@ -94,7 +106,7 @@ ns_stack_list() {
 # ns_stack_merge [project] [--dry-run]: land the single chain of run PRs bottom to top
 ns_stack_merge() {
   local u="ns stack merge [project] [--dry-run]" sel="" dry=0 projects p repo prs chains n i row num head base why live
-  local merged=() left=() nxt topnum id_for_wt
+  local merged=() left=() nxt topnum id_for_wt want
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) dry=1 ;;
@@ -131,6 +143,8 @@ ns_stack_merge() {
   esac
   n=$(jq '.[0] | length' <<<"$chains")
   base=$(jq -r '.[0][0].base' <<<"$chains")
+  want=$(ns_stack_project_base "$p") || ns_die "could not read the profile of $repo"
+  [ "$base" = "$want" ] || ns_die "the bottom PR #$(jq -r '.[0][0].number' <<<"$chains") targets $base, not $want (its base PR is no longer open): use ns stack drop or retarget it first"
   id_for_wt=$(jq -r '.[0][-1].run' <<<"$chains")
   if [ "$dry" -eq 1 ]; then
     printf 'plan for %s (dry run, nothing is changed):\n' "$repo"
@@ -145,10 +159,15 @@ ns_stack_merge() {
     return 0
   fi
   topnum=$(jq -r '.[0][-1].number' <<<"$chains")
-  ns_stack_top_checks "$p" "$id_for_wt" "$(jq -r '.[0][-1].head' <<<"$chains")" || {
+  local trc=0
+  ns_stack_top_checks "$p" "$id_for_wt" "$(jq -r '.[0][-1].head' <<<"$chains")" || trc=$?
+  if [ "$trc" -eq 2 ]; then
+    printf 'stopped: could not run the checks on top of the stack (#%s)\n' "$topnum"
+    return 1
+  elif [ "$trc" -ne 0 ]; then
     printf 'stopped: checks failed on top of the stack (#%s)\n' "$topnum"
     return 1
-  }
+  fi
   for ((i = 0; i < n; i++)); do
     row=$(jq -c ".[0][$i]" <<<"$chains")
     num=$(jq -r .number <<<"$row")
@@ -184,18 +203,19 @@ ns_stack_merge() {
 }
 
 # ns_stack_top_checks <project json> <run id> <head branch>: run the profile checks in a throwaway worktree
-# of the top PR's head; a non-zero return means a check failed or could not run
+# of the top PR's head. Returns 0 when they pass (or none are configured: a SKIP line), 1 when a check
+# failed (with the tail of its output), 2 when they could not run (profile, fetch or worktree; says which).
 ns_stack_top_checks() {
-  local p="$1" id="$2" head="$3" path name prof wt total n cmd cname stack crc failed=0
+  local p="$1" id="$2" head="$3" path name prof wt log rc=0
   path=$(jq -r .path <<<"$p")
   name=$(jq -r .name <<<"$p")
   prof=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$p")" "$(jq -r '.branch // ""' <<<"$p")" 2>/dev/null) || [ $? -eq 3 ] || {
     printf 'could not read the profile of %s\n' "$name"
-    return 1
+    return 2
   }
   git -C "$path" fetch -q origin || {
     printf 'could not fetch origin for %s\n' "$name"
-    return 1
+    return 2
   }
   wt="$(ns_worktree_root)/$name-$id--merge"
   mkdir -p "$(ns_worktree_root)"
@@ -205,28 +225,16 @@ ns_stack_top_checks() {
   fi
   git -C "$path" worktree add -q --detach "$wt" "origin/$head" || {
     printf 'could not create a worktree of %s\n' "$head"
-    return 1
+    return 2
   }
-  total=$(jq '(.checks // []) | length' <<<"$prof")
-  [ "$total" -gt 0 ] || printf 'no checks configured\n'
-  for ((n = 0; n < total; n++)); do
-    stack=$(jq -r ".checks[$n].stack" <<<"$prof")
-    cname=$(jq -r ".checks[$n].name" <<<"$prof")
-    cmd=$(jq -r ".checks[$n].cmd" <<<"$prof")
-    crc=0
-    (cd "$wt" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
-      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >/dev/null 2>&1 </dev/null || crc=$?
-    if [ "$crc" -eq 0 ]; then
-      printf 'check %s %s: pass\n' "$stack" "$cname"
-    elif [ "$crc" -eq 5 ] && [[ $cmd == *pytest* ]]; then
-      printf 'check %s %s: skipped (no tests)\n' "$stack" "$cname"
-    else
-      printf 'check %s %s: FAIL\n' "$stack" "$cname"
-      failed=1
-    fi
-  done
+  log=$(mktemp)
+  ns_profile_checks_run "$wt" "$prof" "$log" || {
+    rc=1
+    tail -n 40 "$log"
+  }
+  rm -f "$log"
   git -C "$path" worktree remove --force "$wt" 2>/dev/null || true
-  return "$failed"
+  return "$rc"
 }
 
 # ns_stack_drop <id> [--dry-run]: close the PR of a run and restack the PR above it onto the layer below
