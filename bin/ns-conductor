@@ -277,6 +277,16 @@ conductor_start() {
 # ---------------------------------------------------------------------------
 # wait
 
+# USAGE_LIMIT_JQ: true for a stream-json result that ended on a Claude usage or rate limit.
+# Only an error result counts (is_error, or a subtype other than success), so a worker whose
+# report merely mentions a rate limiter is a normal finish. Then either the API status is 429
+# or the error text is a limit message ("You've hit your session limit · resets ...",
+# "Claude AI usage limit reached|<epoch>", "You're out of usage credits").
+USAGE_LIMIT_JQ='(.is_error == true or ((.subtype // "success") != "success"))
+  and ((.api_error_status == 429)
+    or ([.result, (.errors // [])[]] | map(strings) | join(" ")
+        | test("\\b(usage|rate) limit\\b|\\b(hit|reached) your [^.]*limit\\b|out of (extra )?usage"; "i")))'
+
 # finish_worker <pid file>: handle one finished worker; prints one line
 finish_worker() {
   local f="$1" base phase code ef lastres done_dir
@@ -297,7 +307,7 @@ finish_worker() {
   if [ -f "$logdir/$phase.jsonl" ]; then
     lastres=$(jq -R -c 'fromjson? | select(.type == "result")' "$logdir/$phase.jsonl" 2>/dev/null | tail -n1) || lastres=""
   fi
-  if [ -n "$lastres" ] && jq -e 'tojson | test("usage limit|rate limit"; "i")' <<<"$lastres" >/dev/null 2>&1; then
+  if [ -n "$lastres" ] && jq -e "$USAGE_LIMIT_JQ" <<<"$lastres" >/dev/null 2>&1; then
     printf 'finished %s usage-limit\n' "$phase"
     lg set "$ledger" '.budget.paused = true'
     lg event "$ledger" usage-pause "$phase hit a usage limit"

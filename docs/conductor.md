@@ -37,7 +37,7 @@ ns-conductor wait <id> [--timeout <s>]
 Waits for workers of the run to finish; the default timeout is 540 seconds, under the 10-minute limit of the Bash tool. It checks every 5 seconds:
 
 - A stop request in the ledger: prints `stop requested`, exit 6.
-- A worker with an exit file or a dead process is finished. Its code comes from the exit file, else 137, and its pid and exit files move to `logs/<id>/done/`. When the last `result` object of its log mentions `usage limit` or `rate limit` (any case), `wait` prints `finished <phase> usage-limit`, sets `budget.paused` true, adds an event `usage-pause` and puts the phase back to `pending`. The caller restarts it with `start` after the budget is unpaused. Otherwise it prints `finished <phase> exit <code>`, sets the phase to `review` and adds an event `phase-end`.
+- A worker with an exit file or a dead process is finished. Its code comes from the exit file, else 137, and its pid and exit files move to `logs/<id>/done/`. When the last `result` object of its log is an error (`is_error` true, or a `subtype` other than `success`) and either has `api_error_status` 429 or its text (`result` and `errors`) is a limit message (`usage limit`, `rate limit`, `You've hit your ... limit`, `out of usage`, any case), `wait` prints `finished <phase> usage-limit`, sets `budget.paused` true, adds an event `usage-pause` and puts the phase back to `pending`. The caller restarts it with `start` after the budget is unpaused. A successful result that only mentions a rate limiter, and an error for another reason (for example `error_max_turns` or an API 500), are normal finishes. Otherwise it prints `finished <phase> exit <code>`, sets the phase to `review` and adds an event `phase-end`.
 - After one or more workers finished: exit 0.
 - No workers at all: prints `no workers`, exit 0.
 - Timeout: prints `still running: <phases>`, exit 124.
@@ -136,10 +136,10 @@ Appends `N. <text>` to `RUN/notes.md` in the run worktree (N is the next number)
 ### review-round
 
 ```
-ns-conductor review-round <id> <phase>
+ns-conductor review-round <id> <phase> <approve|changes>
 ```
 
-Adds one to the phase's `review_rounds` and adds an event `review`. Exit 0, or 7 when the count now exceeds `budgets.<tier>.review_rounds` of the profile (R-CON-3); the conductor then escalates.
+Call it after each review with that review's verdict. Adds one to the phase's `review_rounds` and adds an event `review` (`<phase> round <n> <verdict>`). The cap is `budgets.<tier>.review_rounds` of the profile (R-CON-3) and counts the reviews that ran: with the default 3, at most 3 reviews run. `approve` always exits 0, so an approval on the last allowed round merges. `changes` exits 7 when the count reaches the cap, because the next review would exceed it; the conductor then escalates instead of restarting the worker. Exit 2 when the verdict is missing or not `approve` or `changes`.
 
 ### merge
 

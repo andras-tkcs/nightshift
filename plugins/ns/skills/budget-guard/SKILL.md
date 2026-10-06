@@ -9,14 +9,14 @@ user-invocable: false
 ## Budgets
 
 - Wall-clock hours: `budget.limit` in the ledger, set from the profile's `budgets.<tier>.hours`. `ns-ledger checkpoint` adds the elapsed time while the state is `running` and the budget is not paused. Test with `ns-ledger budget-exceeded "$NS_LEDGER"` (exit 0 means exceeded).
-- Review rounds: `ns-conductor review-round <id> <phase>` counts a round and exits 7 once the count passes `budgets.<tier>.review_rounds`.
+- Review rounds: after each review, `ns-conductor review-round <id> <phase> <approve|changes>` counts the round. The cap `budgets.<tier>.review_rounds` is the number of reviews that may run: an `approve` always proceeds, and `changes` on the last allowed round exits 7 instead of starting another worker and review.
 - `ns-conductor start` exits 4 when the budget is exceeded.
 
 ## Usage-limit pause (R-BUD-2)
 
 A usage-limit pause does not count against wall-clock budgets.
 
-- `ns-conductor wait` detects a worker that hit a usage limit, prints `finished <phase> usage-limit`, sets the budget paused and returns the phase to `pending`.
+- `ns-conductor wait` detects a worker whose final result is an error caused by a usage or rate limit (a successful report that merely mentions a rate limiter does not count), prints `finished <phase> usage-limit`, sets the budget paused and returns the phase to `pending`.
 - Keep calling `ns-conductor wait <id> --timeout 540` until `ns-conductor start` succeeds for that phase, then `ns-conductor unpause <id>`.
 - `ns-conductor pause <id>` and `ns-conductor unpause <id>` set the pause by hand when needed.
 
