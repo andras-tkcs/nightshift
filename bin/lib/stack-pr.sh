@@ -56,6 +56,25 @@ ns_stack_open_prs() {
     map(. + {depth: depth(.; $max)}) | sort_by([.depth, .createdAt]) | map(del(.depth))' <<<"$rows"
 }
 
+# ns_stack_on_base <open prs json> <base branch> <fix pattern> <feature pattern> <prefix>: keep the run PRs
+# whose chain bottoms out at the base branch: a stack belongs to one base branch. A chain whose bottom PR
+# targets a run branch without an open PR (its PR was closed or merged) is kept, so a closed base is still
+# reported; PRs whose bases form a cycle have no bottom and are kept. Chains on another base are dropped.
+ns_stack_on_base() {
+  local prs="$1" basebr="$2" fixpat="$3" featpat="$4" prefix="$5" b ok="[]"
+  prs=$(jq -c '. as $all
+    | def up($p): [$all[] | select(.head == $p.base)] | first;
+      def bottom($p; $seen): up($p) as $b
+        | if $b == null then $p.base elif any($seen[]; . == $b.head) then null else bottom($b; $seen + [$b.head]) end;
+    map(. + {bottom: bottom(.; [.head])})' <<<"$prs")
+  while IFS= read -r b; do
+    [ -n "$b" ] || continue
+    if ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$b" >/dev/null; then ok=$(jq -c --arg b "$b" '. + [$b]' <<<"$ok"); fi
+  done < <(jq -r --arg base "$basebr" '[.[].bottom | select(. != null and . != $base)] | unique | .[]' <<<"$prs")
+  jq -c --arg base "$basebr" --argjson ok "$ok" \
+    'map(select(.bottom == null or .bottom == $base or (.bottom as $x | any($ok[]; . == $x))) | del(.bottom))' <<<"$prs"
+}
+
 # ns_stack_checks_state <statusCheckRollup json>: none | pending | fail | pass
 ns_stack_checks_state() {
   jq -r 'if length == 0 then "none"
@@ -132,13 +151,24 @@ ns_stack_find_project() {
   printf '%s\n' "$out"
 }
 
-# ns_stack_project_prs <project json>: print the open run PRs of the project (JSON array, bottom to top)
+# ns_stack_project_base <project json>: print the profile's base branch of the project
+ns_stack_project_base() {
+  local p="$1" prof
+  prof=$(ns_profile_json "$(jq -r .path <<<"$p")" "$(jq -r .prefix <<<"$p")" "$(jq -r '.branch // ""' <<<"$p")" 2>/dev/null) ||
+    [ $? -eq 3 ] || return 1
+  jq -r '.git.base_branch' <<<"$prof"
+}
+
+# ns_stack_project_prs <project json>: print the open run PRs of the project whose chain is on the profile's
+# base branch (JSON array, bottom to top)
 ns_stack_project_prs() {
-  local p="$1" prof path prefix branch
+  local p="$1" prof path prefix branch fixpat featpat prs
   path=$(jq -r .path <<<"$p")
   prefix=$(jq -r .prefix <<<"$p")
   branch=$(jq -r '.branch // ""' <<<"$p")
   prof=$(ns_profile_json "$path" "$prefix" "$branch" 2>/dev/null) || [ $? -eq 3 ] || return 1
-  ns_stack_open_prs "$(jq -r .repo <<<"$p")" "$(jq -r '.git.fix_branch' <<<"$prof")" \
-    "$(jq -r '.git.feature_branch' <<<"$prof")" "$prefix" "$path"
+  fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
+  featpat=$(jq -r '.git.feature_branch' <<<"$prof")
+  prs=$(ns_stack_open_prs "$(jq -r .repo <<<"$p")" "$fixpat" "$featpat" "$prefix" "$path") || return 1
+  ns_stack_on_base "$prs" "$(jq -r '.git.base_branch' <<<"$prof")" "$fixpat" "$featpat" "$prefix"
 }

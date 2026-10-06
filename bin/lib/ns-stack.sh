@@ -66,14 +66,20 @@ ns_stack_list() {
     fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
     featpat=$(jq -r '.git.feature_branch' <<<"$prof")
     prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$path") || ns_die "could not list the pull requests of $repo"
+    local row age chains nch ci closed note all basebr off
+    basebr=$(jq -r '.git.base_branch // ""' <<<"$prof")
+    all="$prs"
+    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix")
     printf '%s\n' "$repo"
+    off=$(jq -c --argjson on "$prs" '[.[] | select(. as $p | any($on[]; .number == $p.number) | not) | "#\(.number)"]' <<<"$all")
+    [ "$off" = "[]" ] || printf '  %s open run PRs target other base branches than %s (not shown): %s\n' \
+      "$(jq length <<<"$off")" "$basebr" "$(jq -r 'join(", ")' <<<"$off")"
     n=$(jq length <<<"$prs")
     if [ "$n" = 0 ]; then
       printf '  no open run PRs\n'
       continue
     fi
-    local row age chains nch ci closed note
-    closed=$(ns_stack_closed_heads "$repo" "$prs" "$(jq -r '.git.base_branch // ""' <<<"$prof")")
+    closed=$(ns_stack_closed_heads "$repo" "$prs" "$basebr")
     chains=$(ns_stack_chains "$prs")
     nch=$(jq length <<<"$chains")
     for ((ci = 0; ci < nch; ci++)); do
@@ -94,7 +100,7 @@ ns_stack_list() {
 # ns_stack_merge [project] [--dry-run]: land the single chain of run PRs bottom to top
 ns_stack_merge() {
   local u="ns stack merge [project] [--dry-run]" sel="" dry=0 projects p repo prs chains n i row num head base why live
-  local merged=() left=() nxt topnum id_for_wt
+  local merged=() left=() nxt topnum id_for_wt want
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) dry=1 ;;
@@ -131,6 +137,8 @@ ns_stack_merge() {
   esac
   n=$(jq '.[0] | length' <<<"$chains")
   base=$(jq -r '.[0][0].base' <<<"$chains")
+  want=$(ns_stack_project_base "$p") || ns_die "could not read the profile of $repo"
+  [ "$base" = "$want" ] || ns_die "the bottom PR #$(jq -r '.[0][0].number' <<<"$chains") targets $base, not $want (its base PR is no longer open): use ns stack drop or retarget it first"
   id_for_wt=$(jq -r '.[0][-1].run' <<<"$chains")
   if [ "$dry" -eq 1 ]; then
     printf 'plan for %s (dry run, nothing is changed):\n' "$repo"

@@ -112,6 +112,8 @@ conductor_stack_base() {
   fixpat=$(jq -r '.git.fix_branch' <<<"$profile")
   featpat=$(jq -r '.git.feature_branch' <<<"$profile")
   prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$(jq -r .path <<<"$project")") || ns_die "could not list the pull requests of $repo"
+  # a stack belongs to one base branch: chains that bottom out at another base do not count
+  prs=$(ns_stack_on_base "$prs" "$base" "$fixpat" "$featpat" "$prefix")
   others=$(jq -c --arg me "$id" '[.[] | select(.run != $me)]' <<<"$prs")
   own_on=$(lg get "$ledger" '.stacked_on // empty')
   clist="[]"
@@ -137,7 +139,8 @@ conductor_stack_base() {
   fi
   if [ "$(ns_stack_chains "$others" | jq length)" -gt 1 ]; then
     tops=$(ns_stack_chains "$others" | jq -r '[.[] | last | .head] | join(", ")')
-    printf 'more than one chain of open run PRs (tops: %s): choose a base by hand (gate 1.5)\n' "$tops" >&2
+    printf 'more than one chain of open run PRs on %s (tops: %s): choose a base by hand (gate 1.5): %s, %s\n' \
+      "$base" "$tops" "$base" "$(sed 's/\(.*\), /\1 or /' <<<"$tops")" >&2
     exit 7
   fi
   top=$(jq -c 'last // empty' <<<"$others")

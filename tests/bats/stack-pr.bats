@@ -468,3 +468,27 @@ PRS_OTHER_BASES='[
   case "$output" in *"chain 2"* | *" #1 "* | *" #4 "*) echo "other base listed: $output" >&2; return 1 ;; esac
   assert_output_contains "3 open run PRs target other base branches"
 }
+
+# set_base_branch <branch>: publish a profile with that base branch on origin/main
+set_base_branch() {
+  local clone
+  clone=$(ns_project_path)
+  printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\n  test: "true"\ngit:\n  base_branch: %s\nstacks: [python]\n' "$1" >"$clone/.claude/project-profile.yaml"
+  git -C "$clone" add -A
+  git -C "$clone" commit -q -m "base branch $1"
+  git -C "$clone" push -q origin HEAD:main
+}
+
+@test "stack-base exit 7 names the profile's base branch as a choice, not main" {
+  set_base_branch develop
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list '[
+ {"number":5,"headRefName":"fix/sbx-11","baseRefName":"develop","createdAt":"2026-10-02T10:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":6,"headRefName":"fix/sbx-13","baseRefName":"develop","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+  run ns-conductor stack-base sbx-12
+  assert_failure 7
+  assert_output_contains "develop, fix/sbx-11 or fix/sbx-13"
+  case "$output" in *main*) echo "names main: $output" >&2; return 1 ;; esac
+}
