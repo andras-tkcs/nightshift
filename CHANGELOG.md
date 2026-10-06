@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-06
+
 ### Security
 
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
@@ -109,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end harness: `tests/e2e/run.sh` with scenarios t0, t1, t2, t3 and resume against `andras-tkcs/nightshift-sandbox`, run with `--keep` in Build A (ADR 0009); results in `tests/e2e/results.md`.
 - Documentation: the specification, build plan, architecture, usage, ledger, conductor, agents, projects, accounts, server, operations, security, setup and development guides, and architecture decision records 0001 to 0009. The `v0.1.0` tag is set by the owner after merge (ADR 0007).
 
-[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/andras-tkcs/nightshift/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/andras-tkcs/nightshift/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/andras-tkcs/nightshift/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/andras-tkcs/nightshift/compare/v0.1.2...v0.1.3
