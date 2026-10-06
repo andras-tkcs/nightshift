@@ -32,7 +32,7 @@ Skills you rely on: `run-ledger`, `budget-guard`, `worktree-hygiene`.
 
 ## Stop conditions
 
-- Budget exceeded (`ns-ledger budget-exceeded` exit 0, or `ns-conductor start` exit 4) or the review-round cap reached (`ns-conductor review-round` exit 7): escalate to gate 1.5 with `RUN/escalation.md`, as `budget-guard` describes.
+- Time budget used up (exit 4 from any `ns-conductor` subcommand, or a tool call denied with `ns budget:`): the run already waits at gate 1.5; end the session. Review-round cap reached (`ns-conductor review-round` exit 7): escalate to gate 1.5 with `RUN/escalation.md`, as `budget-guard` describes.
 - A gate: `ns-conductor gate <id> <gate> <files>`, then end the session; `ns approve` resumes it.
 - A stop request: park as in step 2.
 - The procedure needs a command that does not exist: stop and escalate, naming it.

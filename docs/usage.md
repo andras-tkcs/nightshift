@@ -349,10 +349,12 @@ Triage picks a tier from the size of the request and the risk of the paths it to
 A run stops at a gate with state `waiting` and sends you a notification. What you do at each:
 
 - Gate 1 (plan approval, T2 and T3): read the published plan and acceptance documents on the review desk. Edit the Markdown in place if something is wrong or an open question needs your answer, then run `ns approve <id>`. It shows the diff of your edits, commits them and starts the run again.
-- Gate 1.5 (budget or escalation): the run exceeded a time or review-round budget, or hit something it cannot decide. It parks and publishes an escalation document. Answer under `## Owner's answer` in that document, then `ns approve <id>`.
+- Gate 1.5 (budget or escalation): the run exceeded a time or review-round budget, or hit something it cannot decide. It parks and publishes an escalation document. Answer under `## Owner's answer` in that document, then `ns approve <id>`. For a time budget the document is `# Budget exceeded` and its answer holds the line `budget_hours: <limit>`: raise the number to give the run more time (`ns approve` sets it as the new limit before it resumes the run), or run `ns stop <id>` to end it. Approving with the number unchanged brings the run straight back to gate 1.5.
 - Gate 2 (pull request review): read the handoff report on the desk and the pull request (`/ns:review <id>` does this with you). Merge the pull request on GitHub yourself, then do the manual steps listed in it. Nightshift never merges.
 
-For T0 and T1 the only stop is your review of the pull request. See [The review desk](#the-review-desk) for where the documents are.
+For T0 and T1 the only stop is your review of the pull request, unless the run escalates at gate 1.5. See [The review desk](#the-review-desk) for where the documents are.
+
+The time budget is wall-clock hours while the run is `running`: time the run spends queued, waiting at a gate, parked, stopped, dead before a resume, or paused on a usage limit is not counted. Every way back to `running` (`ns resume`, `ns resume --all`, `ns dequeue`, `ns approve`, a new conductor from `ns-launch`) restarts the clock. The budget is checked deterministically on every tier: by `ns-conductor` between steps and before checks, review rounds, phases and the pull request, and by the plugin's hooks on every tool call of the conductor and when its session ends. Once `used` reaches the limit the run stops its workers and waits at gate 1.5.
 
 ## Daily use
 

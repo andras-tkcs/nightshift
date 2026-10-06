@@ -28,7 +28,7 @@ The generic layer ships as Claude Code plugins from the Nightshift repo, which i
 
 | Layer | What | Where |
 |---|---|---|
-| Plugin `ns` | Agents, skills, the `/ns:` commands and hooks (a guard for protected paths, a checkpoint on stop) | `plugins/ns/` |
+| Plugin `ns` | Agents, skills, the `/ns:` commands and hooks (a guard for protected paths, a budget check on every tool call, a checkpoint on stop) | `plugins/ns/` |
 | Plugin `ns-python` | Python stack skills and `stack.yaml` | `plugins/ns-python/` |
 | Server kit | `ns`, `ns-conductor`, `ns-ledger`, `ns-launch`, `ns-notify`, `ns-gh`, `bootstrap.sh` | `bin/`, installed under `/opt/nightshift` |
 | Project pack | `.claude/project-profile.yaml`, domain skills, a short `CLAUDE.md` | the project's repo (see [projects.md](projects.md)) |

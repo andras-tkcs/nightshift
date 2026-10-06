@@ -23,7 +23,7 @@ A phase is ready when it is `pending` and every phase in its `depends_on` is `me
 
 - exit 0: started.
 - exit 3: pool full; try again after the next `wait`.
-- exit 4 (budget) or exit 5 (auto mode does not work): escalate (section 6).
+- exit 4 (budget): the run already waits at gate 1.5; end the session. Exit 5 (auto mode does not work): escalate (section 6).
 
 Phases in the same wave touch different files by design.
 

@@ -224,7 +224,7 @@ Restore drill, twice a year: rebuild a throwaway server this way from a backup a
 
 Gate 1.5 is an escalation: the run hit its time budget or three review rounds on a phase and parked itself. It put an `escalation.md` on the desk and sent an ntfy message. Read `escalation.md` at the desk, then:
 
-1. Edit the desk documents as the escalation asks (for example give more budget or change the plan).
+1. Edit the desk documents as the escalation asks (for example give more budget by raising `budget_hours` in a `# Budget exceeded` escalation, or change the plan).
 2. Release the gate:
 
    ```bash

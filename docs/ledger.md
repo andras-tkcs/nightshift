@@ -104,7 +104,7 @@ ns-ledger event "$NS_LEDGER" phase-start "p1-x attempt 1"
 ns-ledger state <ledger> <state> [--gate <g> | --no-gate] [--note <text>]
 ```
 
-Sets the state, and the gate when given (`--no-gate` clears it), and appends a `state` event with the note `<state>[ gate <g>]: <text>`.
+Sets the state, and the gate when given (`--no-gate` clears it), and appends a `state` event with the note `<state>[ gate <g>]: <text>`. Like `set`, it keeps the budget clock right (see [The budget clock](#the-budget-clock)).
 
 ```
 ns-ledger state "$NS_LEDGER" waiting --gate 1 --note "plan ready"
@@ -128,7 +128,7 @@ ns-ledger tier "$NS_LEDGER" T2 --source triage --hours 6 --tags python,risk:poli
 ns-ledger checkpoint <ledger> [--push]
 ```
 
-Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the hours since `budget.since`, rounded to 2 decimals; `since` is always set to now. It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
+Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the hours since `budget.since`, rounded to 2 decimals; `since` is always set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
 
 With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event and still exits 0; the next checkpoint commits that event.
 
@@ -150,11 +150,15 @@ Exits 0 if the ledger is valid (after recovery, see below), otherwise prints the
 ns-ledger budget-exceeded <ledger>
 ```
 
-Exits 0 if `budget.limit` is set and `budget.used` is greater than it, otherwise exits 1.
+Exits 0 if `budget.limit` is set and `budget.used` has reached it (`used >= limit`), otherwise exits 1. It reads `used` as of the last checkpoint; `ns-conductor budget-check` checkpoints first and escalates.
 
 ```
 ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --note "budget used up"
 ```
+
+## The budget clock
+
+The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A crashed run is still `running`; `ns resume` sets `since` to now itself, so the time it was dead is not charged either.
 
 ## Schema drift and live runs
 

@@ -18,7 +18,7 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
 4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
    Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end.
-5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary.
+5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 
 ## Triage
@@ -124,7 +124,7 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 
 1. `ns-conductor wait` prints `finished <phase> usage-limit` when a worker hit a usage or rate limit; it has already paused the budget and reset the phase to `pending`.
 2. Call `ns-conductor wait <id> --timeout 540` repeatedly until `ns-conductor start <id> <phase>` succeeds for that phase, then `ns-conductor unpause <id>`.
-3. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate.
+3. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 5 (auto mode): Escalate. Exit 4 (budget): the run is already at gate 1.5; end the session.
 
 ## Rules
 
@@ -133,3 +133,4 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 - Never merge a PR. Never push to the base branch. Never tag. Never force-push.
 - Reviewers see the diff, the plan and the phase entry only, never a worker's log.
 - Every step ends with `ns-ledger checkpoint "$NS_LEDGER" --push` and `ns-conductor should-stop <id>`; on exit 0 run `ns-conductor park <id>` and end the session.
+- Exit 4 from any `ns-conductor` subcommand, or a tool call denied with `ns budget:`, means the time budget is used up and the run already waits at gate 1.5 (`budget-guard`): end the session with a one-line summary; never write a second escalation and never change `budget.limit`.

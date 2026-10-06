@@ -19,7 +19,7 @@ ns-conductor start <id> <phase> [--feedback <file>]
 Starts a worker for one phase. It checks, in order:
 
 1. The pool: when `ns_pool_count` has reached `ns_pool_max`, the phase becomes `queued`, `start` prints `queued <phase>: pool full (<n>/<max>)` and exits 3.
-2. The budget: when `ns-ledger budget-exceeded` is true, it prints `budget exceeded` and exits 4.
+2. The budget: the budget check (see [Budget check](#budget-check)) escalates at gate 1.5 and exits 4 when the wall-clock budget is used up.
 3. Auto mode: with `NS_WORKER_MODE=auto` (the default) and no `auto-mode.ok` file younger than 24 hours, it runs `check-auto`. If that fails, `start` exits 5 with the hint "auto permission mode does not work in headless calls on this machine. Fix it, or set NS_WORKER_MODE=bypassPermissions in ~/.config/ns/env after reading docs/security.md, section "Worker permission mode"." (R-CON-4).
 4. The phase entry, read from the Implementation manifest of the plan document in the run worktree. A phase id of the form `fix-<n>` that is not in the manifest gets a standard entry ("Fix review findings"). Any other missing phase exits 1.
 5. The feature branch: `feature_branch` must be set in the ledger, else exit 1 `no feature branch yet`. The phase branch is the profile's `git.phase_branch`. A missing phase worktree is created from `origin/<phase branch>` if that exists, else from `origin/<feature branch>`; the stack setup runs when the worktree has no `.venv`.
@@ -72,7 +72,7 @@ Takes no run id. Makes one small headless call in `--permission-mode auto` that 
 ns-conductor should-stop <id>
 ```
 
-Exit 0 when `stop_requested` is set in the ledger (`ns stop` sets it), else exit 1. The conductor calls it between steps.
+Exit 0 when `stop_requested` is set in the ledger (`ns stop` sets it). Otherwise it runs the budget check: exit 4 when the budget is used up (the run now waits at gate 1.5; the conductor ends its session), else exit 1. The conductor calls it after every step on every tier, so this is the budget check T0 and T1 always pass.
 
 ### park
 
@@ -80,7 +80,24 @@ Exit 0 when `stop_requested` is set in the ledger (`ns stop` sets it), else exit
 ns-conductor park <id>
 ```
 
-Ends the conductor's work on a stop request: runs `stop`, sets phases that were `running` to `pending`, sets the run state to the `stop_requested` value (`stopped` or `parked`; `parked` when none is set), clears `stop_requested`, checkpoints and pushes the ledger. It prints `parked <id>: end this session now`; the conductor then ends its session.
+Ends the conductor's work on a stop request: runs `stop`, sets phases that were `running` to `pending`, sets the run state to the `stop_requested` value (`stopped` or `parked`; `parked` when none is set), clears `stop_requested`, checkpoints and pushes the ledger. A run with an open gate (a budget escalation, for example) keeps state `waiting` and its gate. It prints `parked <id>: end this session now`; the conductor then ends its session.
+
+### budget-check
+
+```
+ns-conductor budget-check <id>
+```
+
+The one budget check of every tier (R-BUD-1). `start`, `should-stop`, `fix-branch`, `checks`, `review-round` and `stack-base` run it first, and the plugin's hooks run it too (below). It checkpoints the ledger, so `budget.used` counts up to now, then:
+
+- Budget not used up (`ns-ledger budget-exceeded` false, that is `used < limit` or no limit yet): exit 0, and the calling subcommand goes on.
+- Used up, run `running` with no open gate: it stops the run's workers (phases that were `running` become `pending`), writes `RUN/escalation.md` (heading `# Budget exceeded`, the hours used, the step and the subcommand that caught it, a `## Question` and a `## Owner's answer` section holding the line `budget_hours: <limit>`) and commits it on `plan/<id>`, adds an event `budget`, sets state `waiting` at gate 1.5, checkpoints and pushes the ledger and publishes the escalation to the desk (which notifies). It prints `budget exceeded: <used> h of <limit> h; escalated at gate 1.5 (RUN/escalation.md); end this session now` and exits 4.
+- Used up and already waiting at gate 1.5: prints that the run waits for the owner and exits 4, without a second escalation.
+- Used up in any other state (another gate, queued, parked, done): prints `budget exceeded (state <state>, gate <gate>); nothing escalated` and exits 4.
+
+The owner answers by raising `budget_hours` in the desk copy of `escalation.md`; `ns approve` sets that number as the new `budget.limit` before it resumes the run. Leaving the line as it is resumes into the same escalation; `ns stop <id>` ends the run instead.
+
+Hooks: the `budget` PreToolUse hook (`plugins/ns/hooks/budget.sh`) stops a conductor session that keeps working past its budget without calling `ns-conductor`, for example inside a long T0 or T1 implementer subagent. On every tool call of the conductor session (never in a worker) it reads the ledger; when the run is `running` at no gate and `budget.used` plus the unpaused time since `budget.since` reaches the limit, it runs `ns-conductor budget-check` and denies the tool call with "end the session now". While the run waits at gate 1.5 over its budget it denies every tool call. An unreadable ledger allows the call. The `checkpoint` Stop hook runs `budget-check` after its checkpoint, so a session that ends over its budget waits at gate 1.5 instead of looking like a crash.
 
 ### fix-branch
 
@@ -88,7 +105,7 @@ Ends the conductor's work on a stop request: runs `stop`, sets phases that were 
 ns-conductor fix-branch <id>
 ```
 
-For T0 and T1 runs. Creates the branch `git.fix_branch` and its worktree `<id>--fix` from `origin/<base>`, runs the stack setup, records the branch as `feature_branch` in the ledger and prints the worktree path. A rerun changes nothing. Exit 0, or 1 on failure.
+For T0 and T1 runs. Creates the branch `git.fix_branch` and its worktree `<id>--fix` from `origin/<base>`, runs the stack setup, records the branch as `feature_branch` in the ledger and prints the worktree path. A rerun changes nothing. Exit 0, or 1 on failure. It runs the [budget check](#budget-check) first: exit 4 when the budget is used up.
 
 ### feature
 
@@ -104,7 +121,7 @@ For T2 and T3 runs. Fetches, then creates the branch `git.feature_branch` and it
 ns-conductor stack-base <id>
 ```
 
-Prints the branch the run's pull request must target. It lists the open PRs of the project (`gh pr list`), keeps those whose head is a run branch (the profile's `fix_branch` or `feature_branch` pattern, `{n}` being digits) other than this run's and whose `plan/<run id>` branch exists on origin, and orders them by `baseRefName` into one line. Without any it prints the profile base branch and sets the ledger's `stacked_on` to that branch. When the open run PRs form more than one chain (a fork: two PRs based on the same lower PR, one chain per top) it prints the tops of the chains on stderr and exits 7 without merging: the caller escalates at gate 1.5. When a run PR's base branch belongs to a PR closed without a merge (closed at or after the dependent PR was created, and no open PR has that head) it warns on stderr, naming the run, and points to `ns stack drop`; it does not restack. Otherwise it sets `stacked_on` to the run id of the top PR, fetches and merges its branch into the run's code branch with `git merge --no-ff` (never a rebase), and prints that branch. Untracked files in the worktree that the incoming branch adds make it stop with exit 1 and name them, before the merge. On a conflict the merge is left in progress in the code worktree and the exit code is 6 and `stacked_on` is already recorded. After resolving, the caller commits and reruns `checks <id> feature`.
+Prints the branch the run's pull request must target. It runs the [budget check](#budget-check) first, so a run over its budget escalates (exit 4) before the integrator opens a PR. It lists the open PRs of the project (`gh pr list`), keeps those whose head is a run branch (the profile's `fix_branch` or `feature_branch` pattern, `{n}` being digits) other than this run's and whose `plan/<run id>` branch exists on origin, and orders them by `baseRefName` into one line. Without any it prints the profile base branch and sets the ledger's `stacked_on` to that branch. When the open run PRs form more than one chain (a fork: two PRs based on the same lower PR, one chain per top) it prints the tops of the chains on stderr and exits 7 without merging: the caller escalates at gate 1.5. When a run PR's base branch belongs to a PR closed without a merge (closed at or after the dependent PR was created, and no open PR has that head) it warns on stderr, naming the run, and points to `ns stack drop`; it does not restack. Otherwise it sets `stacked_on` to the run id of the top PR, fetches and merges its branch into the run's code branch with `git merge --no-ff` (never a rebase), and prints that branch. Untracked files in the worktree that the incoming branch adds make it stop with exit 1 and name them, before the merge. On a conflict the merge is left in progress in the code worktree and the exit code is 6 and `stacked_on` is already recorded. After resolving, the caller commits and reruns `checks <id> feature`.
 
 ### checks
 
@@ -112,7 +129,7 @@ Prints the branch the run's pull request must target. It lists the open PRs of t
 ns-conductor checks <id> <phase|feature>
 ```
 
-Runs the resolved profile's checks (lint, then test, per stack) with `bash -c` in a clean environment (`env -i` with only `HOME`, `PATH`, `LANG`, `TERM` and `TMPDIR`, so no `NS_*` variable reaches a check) in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>`, `FAIL <stack> <name>` or `SKIP <stack> <name>` for each check; exit 5 (no tests collected) is `SKIP`, and not a failure, only for the python `test` check or a command containing `pytest`; for any other check it is `FAIL`. The full output goes to `logs/<id>/<target>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
+Runs the [budget check](#budget-check) first (exit 4 when the budget is used up, also written to the marker file below), then the resolved profile's checks (lint, then test, per stack) with `bash -c` in a clean environment (`env -i` with only `HOME`, `PATH`, `LANG`, `TERM` and `TMPDIR`, so no `NS_*` variable reaches a check) in the worktree of the phase, or of the code branch for `feature` (`<id>--fix` for T0 and T1, `<id>--feature` otherwise). It prints `PASS <stack> <name>`, `FAIL <stack> <name>` or `SKIP <stack> <name>` for each check; exit 5 (no tests collected) is `SKIP`, and not a failure, only for the python `test` check or a command containing `pytest`; for any other check it is `FAIL`. The full output goes to `logs/<id>/<target>.checks.log`; on failure the last 40 lines are printed too. Exit 0 when all pass, 1 when one fails. With no checks configured it prints `no checks configured` and exits 0. On every path it also writes the exit code to `logs/<id>/<target>.checks.rc` (removed at the start, written last through a temporary file and `mv`), so a backgrounded run can be awaited by waiting for that file. Never wait with `pgrep` or `ps` loops on process names.
 
 ### report
 
@@ -139,7 +156,7 @@ Appends `N. <text>` to `RUN/notes.md` in the run worktree (N is the next number)
 ns-conductor review-round <id> <phase>
 ```
 
-Adds one to the phase's `review_rounds` and adds an event `review`. Exit 0, or 7 when the count now exceeds `budgets.<tier>.review_rounds` of the profile (R-CON-3); the conductor then escalates.
+Runs the [budget check](#budget-check) first (exit 4, no round counted, when the budget is used up). Adds one to the phase's `review_rounds` and adds an event `review`. Exit 0, or 7 when the count now exceeds `budgets.<tier>.review_rounds` of the profile (R-CON-3); the conductor then escalates.
 
 ### merge
 
