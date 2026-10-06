@@ -73,7 +73,7 @@ ns_stack_list() {
       continue
     fi
     local row age chains nch ci closed note
-    closed=$(ns_stack_closed_heads "$repo")
+    closed=$(ns_stack_closed_heads "$repo" "$prs" "$(jq -r '.git.base_branch // ""' <<<"$prof")")
     chains=$(ns_stack_chains "$prs")
     nch=$(jq length <<<"$chains")
     for ((ci = 0; ci < nch; ci++)); do

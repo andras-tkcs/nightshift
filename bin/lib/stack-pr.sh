@@ -67,21 +67,33 @@ ns_stack_checks_state() {
 }
 
 # ns_stack_chains <open prs json>: JSON array of chains, each an array of PRs bottom to top.
-# A chain starts at a PR whose base is not the head of another run PR.
+# One chain per leaf (a PR no other run PR is based on); a lower PR shared by a fork is in each chain.
 ns_stack_chains() {
   jq -c '. as $all | length as $max
-    | def root($p; $n): if $n <= 0 then $p.head
+    | def path($p; $n): if $n <= 0 then [$p]
         else ([$all[] | select(.head == $p.base)] | first) as $b
-          | if $b == null then $p.head else root($b; $n - 1) end end;
-    map(. + {root: root(.; $max)}) as $m
-    | (reduce $m[] as $r ([]; if any(.[]; . == $r.root) then . else . + [$r.root] end)) as $roots
-    | [$roots[] as $x | [$m[] | select(.root == $x) | del(.root)]]' <<<"$1"
+          | if $b == null then [$p] else path($b; $n - 1) + [$p] end end;
+    [.[] as $p | select(any($all[]; .base == $p.head) | not) | path($p; $max)]' <<<"$1"
 }
 
-# ns_stack_closed_heads <repo>: print the head branches of PRs closed without a merge
+# ns_stack_closed_list <repo>: JSON array of the PRs closed without a merge (number, headRefName, closedAt)
+ns_stack_closed_list() {
+  gh pr list --repo "$1" --state closed --limit 100 --json number,headRefName,state,mergedAt,closedAt 2>/dev/null \
+    | jq -c '[.[] | select((.state // "") == "CLOSED" and .mergedAt == null)
+        | {number, headRefName, closedAt: (.closedAt // "9999")}]' 2>/dev/null || printf '[]\n'
+}
+
+# ns_stack_closed_heads <repo> <open prs json> [base branch]: print the bases of the open run PRs
+# that are a PR closed without a merge. A base counts when a closed unmerged PR has that head, was
+# closed at or after the dependent PR was created, and no open PR has that head (a reused name).
 ns_stack_closed_heads() {
-  gh pr list --repo "$1" --state closed --limit 100 --json number,headRefName,state,mergedAt 2>/dev/null \
-    | jq -r '.[] | select((.state // "") == "CLOSED" and .mergedAt == null) | .headRefName' 2>/dev/null || true
+  local repo="$1" prs="$2" basebr="${3:-}" cands
+  cands=$(jq -r --arg b "$basebr" '. as $all | [.[] | .base | select(. != $b)
+    | select(. as $x | any($all[]; .head == $x) | not)] | unique | .[]' <<<"$prs" 2>/dev/null || true)
+  [ -n "$cands" ] || return 0
+  ns_stack_closed_list "$repo" | jq -r --argjson prs "$prs" '. as $cl
+    | $prs | [.[] | . as $p | select(any($cl[]; .headRefName == $p.base and .closedAt >= $p.createdAt)) | .base]
+    | unique | .[]' 2>/dev/null || true
 }
 
 # ns_stack_gate <pr json> <live json>: print why a PR cannot be merged (one line, empty when it can).

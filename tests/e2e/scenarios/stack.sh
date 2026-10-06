@@ -6,9 +6,18 @@ E2E_TIMEOUT=2700
 
 scenario_main() {
   local first second third leftovers
-  leftovers=$(gh pr list --repo "$E2E_REPO" --state open --json headRefName --jq '.[].headRefName' | grep -E '^(fix|feature)/' || true)
+  # leftovers: open PRs of run branches that have plan/<run id> on origin (other open fix/ or
+  # feature/ PRs are not runs and do not stack); the run id is the branch with the pattern stripped.
+  local plans heads h rid
+  plans=$(gh api "repos/$E2E_REPO/git/matching-refs/heads/plan/" --jq '.[].ref | sub("refs/heads/plan/"; "")' 2>/dev/null || true)
+  heads=$(gh pr list --repo "$E2E_REPO" --state open --json headRefName --jq '.[].headRefName' | grep -E '^(fix|feature)/' || true)
+  leftovers=""
+  for h in $heads; do
+    rid=${h#*/}
+    if grep -qxF -- "$rid" <<<"$plans" || grep -qxF -- "$E2E_PREFIX-${rid##*-}" <<<"$plans"; then leftovers="$leftovers $h"; fi
+  done
   if [ -n "$leftovers" ]; then
-    e2e_log "open run PRs left in the sandbox, close them first: $(tr '\n' ' ' <<<"$leftovers")"
+    e2e_log "open run PRs left in the sandbox, close them first: $leftovers"
     return 1
   fi
   e2e_new_run "$E2E_PREFIX" "Fix the typo 'recieve' in README.md" --tier T0 --yes || return 1
