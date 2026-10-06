@@ -259,6 +259,13 @@ changelog() {
   assert_output_contains "no ## [0.1.1] section"
 }
 
+@test "ns tag does not take a longer version's section for its own (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.10] - 2026-10-06\n\n- later\n\n## [0.1.0] - 2026-10-01\n\n- first\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+}
+
 @test "ns tag tags when [Unreleased] is empty and the version has its section (#88)" {
   changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n\n[Unreleased]: https://example.invalid/compare/v0.1.1...HEAD\n'
   run ns tag v0.1.1 --repo "$REPO" --yes
