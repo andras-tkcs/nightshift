@@ -69,7 +69,7 @@ events:
   note: 'p1-core exit 0'
 - time: '2026-10-02T11:31:00Z'
   type: review
-  note: 'p1-core round 1'
+  note: 'p1-core round 1 approve'
 - time: '2026-10-02T11:35:00Z'
   type: merge
   note: 'p1-core merged into feature/12'
@@ -93,7 +93,7 @@ events:
   note: 'p2-docs exit 0'
 - time: '2026-10-02T12:20:00Z'
   type: review
-  note: 'p2-docs round 1'
+  note: 'p2-docs round 1 approve'
 - time: '2026-10-02T12:50:00Z'
   type: resumed
   note: 'resumed from running'

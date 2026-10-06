@@ -184,12 +184,27 @@ EOF
   grep -q 'PHASE-REPORT p1-alpha' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl"
 }
 
-# assert_usage_limit: the phase finished on a usage limit
-assert_usage_limit() {
-  [ "$output" = "finished p1-alpha usage-limit" ]
+# result_line <is_error> <api_error_status> <text>: a claude -p result line as JSON
+result_line() {
+  jq -nc --argjson e "$1" --argjson s "$2" --arg t "$3" \
+    '{type: "result", subtype: "success", is_error: $e, api_error_status: $s, num_turns: 3, result: $t}'
+}
+
+# finish_with <result line>: start p1-alpha with that final result and wait for it
+finish_with() {
+  CLAUDE_STUB_RESULT_LINE="$1" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+}
+
+# assert_usage_pause <until>: the phase finished on a usage limit that resets at <until>
+assert_usage_pause() {
+  [ "$output" = "finished p1-alpha usage-limit until $1" ]
   [ "$(lget .budget.paused)" = true ]
+  [ "$(lget .budget.paused_until)" = "$1" ]
   [ "$(pstate p1-alpha state)" = pending ]
-  [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" = 1 ]
+  [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" -ge 1 ]
 }
 
 # assert_normal_finish: the phase finished normally and went to review
@@ -200,48 +215,111 @@ assert_normal_finish() {
   [ "$(lget '[.events[] | select(.type == "usage-pause")] | length')" = 0 ]
 }
 
-@test "wait on a usage limit pauses the budget and resets the phase" {
-  # the shape claude -p prints when a subscription limit ends the turn
-  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"num_turns":3,"stop_reason":"stop_sequence","result":"You'"'"'ve hit your session limit · resets 3pm (Europe/Budapest)"}' \
-    run ns-conductor start sbx-12 p1-alpha
-  assert_success
-  run ns-conductor wait sbx-12 --timeout 30
-  assert_success
-  assert_usage_limit
+@test "wait on a usage limit pauses the budget until the reset time and resets the phase" {
+  # the shape claude -p prints when a subscription limit ends the turn (NS_NOW is 21:00Z)
+  finish_with "$(result_line true 429 "You've hit your session limit · resets 11pm (UTC)")"
+  assert_usage_pause 2026-10-02T23:01:00Z
+  [ "$(pstate p1-alpha usage_limits)" = 1 ]
 }
 
-@test "wait on an older usage-limit error text without a status pauses the budget" {
-  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1759750000"}' \
-    run ns-conductor start sbx-12 p1-alpha
+@test "start refuses with exit 8 while the usage pause lasts and starts after it" {
+  finish_with "$(result_line true 429 "You've hit your weekly limit · resets Oct 4, 9:30am (UTC)")"
+  assert_usage_pause 2026-10-04T09:31:00Z
+  run ns-conductor start sbx-12 p1-alpha
+  assert_failure 8
+  assert_output_contains "paused until 2026-10-04T09:31:00Z"
+  [ "$(pstate p1-alpha state)" = pending ]
+  NS_NOW=2026-10-04T09:32:00Z run ns-conductor start sbx-12 p1-alpha
   assert_success
-  run ns-conductor wait sbx-12 --timeout 30
-  assert_success
-  assert_usage_limit
+  assert_output_contains "started p1-alpha"
+}
+
+@test "an older usage-limit text with an epoch pauses until that epoch" {
+  # 1790982000 is 2026-10-02T23:00:00Z
+  finish_with '{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1790982000"}'
+  assert_usage_pause 2026-10-02T23:01:00Z
+}
+
+@test "a usage limit without a reset time backs off 15 minutes, then 30" {
+  finish_with "$(result_line true 429 "You've hit your session limit")"
+  assert_usage_pause 2026-10-02T21:15:00Z
+  ns-ledger set "$LEDGER" '.budget.paused_until = null'
+  finish_with "$(result_line true 429 "You've hit your session limit · resets soon")"
+  [ "$output" = "finished p1-alpha usage-limit until 2026-10-02T21:30:00Z" ]
+  [ "$(pstate p1-alpha usage_limits)" = 2 ]
+}
+
+@test "a usage limit that does not reset escalates at once" {
+  finish_with "$(result_line true 429 "You've hit your monthly spend limit.")"
+  [ "$output" = "finished p1-alpha usage-limit escalate: You've hit your monthly spend limit." ]
+  [ "$(lget .budget.paused)" = true ]
+  [ "$(lget '.budget.paused_until // "none"')" = none ]
+  [ "$(pstate p1-alpha state)" = pending ]
+  finish_with "$(result_line true null "You're out of usage credits. Run /usage-credits to keep using Opus or /model to switch models.")"
+  assert_output_contains "usage-limit escalate: You're out of usage credits"
+}
+
+@test "the fourth usage limit of a phase escalates instead of pausing again" {
+  ns-ledger set "$LEDGER" '.phases += [{id: "p1-alpha", title: "a", state: "pending", branch: null, worktree: null, attempts: 3, review_rounds: 0, usage_limits: 3}]'
+  finish_with "$(result_line true 429 "You've hit your session limit · resets 11pm (UTC)")"
+  [ "$output" = "finished p1-alpha usage-limit escalate: 4 usage limits in this phase" ]
+  [ "$(lget '.budget.paused_until // "none"')" = none ]
+  [ "$(pstate p1-alpha usage_limits)" = 4 ]
+}
+
+@test "a limit text only in errors[] is a usage limit" {
+  finish_with '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"errors":["You'"'"'ve hit your session limit · resets 11pm (UTC)"]}'
+  assert_usage_pause 2026-10-02T23:01:00Z
 }
 
 @test "wait: a successful result that mentions a rate limiter is not a usage limit" {
-  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"result":"Added the rate limiter; a client over the usage limit gets a 429 (rate limit exceeded).\n\nPHASE-REPORT p1-alpha status=done head=abc"}' \
-    run ns-conductor start sbx-12 p1-alpha
-  assert_success
-  run ns-conductor wait sbx-12 --timeout 30
-  assert_success
+  finish_with '{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"result":"You'"'"'ve hit your usage limit? No: added the rate limiter; a client over the usage limit gets a 429 (rate limit exceeded).\n\nPHASE-REPORT p1-alpha status=done head=abc"}'
   assert_normal_finish
 }
 
 @test "wait: an error result for another reason is not a usage limit" {
-  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":40,"errors":["Reached maximum number of turns (40)"]}' \
-    run ns-conductor start sbx-12 p1-alpha
-  assert_success
-  run ns-conductor wait sbx-12 --timeout 30
-  assert_success
+  finish_with '{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":40,"errors":["Reached maximum number of turns (40)"]}'
   assert_normal_finish
   ns-ledger set "$LEDGER" '.phases |= map(.state = "pending")'
-  CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"api_error_status":500,"result":"API Error: 500 Internal server error while the rate limiter test ran"}' \
-    run ns-conductor start sbx-12 p1-alpha
-  assert_success
+  finish_with "$(result_line true 500 "API Error: 500 Internal server error while the rate limiter test ran; You've hit your limit is not at the start")"
+  assert_normal_finish
+}
+
+@test "a capacity 429 is retried once after a short backoff, then takes the normal path" {
+  finish_with "$(result_line true 429 "Request rejected (429) · this may be a temporary capacity issue.")"
+  [ "$output" = "finished p1-alpha transient retry at 2026-10-02T21:01:00Z" ]
+  [ "$(lget '.budget.paused // false')" = false ]
+  [ "$(pstate p1-alpha state)" = pending ]
+  [ "$(pstate p1-alpha not_before)" = 2026-10-02T21:01:00Z ]
+  run ns-conductor start sbx-12 p1-alpha
+  assert_failure 8
+  assert_output_contains "not before 2026-10-02T21:01:00Z"
+  export NS_NOW=2026-10-02T21:02:00Z
+  finish_with "$(result_line true 429 "Request rejected (429) · this may be a temporary capacity issue.")"
+  assert_normal_finish
+  [ "$(pstate p1-alpha transient_retries)" = 0 ]
+}
+
+@test "a 529 overload is transient, not a usage limit" {
+  finish_with "$(result_line true 529 "Repeated 529 Overloaded errors")"
+  [ "$output" = "finished p1-alpha transient retry at 2026-10-02T21:01:00Z" ]
+  [ "$(lget '.budget.paused // false')" = false ]
+}
+
+@test "wait with no workers sleeps until a pending retry is due and prints retry" {
+  ns-ledger set "$LEDGER" '.phases += [{id: "p1-alpha", title: "a", state: "pending", branch: null, worktree: null, attempts: 1, review_rounds: 0, not_before: "2026-10-02T21:00:02Z"}]'
+  run ns-conductor wait sbx-12 --timeout 1
+  assert_failure 124
+  assert_output_contains "retry p1-alpha at 2026-10-02T21:00:02Z"
+  SECONDS=0
   run ns-conductor wait sbx-12 --timeout 30
   assert_success
-  assert_normal_finish
+  [ "$output" = "retry p1-alpha" ]
+  [ "$SECONDS" -ge 1 ]
+  ns-ledger set "$LEDGER" '.phases[0].not_before = null'
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  [ "$output" = "no workers" ]
 }
 
 @test "wait with a sleeping worker times out with 124" {

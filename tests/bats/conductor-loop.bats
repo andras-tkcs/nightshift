@@ -334,6 +334,26 @@ mkphase() {
   assert_output_contains "review round 2 of 2"
 }
 
+@test "review-round: after the cap, approve still exits 0 and changes escalates again" {
+  ns-conductor review-round sbx-12 p1-alpha changes >/dev/null
+  ns-conductor review-round sbx-12 p1-alpha changes >/dev/null
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_failure 7
+  run ns-conductor review-round sbx-12 p1-alpha changes
+  assert_failure 7
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_success
+  assert_output_contains "review round 5 of 3"
+}
+
+@test "unpause clears the budget pause and paused_until" {
+  ns-ledger set "$LEDGER" '.budget.paused = true | .budget.paused_until = "2026-10-02T23:00:00Z"'
+  run ns-conductor unpause sbx-12
+  assert_success
+  [ "$(lget .budget.paused)" = false ]
+  [ "$(lget '.budget.paused_until // "none"')" = none ]
+}
+
 @test "review-round needs a verdict of approve or changes" {
   run ns-conductor review-round sbx-12 p1-alpha
   assert_failure 2

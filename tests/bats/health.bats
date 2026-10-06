@@ -175,6 +175,29 @@ age_log() { touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/conductor.js
   [ ! -e "$NS_CONFIG_DIR/health/sbx-99" ]
 }
 
+# parked_paused <id> <paused_until or null>: a run parked on a usage-limit pause
+parked_paused() {
+  ns new "$1" --tier T1 --yes >/dev/null
+  rm -f "$TMUX_STUB_DIR/$1"
+  ns-ledger set "$(ledger_of "$1")" ".state = \"parked\" | .budget.paused = true | .budget.paused_until = $2"
+}
+
+@test "health-check resumes a run parked on a usage limit once paused_until has passed" {
+  parked_paused sbx-12 '"2026-10-02T20:30:00Z"'
+  parked_paused sbx-13 '"2026-10-02T23:00:00Z"'
+  parked_paused sbx-14 null
+  run ns health-check
+  assert_success
+  assert_output_contains "resumed sbx-12"
+  assert_output_contains "1 resumed after a usage limit"
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = running ]
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(ns-ledger get "$(ledger_of sbx-13)" .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-13" ]
+  [ "$(ns-ledger get "$(ledger_of sbx-14)" .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-14" ]
+}
+
 @test "stream-view survives malformed events and keeps going" {
   big=$(head -c 300000 /dev/zero | tr '\0' x)
   {
