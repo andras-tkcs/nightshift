@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Deliberate shellcheck failure for the CI-red proof (issue #121 item 2). Never merge.
+echo $1
