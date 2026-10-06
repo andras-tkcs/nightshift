@@ -9,7 +9,10 @@ scenario_main() {
   # leftovers: open PRs of run branches that have plan/<run id> on origin (other open fix/ or
   # feature/ PRs are not runs and do not stack); the run id is the branch with the pattern stripped.
   local plans heads h rid
-  plans=$(gh api "repos/$E2E_REPO/git/matching-refs/heads/plan/" --jq '.[].ref | sub("refs/heads/plan/"; "")' 2>/dev/null || true)
+  plans=$(gh api "repos/$E2E_REPO/git/matching-refs/heads/plan/" --jq '.[].ref | sub("refs/heads/plan/"; "")') || {
+    e2e_log "could not list the plan branches of $E2E_REPO"
+    return 1
+  }
   heads=$(gh pr list --repo "$E2E_REPO" --state open --json headRefName --jq '.[].headRefName' | grep -E '^(fix|feature)/' || true)
   leftovers=""
   for h in $heads; do
