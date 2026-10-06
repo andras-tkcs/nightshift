@@ -156,7 +156,7 @@ set_lint() {
   stack3 APPROVED
   run ns stack merge sbx
   assert_success
-  assert_output_contains "check python lint: pass"
+  assert_output_contains "PASS python lint"
   [ -n "$(line_of "pr merge 7 ")" ]
 }
 

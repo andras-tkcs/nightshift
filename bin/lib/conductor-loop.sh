@@ -233,37 +233,12 @@ loop_checks() {
 }
 
 loop_checks_body() {
-  local target="$1" dir log n stack name cmd failed=0 total crc
+  local target="$1" dir log
   dir=$(loop_phase_wt "$target")
   [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
-  total=$(jq '(.checks // []) | length' <<<"$profile")
-  if [ "$total" -eq 0 ]; then
-    printf 'no checks configured\n'
-    return 0
-  fi
   mkdir -p "$logdir"
   log="$logdir/$target.checks.log"
-  : >"$log"
-  n=0
-  while [ "$n" -lt "$total" ]; do
-    stack=$(jq -r ".checks[$n].stack" <<<"$profile")
-    name=$(jq -r ".checks[$n].name" <<<"$profile")
-    cmd=$(jq -r ".checks[$n].cmd" <<<"$profile")
-    printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
-    crc=0
-    (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
-      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
-    if [ "$crc" -eq 0 ]; then
-      printf 'PASS %s %s\n' "$stack" "$name"
-    elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
-      printf 'SKIP %s %s\n' "$stack" "$name"
-    else
-      printf 'FAIL %s %s\n' "$stack" "$name"
-      failed=1
-    fi
-    n=$((n + 1))
-  done
-  if [ "$failed" -eq 1 ]; then
+  if ! ns_profile_checks_run "$dir" "$profile" "$log"; then
     tail -n 40 "$log"
     return 1
   fi

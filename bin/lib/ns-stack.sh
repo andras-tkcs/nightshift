@@ -153,10 +153,15 @@ ns_stack_merge() {
     return 0
   fi
   topnum=$(jq -r '.[0][-1].number' <<<"$chains")
-  ns_stack_top_checks "$p" "$id_for_wt" "$(jq -r '.[0][-1].head' <<<"$chains")" || {
+  local trc=0
+  ns_stack_top_checks "$p" "$id_for_wt" "$(jq -r '.[0][-1].head' <<<"$chains")" || trc=$?
+  if [ "$trc" -eq 2 ]; then
+    printf 'stopped: could not run the checks on top of the stack (#%s)\n' "$topnum"
+    return 1
+  elif [ "$trc" -ne 0 ]; then
     printf 'stopped: checks failed on top of the stack (#%s)\n' "$topnum"
     return 1
-  }
+  fi
   for ((i = 0; i < n; i++)); do
     row=$(jq -c ".[0][$i]" <<<"$chains")
     num=$(jq -r .number <<<"$row")
@@ -192,18 +197,19 @@ ns_stack_merge() {
 }
 
 # ns_stack_top_checks <project json> <run id> <head branch>: run the profile checks in a throwaway worktree
-# of the top PR's head; a non-zero return means a check failed or could not run
+# of the top PR's head. Returns 0 when they pass (or none are configured: a SKIP line), 1 when a check
+# failed (with the tail of its output), 2 when they could not run (profile, fetch or worktree; says which).
 ns_stack_top_checks() {
-  local p="$1" id="$2" head="$3" path name prof wt total n cmd cname stack crc failed=0
+  local p="$1" id="$2" head="$3" path name prof wt log rc=0
   path=$(jq -r .path <<<"$p")
   name=$(jq -r .name <<<"$p")
   prof=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$p")" "$(jq -r '.branch // ""' <<<"$p")" 2>/dev/null) || [ $? -eq 3 ] || {
     printf 'could not read the profile of %s\n' "$name"
-    return 1
+    return 2
   }
   git -C "$path" fetch -q origin || {
     printf 'could not fetch origin for %s\n' "$name"
-    return 1
+    return 2
   }
   wt="$(ns_worktree_root)/$name-$id--merge"
   mkdir -p "$(ns_worktree_root)"
@@ -213,28 +219,16 @@ ns_stack_top_checks() {
   fi
   git -C "$path" worktree add -q --detach "$wt" "origin/$head" || {
     printf 'could not create a worktree of %s\n' "$head"
-    return 1
+    return 2
   }
-  total=$(jq '(.checks // []) | length' <<<"$prof")
-  [ "$total" -gt 0 ] || printf 'no checks configured\n'
-  for ((n = 0; n < total; n++)); do
-    stack=$(jq -r ".checks[$n].stack" <<<"$prof")
-    cname=$(jq -r ".checks[$n].name" <<<"$prof")
-    cmd=$(jq -r ".checks[$n].cmd" <<<"$prof")
-    crc=0
-    (cd "$wt" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
-      TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >/dev/null 2>&1 </dev/null || crc=$?
-    if [ "$crc" -eq 0 ]; then
-      printf 'check %s %s: pass\n' "$stack" "$cname"
-    elif [ "$crc" -eq 5 ] && [[ $cmd == *pytest* ]]; then
-      printf 'check %s %s: skipped (no tests)\n' "$stack" "$cname"
-    else
-      printf 'check %s %s: FAIL\n' "$stack" "$cname"
-      failed=1
-    fi
-  done
+  log=$(mktemp)
+  ns_profile_checks_run "$wt" "$prof" "$log" || {
+    rc=1
+    tail -n 40 "$log"
+  }
+  rm -f "$log"
   git -C "$path" worktree remove --force "$wt" 2>/dev/null || true
-  return "$failed"
+  return "$rc"
 }
 
 # ns_stack_drop <id> [--dry-run]: close the PR of a run and restack the PR above it onto the layer below
