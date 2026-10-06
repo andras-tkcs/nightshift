@@ -162,6 +162,19 @@ conductor_start() {
     printf 'budget exceeded\n'
     return 4
   fi
+  # 2b. usage-limit pause and transient-retry backoff (exit 8)
+  local pu nb now
+  now=$(now_epoch)
+  pu=$(lg get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end')
+  if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$now" ]; then
+    printf 'usage limit: paused until %s\n' "$pu"
+    return 8
+  fi
+  nb=$(phase_get "$phase" not_before '""')
+  if [ -n "$nb" ] && [ "$(date -u -d "$nb" +%s)" -gt "$now" ]; then
+    printf '%s: transient error, retry not before %s\n' "$phase" "$nb"
+    return 8
+  fi
   # 3. auto mode
   mode="${NS_WORKER_MODE:-$(ns_config_get worker_mode auto)}"
   if [ "$mode" = auto ] && ! auto_mode_fresh; then
@@ -269,7 +282,7 @@ conductor_start() {
   [ -f "$pidf" ] || ns_die "worker for $phase did not start"
   pid=$(ns_pool_field "$pidf" pid)
   # 8. ledger
-  phase_update "$phase" ".state = \"running\" | .attempts += 1 | .branch = $(jstr "$pbranch") | .worktree = $(jstr "$pwt")" "$title"
+  phase_update "$phase" ".state = \"running\" | .not_before = null | .attempts += 1 | .branch = $(jstr "$pbranch") | .worktree = $(jstr "$pwt")" "$title"
   lg event "$ledger" phase-start "$phase attempt: pid $pid"
   lg checkpoint "$ledger"
   printf 'started %s pid %s\n' "$phase" "$pid"
@@ -278,9 +291,27 @@ conductor_start() {
 # ---------------------------------------------------------------------------
 # wait
 
+# Usage limits (R-BUD-2, R-USE-4): bin/lib/usage_limit.py classifies the last result. A
+# usage limit pauses the budget until the reset time (or a backoff of 15 min, doubling, at most
+# 4 h, when no reset time can be read); the conductor parks the run and ns health-check resumes
+# it. A limit that does not reset, or the (USAGE_LIMIT_MAX+1)th limit of a phase, escalates.
+# A capacity 429 or a 529 overload is retried once after TRANSIENT_BACKOFF seconds.
+USAGE_LIMIT_MAX=3
+USAGE_BACKOFF=900
+USAGE_BACKOFF_MAX=14400
+TRANSIENT_BACKOFF=60
+
+now_epoch() { date -u -d "$(ns_now)" +%s; }
+iso_of() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+
+# phase_get <phase> <field> <default>
+phase_get() {
+  lg get "$ledger" "[.phases[] | select(.id == $(jstr "$1")) | .$2] | (.[0] // $3)"
+}
+
 # finish_worker <pid file>: handle one finished worker; prints one line
 finish_worker() {
-  local f="$1" base phase code ef lastres done_dir
+  local f="$1" base phase code ef lastres done_dir cls kind until msg now n backoff tr
   base=${f##*/}
   base=${base%.pid}
   phase=${base#*--}
@@ -298,16 +329,63 @@ finish_worker() {
   if [ -f "$logdir/$phase.jsonl" ]; then
     lastres=$(jq -R -c 'fromjson? | select(.type == "result")' "$logdir/$phase.jsonl" 2>/dev/null | tail -n1) || lastres=""
   fi
-  if [ -n "$lastres" ] && jq -e 'tojson | test("usage limit|rate limit"; "i")' <<<"$lastres" >/dev/null 2>&1; then
-    printf 'finished %s usage-limit\n' "$phase"
-    lg set "$ledger" '.budget.paused = true'
-    lg event "$ledger" usage-pause "$phase hit a usage limit"
-    phase_update "$phase" '.state = "pending"'
-  else
-    printf 'finished %s exit %s\n' "$phase" "$code"
-    phase_update "$phase" '.state = "review"'
-    lg event "$ledger" phase-end "$phase exit $code"
+  now=$(now_epoch)
+  kind=none
+  until=-
+  msg=""
+  if [ -n "$lastres" ]; then
+    cls=$(python3 "$NS_HOME/bin/lib/usage_limit.py" "$now" <<<"$lastres") || cls=none
+    IFS=$'\t' read -r kind until msg <<<"$cls" || true
   fi
+  case "$kind" in
+    usage | usage-final)
+      n=$(($(phase_get "$phase" usage_limits 0) + 1))
+      phase_update "$phase" ".state = \"pending\" | .usage_limits = $n"
+      lg set "$ledger" '.budget.paused = true'
+      if [ "$kind" = usage-final ] || [ "$n" -gt "$USAGE_LIMIT_MAX" ]; then
+        [ "$kind" = usage-final ] || msg="$n usage limits in this phase"
+        lg set "$ledger" '.budget.paused_until = null'
+        lg event "$ledger" usage-pause "$phase hit a usage limit; escalate: $msg"
+        printf 'finished %s usage-limit escalate: %s\n' "$phase" "$msg"
+        return 0
+      fi
+      if ! [[ $until =~ ^[0-9]+$ ]]; then
+        backoff=$((USAGE_BACKOFF << (n - 1)))
+        [ "$backoff" -le "$USAGE_BACKOFF_MAX" ] || backoff=$USAGE_BACKOFF_MAX
+        until=$((now + backoff))
+      fi
+      lg set "$ledger" ".budget.paused_until = $(jstr "$(iso_of "$until")")"
+      lg event "$ledger" usage-pause "$phase hit a usage limit; paused until $(iso_of "$until"): $msg"
+      printf 'finished %s usage-limit until %s\n' "$phase" "$(iso_of "$until")"
+      ;;
+    transient)
+      tr=$(phase_get "$phase" transient_retries 0)
+      if [ "$tr" -lt 1 ]; then
+        until=$(iso_of $((now + TRANSIENT_BACKOFF)))
+        phase_update "$phase" ".state = \"pending\" | .transient_retries = 1 | .not_before = $(jstr "$until")"
+        lg event "$ledger" phase-end "$phase transient error, retry at $until: $msg"
+        printf 'finished %s transient retry at %s\n' "$phase" "$until"
+        return 0
+      fi
+      printf 'finished %s exit %s\n' "$phase" "$code"
+      phase_update "$phase" '.state = "review" | .transient_retries = 0 | .not_before = null'
+      lg event "$ledger" phase-end "$phase exit $code (transient error again: $msg)"
+      ;;
+    *)
+      printf 'finished %s exit %s\n' "$phase" "$code"
+      phase_update "$phase" '.state = "review" | .transient_retries = 0 | .not_before = null'
+      lg event "$ledger" phase-end "$phase exit $code"
+      ;;
+  esac
+}
+
+# due_retry: prints "<epoch> <phase>" of the earliest pending phase with a not_before, if any
+due_retry() {
+  local nb ph
+  while IFS=$'\t' read -r ph nb; do
+    [ -n "$ph" ] || continue
+    printf '%s %s\n' "$(date -u -d "$nb" +%s)" "$ph"
+  done < <(lg get "$ledger" '.phases[] | select(.state == "pending" and (.not_before // null) != null) | [.id, .not_before] | @tsv') | sort -n | head -n1
 }
 
 conductor_wait() {
@@ -351,7 +429,23 @@ conductor_wait() {
       return 0
     fi
     if [ "${#live[@]}" -eq 0 ]; then
-      printf 'no workers\n'
+      local due nb ph delay
+      due=$(due_retry)
+      if [ -z "$due" ]; then
+        printf 'no workers\n'
+        return 0
+      fi
+      nb=${due%% *}
+      ph=${due#* }
+      delay=$((nb - $(now_epoch)))
+      remaining=$((deadline - $(date +%s)))
+      if [ "$delay" -gt "$remaining" ]; then
+        [ "$remaining" -le 0 ] || sleep "$remaining"
+        printf 'still waiting: retry %s at %s\n' "$ph" "$(iso_of "$nb")"
+        return 124
+      fi
+      [ "$delay" -le 0 ] || sleep "$delay"
+      printf 'retry %s\n' "$ph"
       return 0
     fi
     now=$(date +%s)

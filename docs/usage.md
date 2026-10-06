@@ -149,7 +149,7 @@ ns log <id> [-f] [--phase <p>] [--raw]
 ns stop <id>
 ```
 
-`ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run with no live conductor (no tmux session, for example one waiting at a gate or one that died) is stopped at once: workers are reset, the state becomes `stopped` and `stop_requested` stays empty. A run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
+`ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run with no live conductor (no tmux session, for example one waiting at a gate or one that died) is stopped at once: workers are reset, the state becomes `stopped` and `stop_requested` stays empty. A run parked on a usage limit (`budget.paused_until` set) is stopped at once and `paused_until` is cleared, so `ns health-check` does not resume it. Any other run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
 
 ### ns kill
 
@@ -228,7 +228,7 @@ ns dequeue
 ns health-check
 ```
 
-`ns health-check` also runs `ns dequeue`. It is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
+`ns health-check` also runs `ns dequeue`. It is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. After `ns dequeue` (so queued runs keep their place) it runs `ns resume <id>` for a run paused on a usage limit once `budget.paused_until` in its ledger has passed, when the run has no open gate and is `parked` or `running` with a dead conductor (see docs/conductor.md, "Usage limits"); `ns resume` queues it when no run slot is free. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified, 0 resumed after a usage limit, 0 queued`.
 
 ### ns rm
 

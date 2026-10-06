@@ -59,7 +59,7 @@ def minus($waits):
       | ($r.value.note | first_word) as $ph
       | ([$ev[0:$r.key][] | select((.type == "phase-end" or .type == "review") and (.note | first_word) == $ph) | .t] | last) as $s
       | select($s != null)
-      | row("\($ph) review " + ($r.value.note | sub("^[^ ]+ "; "")); $s; $r.value.t; false)]
+      | row("\($ph) review " + ($r.value.note | sub("^[^ ]+ "; "") | sub(" (approve|changes)$"; "")); $s; $r.value.t; false)]
    + [$ev | to_entries[] | select(.value.type == "merge") | . as $m
       | ($m.value.note | first_word) as $ph
       | ([$ev[0:$m.key][] | select((.type == "phase-end" or .type == "review") and (.note | first_word) == $ph) | .t] | last) as $s

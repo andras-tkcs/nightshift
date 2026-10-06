@@ -11,7 +11,7 @@ conductor_loop_usage() {
   printf '  checks        <id> <phase|feature>\n'
   printf '  report        <id> <phase> [--rerun]\n'
   printf '  note          <id> <text> | --file <file>\n'
-  printf '  review-round  <id> <phase>\n'
+  printf '  review-round  <id> <phase> <approve|changes>\n'
   printf '  merge         <id> <phase>\n'
   printf '  gate          <id> <1|1.5|2> <file>[:<name>]...\n'
   printf '  finish        <id> --pr <url>\n'
@@ -357,18 +357,24 @@ conductor_report() {
 }
 
 conductor_review_round() {
-  [ $# -eq 2 ] || ns_usage "ns-conductor review-round <id> <phase>"
-  valid_phase_id "$2" || ns_usage "ns-conductor review-round <id> <phase>"
-  local phase="$2" tier max n
+  [ $# -eq 3 ] || ns_usage "ns-conductor review-round <id> <phase> <approve|changes>"
+  valid_phase_id "$2" || ns_usage "ns-conductor review-round <id> <phase> <approve|changes>"
+  case "$3" in
+    approve | changes) ;;
+    *) ns_usage "ns-conductor review-round <id> <phase> <approve|changes>" ;;
+  esac
+  local phase="$2" verdict="$3" tier max n
   load_run "$1"
   tier=$(loop_tier)
   max=$(jq -r --arg t "$tier" '.budgets[$t].review_rounds // 3' <<<"$profile")
   phase_update "$phase" '.review_rounds += 1'
   n=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .review_rounds] | .[0]")
-  lg event "$ledger" review "$phase round $n"
+  lg event "$ledger" review "$phase round $n $verdict"
   lg checkpoint "$ledger"
-  if [ "$n" -gt "$max" ]; then
-    printf '%s: review round %s exceeds the %s allowed for %s\n' "$phase" "$n" "$max" "$tier"
+  # The cap counts reviews that ran: an approval always proceeds, and changes on the last
+  # allowed round escalate instead of starting a review the budget does not cover.
+  if [ "$verdict" = changes ] && [ "$n" -ge "$max" ]; then
+    printf '%s: review round %s asked for changes and reaches the cap of %s for %s\n' "$phase" "$n" "$max" "$tier"
     return 7
   fi
   printf '%s: review round %s of %s\n' "$phase" "$n" "$max"
@@ -471,7 +477,7 @@ conductor_pause() {
 conductor_unpause() {
   [ $# -eq 1 ] || ns_usage "ns-conductor unpause <id>"
   load_run "$1"
-  lg set "$ledger" '.budget.paused = false'
+  lg set "$ledger" '.budget.paused = false | .budget.paused_until = null'
   lg event "$ledger" usage-resume "budget resumed"
   lg checkpoint "$ledger"
   printf 'unpaused %s\n' "$id"

@@ -52,7 +52,7 @@ Ledger step: `implement`, then `integrate`.
 3. Implementer step A: launch `ns:implementer` to add a test that reproduces the bug, run the checks and see it fail, commit `test: failing test for <id>` and push.
 4. Implementer step B: launch `ns:implementer` to fix, make the checks green and push.
 5. Launch subagent `ns:code-reviewer` with `git diff origin/<base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-1.md`, last line `REVIEW verdict=approve|changes`.
-6. `ns-conductor review-round <id> fix`. Exit 7: Escalate. Verdict `changes`: launch `ns:implementer` with the review, then repeat from step 5 with the next review file number.
+6. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve` or `changes`). Exit 7 (`changes` on the last allowed round): Escalate. Verdict `changes`: launch `ns:implementer` with the review, then repeat from step 5 with the next review file number.
 7. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T2
@@ -66,7 +66,7 @@ Ledger step: `discovery`, `gate1`, `phases`, `board`, `integrate`.
 5. Subagent `ns:test-architect` writes `RUN/test-strategy.md` and commits acceptance tests on `plan/<id>`, marked as expected failures (Python: `pytest.mark.xfail(strict=True, reason="ns:<id> acceptance")`).
 6. Checkpoint. `ns-ledger set "$NS_LEDGER" '.step="gate1"'`, then `ns-conductor gate <id> 1 <plan_doc>:plan.md RUN/acceptance.md RUN/design.md RUN/test-strategy.md [RUN/manual-steps.md]` and end the session.
 7. After approval (resumed with `--resume`, gate null, step `gate1`): `ns-conductor feature <id>`, then `ns-ledger set "$NS_LEDGER" '.step="phases"'`.
-8. Run the phases as `/ns:implement` describes: ready phases are `pending` with every `depends_on` merged; start up to `max_parallel` (manifest, default 2) with `ns-conductor start`; loop on `ns-conductor wait`. For each finished phase: `ns-conductor report` (exit 1: restart once with the reason as feedback, then Escalate); `ns-conductor checks <id> <phase>`; subagent `ns:code-reviewer` with `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, writing `RUN/review-<phase>-<round>.md`; `ns-conductor review-round` (exit 7: Escalate); verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`; verdict `approve`: `ns-conductor merge <id> <phase>` (exit 1: restart the phase with the conflict or check output as feedback). A phase with `platform_paths` for a CI platform is dispatched through the `ci-dispatch` skill before review.
+8. Run the phases as `/ns:implement` describes: ready phases are `pending` with every `depends_on` merged; start up to `max_parallel` (manifest, default 2) with `ns-conductor start`; loop on `ns-conductor wait`. For each finished phase: `ns-conductor report` (exit 1: restart once with the reason as feedback, then Escalate); `ns-conductor checks <id> <phase>`; subagent `ns:code-reviewer` with `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, writing `RUN/review-<phase>-<round>.md`; `ns-conductor review-round <id> <phase> <verdict>` (exit 7: Escalate); verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`; verdict `approve`: `ns-conductor merge <id> <phase>` (exit 1: restart the phase with the conflict or check output as feedback). A phase with `platform_paths` for a CI platform is dispatched through the `ci-dispatch` skill before review.
 9. When every phase is `merged`: checkpoint and `should-stop`, `ns-ledger set "$NS_LEDGER" '.step="board"'`, then Review board, then Integrate.
 
 ## T3
@@ -122,9 +122,11 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 
 ## Usage limits
 
-1. `ns-conductor wait` prints `finished <phase> usage-limit` when a worker hit a usage or rate limit; it has already paused the budget and reset the phase to `pending`.
-2. Call `ns-conductor wait <id> --timeout 540` repeatedly until `ns-conductor start <id> <phase>` succeeds for that phase, then `ns-conductor unpause <id>`.
-3. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate.
+1. `ns-conductor wait` prints `finished <phase> usage-limit until <time>` when a worker's final result is a usage-limit error; it has already paused the budget until that time and reset the phase to `pending`. `start` exits 8 until then.
+2. Start no more phases. Call `ns-conductor wait <id>` only while other workers still run, then `ns-conductor park <id>` and end the session. `ns health-check` resumes the run after the reset; the resumed session starts the pending phases and, after the first successful `start`, runs `ns-conductor unpause <id>`.
+3. `finished <phase> usage-limit escalate: <reason>` (a limit that does not reset, or the fourth of a phase): Escalate.
+4. `finished <phase> transient retry at <time>` (capacity 429 or 529 overload): call `wait` again; on `retry <phase>` start the phase again.
+5. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate. Exit 8: as in step 2.
 
 ## Rules
 
