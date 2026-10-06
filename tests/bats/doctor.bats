@@ -251,7 +251,7 @@ EOF
     : >"$NS_STUB_LOG"
     NS_NTFY_URL=$u run ns doctor
     assert_success
-    assert_output_contains "warn token ntfy: mode 600, test publish skipped (NS_NTFY_URL is not set or points at ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+    assert_output_contains "warn token ntfy: mode 600, test publish skipped (NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
     ! grep -q '^curl' "$NS_STUB_LOG"
   done
 }
@@ -271,4 +271,23 @@ EOF
   NS_NTFY_URL=https://ntfy.example:8444 run ns doctor
   assert_success
   grep -qF -- '-H Priority: min' "$NS_STUB_LOG"
+}
+
+@test "the doctor test publish is skipped for URLs outside the allowlist (re-review 1)" {
+  ntfy_token
+  local u
+  for u in 'https:/ntfy.sh' 'https://ntfy%2esh' 'https://ntfy.sh%2e' 'https://NTFY.sh%2E' 'http://ntfy.example:8444'; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns doctor
+    assert_success
+    assert_output_contains "warn token ntfy: mode 600, test publish skipped (NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+    ! grep -q '^curl' "$NS_STUB_LOG"
+  done
+}
+
+@test "the doctor test publish goes to the owner's https://<host>.ts.net:8444 (re-review 1)" {
+  ntfy_token
+  NS_NTFY_URL=https://ns-main.tail1a2b3c.ts.net:8444 run ns doctor
+  assert_success
+  assert_output_contains "ok   token ntfy: mode 600, test publish to https://ns-main.tail1a2b3c.ts.net:8444 ok"
 }

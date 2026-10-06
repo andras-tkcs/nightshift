@@ -477,7 +477,7 @@ desk_leftovers() {
     : >"$NS_STUB_LOG"
     NS_NTFY_URL=$u run ns-notify "hello"
     assert_success
-    assert_output_contains "ns-notify: warning: not sending the ntfy token to ntfy.sh; set NS_NTFY_URL to your own ntfy"
+    assert_output_contains "ns-notify: warning: not sending the ntfy token: NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh"
     grep -q '^curl ' "$NS_STUB_LOG"
     ! grep -qi 'Authorization' "$NS_STUB_LOG"
     ! grep -q "$NTFY_TOKEN" "$NS_STUB_LOG"
@@ -516,4 +516,34 @@ desk_leftovers() {
   run ns publish sbx-12 RUN/plan.md
   assert_failure 1
   assert_output_contains "plan.md: looks like it contains a token; not published"
+}
+
+@test "ns-notify sends the token only to an https URL of a host that is not ntfy.sh (re-review 1)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  local u
+  for u in 'https:/ntfy.sh' 'https://ntfy%2esh' 'https://ntfy.sh%2e' 'https://NTFY.sh%2E' 'https://ntfy.sh.' \
+    'http://ntfy.example:8444' 'https://user@ntfy.example' 'https://ntfy.example\@ntfy.sh' \
+    'https://ntfy.example:123456' 'https://ntfy.example/x'; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_contains "ns-notify: warning: not sending the ntfy token: NS_NTFY_URL must be https://<your own ntfy host>[:port], not ntfy.sh"
+    ! grep -qi 'Authorization' "$NS_STUB_LOG"
+    ! grep -q "$NTFY_TOKEN" "$NS_STUB_LOG"
+  done
+}
+
+@test "ns-notify sends the token to the owner's https://<host>.ts.net:8444 (re-review 1)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  local u
+  for u in https://ns-main.tail1a2b3c.ts.net:8444 https://ns-main.tail1a2b3c.ts.net:8444/; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_not_contains "warning"
+    grep -qF "curl-stdin header = \"Authorization: Bearer $NTFY_TOKEN\"" "$NS_STUB_LOG"
+    grep -qF "https://ns-main.tail1a2b3c.ts.net:8444/topic1" "$NS_STUB_LOG"
+  done
 }
