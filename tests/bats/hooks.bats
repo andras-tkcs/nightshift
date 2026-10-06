@@ -306,6 +306,15 @@ make_ledger() {
   [ -z "$output" ]
 }
 
+@test "ns stack merge and ns stack drop are blocked for agents" {
+  for c in "ns stack merge sbx" "NS_X=1 ns stack merge sbx --dry-run" "cd /tmp && ns stack drop sbx-13"; do
+    bash_guard "$c"
+    blocked "ns stack merge and ns stack drop are the owner's commands"
+  done
+  bash_guard "ns stack sbx"
+  [ -z "$output" ]
+}
+
 @test "ns tag is blocked for agents" {
   for c in "ns tag v0.1.1" "NS_X=1 ns tag v0.1.1 --yes" "cd /tmp && ns tag v0.1.1"; do
     bash_guard "$c"
