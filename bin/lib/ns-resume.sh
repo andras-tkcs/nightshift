@@ -131,7 +131,9 @@ ns_resume_start() {
     live=$(ns_queue_live_count)
     if [ "$live" -ge "$(ns_queue_max)" ]; then
       if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
-        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+        # no live conductor here: a crashed run's dead gap is not budget used (#9)
+        # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true | .budget.since = $now' || return 1
         "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot" || return 1
         "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot" || return 1
         ns_resume_push "$id" "$ledger" || return 1
@@ -141,7 +143,11 @@ ns_resume_start() {
     fi
     mark=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false') || return 1
   fi
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running"' || return 1
+  # the budget clock restarts now: the gap since the last checkpoint (a crash, a park, the queue, a
+  # stop) is not budget used (#9). ns-ledger set restarts it for any other state; a crashed run was
+  # already running, so set since here too
+  # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running" | .budget.since = $now | .budget.integrate_from = null' || return 1
   if ! "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state" ||
     ! ns_resume_push "$id" "$ledger" ||
     ! NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"; then

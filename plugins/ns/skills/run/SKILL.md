@@ -18,7 +18,7 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
 4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
    Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end.
-5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary.
+5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 
 ## Triage
@@ -94,9 +94,9 @@ Ledger step: set `board` before (T2 and T3 only); set `integrate` after.
 Ledger step: `integrate` before; `ns-conductor finish` sets `done`.
 
 1. Launch subagent `ns:integrator` in the feature (T2/T3) or fix (T0/T1) worktree.
-2. It runs `ns-conductor stack-base <id>` first (exit 6: it resolves the conflicts and reruns the checks, or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. It then merges `origin/<base>` if behind, runs `/ns:dod` to write `RUN/dod.md`, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
+2. It runs `ns-conductor stack-base <id>` first (exit 4: the run waits at gate 1.5 for its budget, no PR; exit 6: it resolves the conflicts and reruns the checks, or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. It then merges `origin/<base>` if behind, runs `/ns:dod` to write `RUN/dod.md`, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
 3. T2 and T3: it writes `RUN/handoff.html` from the `handoff-report` template.
-4. It opens the PR: `gh pr create --base <pr-base> --head <branch> --title "<id>: <summary>" --body-file RUN/pr-body.md`. The body holds the summary, phase table, checks, non-blocking findings, `manual_after` items as unchecked boxes, a Stack section, a Run report line (from `ns report <id>`) and the desk link.
+4. It opens the PR (reusing an open PR of the branch on a rerun, `gh pr view` first): `gh pr create --base <pr-base> --head <branch> --title "<id>: <summary>" --body-file RUN/pr-body.md`. The body holds the summary, phase table, checks, non-blocking findings, `manual_after` items as unchecked boxes, a Stack section, a Run report line (from `ns report <id>`) and the desk link.
 5. `ns-conductor finish <id> --pr <url>` (for T2/T3 this also sets gate 2; it writes `RUN/run-report.md` with `ns report` and publishes it, and the handoff report, to the desk). A run that ends `stopped` or `failed` any other way gets its report from `ns report <id>`. End the session with a one-line summary.
 
 ## Escalate
@@ -126,7 +126,7 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 2. Start no more phases. Call `ns-conductor wait <id>` only while other workers still run, then `ns-conductor park <id>` and end the session. `ns health-check` resumes the run after the reset; the resumed session starts the pending phases and, after the first successful `start`, runs `ns-conductor unpause <id>`.
 3. `finished <phase> usage-limit escalate: <reason>` (a limit that does not reset, or the fourth of a phase): Escalate.
 4. `finished <phase> transient retry at <time>` (capacity 429 or 529 overload): call `wait` again; on `retry <phase>` start the phase again.
-5. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate. Exit 8: as in step 2.
+5. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 5 (auto mode): Escalate. Exit 4 (budget): the run is already at gate 1.5; end the session. Exit 8: as in step 2.
 
 ## Rules
 
@@ -135,3 +135,4 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 - Never merge a PR. Never push to the base branch. Never tag. Never force-push.
 - Reviewers see the diff, the plan and the phase entry only, never a worker's log.
 - Every step ends with `ns-ledger checkpoint "$NS_LEDGER" --push` and `ns-conductor should-stop <id>`; on exit 0 run `ns-conductor park <id>` and end the session.
+- Exit 4 from any `ns-conductor` subcommand, or a tool call denied by the budget hook, means the time budget is used up and the run already waits at gate 1.5 (`budget-guard`): end the session with a one-line summary; never write a second escalation and never change `budget.limit`.

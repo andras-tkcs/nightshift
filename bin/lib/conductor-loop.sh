@@ -55,6 +55,7 @@ conductor_fix_branch() {
   [ $# -eq 1 ] || ns_usage "ns-conductor fix-branch <id>"
   local base branch dir CREATED=0
   load_run "$1"
+  budget_guard fix-branch || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   branch=$(ns_branch_name "$(jq -r '.git.fix_branch' <<<"$profile")" "$id")
   dir=$(ns_run_worktree_path "$profile" "$id--fix")
@@ -106,6 +107,7 @@ conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
   local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since skipped row msg rem changed chains choices unknown
   load_run "$1"
+  budget_guard stack-base || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
   prefix=$(jq -r .prefix <<<"$project")
@@ -199,7 +201,7 @@ conductor_stack_base() {
     lg event "$ledger" stack "$msg"
   fi
   if [ -z "$top" ]; then
-    lg set "$ledger" ".stacked_on = $(jstr "$base")"
+    lg set "$ledger" ".stacked_on = $(jstr "$base") | .budget.integrate_from = \$now"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
     return 0
@@ -225,7 +227,7 @@ conductor_stack_base() {
     fi
     ns_die "could not merge $head into $own in $dir"
   fi
-  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+  lg set "$ledger" ".stacked_on = $(jstr "$stacked") | .budget.integrate_from = \$now"
   lg checkpoint "$ledger"
   printf '%s\n' "$head"
 }
@@ -239,16 +241,25 @@ loop_phase_wt() {
   fi
 }
 
-# loop_checks <phase|feature>: run the profile's checks, with the run context loaded.
+# loop_checks <phase|feature> [--budget]: run the profile's checks, with the run context loaded;
+# with --budget the budget check runs first (exit 4 when the budget is used up).
 # Removes <target>.checks.rc at the start and writes the exit code there last
 # (tmp + mv), on every return path, so callers can wait for the file.
 loop_checks() {
-  local target="$1" rc=0 rcf tmp
+  local target="$1" budget="${2:-}" rc=0 rcf tmp
   rcf="$logdir/$target.checks.rc"
   ns_private_dir "$logdir"
   rm -f "$rcf"
   # subshell: an ns_die (exit) in the body must not skip the marker
-  ( loop_checks_body "$target" ) || rc=$?
+  (
+    # checks feature is the integrator's own call (after a stack-base merge or conflict)
+    if [ -n "$budget" ]; then
+      who=""
+      [ "$target" != feature ] || who=integrator
+      budget_guard checks "$who" || exit
+    fi
+    loop_checks_body "$target"
+  ) || rc=$?
   tmp="$rcf.tmp.$$"
   printf '%s\n' "$rc" >"$tmp"
   mv -f "$tmp" "$rcf"
@@ -272,7 +283,7 @@ conductor_checks() {
   [ $# -eq 2 ] || ns_usage "ns-conductor checks <id> <phase|feature>"
   [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "ns-conductor checks <id> <phase|feature>"
   load_run "$1"
-  loop_checks "$2"
+  loop_checks "$2" --budget
 }
 
 conductor_note() {
@@ -397,6 +408,7 @@ conductor_review_round() {
   esac
   local phase="$2" verdict="$3" tier max n pbranch head rf rel line fv fh hj
   load_run "$1"
+  budget_guard review-round || return
   tier=$(loop_tier)
   max=$(jq -r --arg t "$tier" '.budgets[$t].review_rounds // 3' <<<"$profile")
   n=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .review_rounds] | (.[0] // 0)")

@@ -23,7 +23,7 @@ A phase is ready when it is `pending` (or `queued`: it waits for a pool slot) an
 
 - exit 0: started.
 - exit 3: pool full (the phase is now `queued`); try again after the next `wait`. With none of your own workers live, `wait` sleeps until another run frees a slot (`pool slot free`) or its timeout (exit 124, `pool full: <phases> waits for a slot`; call it again), so do not retry `start` without it.
-- exit 4 (budget) or exit 5 (auto mode does not work): escalate (section 6).
+- exit 4 (budget): the run already waits at gate 1.5; end the session. Exit 5 (auto mode does not work): escalate (section 6).
 
 Phases in the same wave touch different files by design.
 

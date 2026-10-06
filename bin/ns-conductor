@@ -20,6 +20,8 @@ source "$NS_HOME/bin/lib/stacks.sh"
 source "$NS_HOME/bin/lib/pool.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/stack-pr.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/desk.sh"
 # the phase loop subcommands (fix-branch, feature, checks, ...); they use this file's helpers
 if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ]; then
   # shellcheck source=/dev/null
@@ -35,6 +37,7 @@ usage() {
   printf '  check-auto\n'
   printf '  should-stop   <id>\n'
   printf '  park          <id>\n'
+  printf '  budget-check  <id>\n'
   if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ] && declare -F conductor_loop_usage >/dev/null; then
     conductor_loop_usage
   fi
@@ -78,6 +81,117 @@ phase_update() {
   lg set "$ledger" "if any(.phases[]; .id == $pj) then .phases |= map(if .id == $pj then ($upd) else . end) else .phases += [{id: $pj, title: $tj, state: \"pending\", branch: null, worktree: null, attempts: 0, review_rounds: 0} | ($upd)] end"
 }
 
+# ---------------------------------------------------------------------------
+# budget (R-BUD-1)
+
+# budget_guard <subcommand>: the one budget check of every tier, with the run context loaded.
+# Checkpoints the ledger, so budget.used counts up to now. Returns 0 while the run may go on. A
+# running run with no open gate whose wall-clock budget is used up (used >= limit) has its
+# workers stopped, gets gate 1.5 and a budget event first, then RUN/escalation.md (with a
+# budget_hours line for the owner's answer), published (which notifies); then it returns 4. A run
+# that already waits at that gate over its budget returns 4 and only completes a missing document
+# or desk copy (a check killed half-way). Any other state over budget returns 4 without escalating.
+# <who> integrator marks the integrator's own calls (checks feature, the hooks' budget-check):
+# after stack-base has passed in this running stretch (budget.integrate_from, cleared when the run
+# leaves running or is resumed) they may go on over budget up to max(0.5 h, 25 % of the limit), so
+# the integrator can open the PR and run finish. Serialised by a lock in the run's ledger directory.
+budget_guard() {
+  local rc=0 fd
+  exec {fd}>"$(dirname "$ledger")/budget.lock"
+  if ! flock -w 300 "$fd"; then
+    exec {fd}>&-
+    ns_die "budget check busy for $id"
+  fi
+  budget_guard_locked "$@" || rc=$?
+  exec {fd}>&-
+  return "$rc"
+}
+
+budget_guard_locked() {
+  local by="$1" who="${2:-}" st gate used limit step tier grace last
+  lg checkpoint "$ledger"
+  lg budget-exceeded "$ledger" || return 0
+  IFS=$'\t' read -r st gate used limit step tier grace last < <(lg get "$ledger" \
+    '[.state, (.gate // "-"), .budget.used, .budget.limit, .step, (.tier // "-"),
+      (.state == "running" and .gate == null and .step == "integrate" and (.budget.integrate_from // null) != null
+       and .budget.used < .budget.limit + ([0.5, .budget.limit * 0.25] | max)),
+      ([.events[] | select(.type == "state")] | last | .note // "-")] | @tsv')
+  if [ "$who" = integrator ] && [ "$grace" = true ]; then
+    printf 'budget exceeded: %s h of %s h; stack-base passed, so the integrator may finish (within the margin)\n' "$used" "$limit" >&2
+    return 0
+  fi
+  if [ "$st" = waiting ] && [ "$gate" = 1.5 ]; then
+    if [ "$last" = "waiting gate 1.5: budget used up" ]; then
+      budget_escalation_doc "$by" "$used" "$limit" "$step" "$tier" repair
+    fi
+    printf 'budget exceeded: %s waits at gate 1.5 for the owner; end this session now\n' "$id"
+    return 4
+  fi
+  if [ "$st" != running ] || [ "$gate" != - ]; then
+    printf 'budget exceeded (state %s, gate %s); nothing escalated\n' "$st" "$gate"
+    return 4
+  fi
+  stop_workers "$id"
+  lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
+  # the gate first: a check killed after this leaves a run at the gate, never a running run with
+  # an escalation document; the next check completes the document and the desk copy
+  lg event "$ledger" budget "budget used up: $used h of $limit h (ns-conductor $by)"
+  lg state "$ledger" waiting --gate 1.5 --note "budget used up"
+  budget_escalation_doc "$by" "$used" "$limit" "$step" "$tier"
+  printf 'budget exceeded: %s h of %s h; escalated at gate 1.5 (RUN/escalation.md); end this session now\n' "$used" "$limit"
+  return 4
+}
+
+# budget_escalation_doc <by> <used> <limit> <step> <tier> [repair]: write and commit
+# RUN/escalation.md, push the ledger and publish the document. With repair it does nothing when the
+# budget document and its desk copy are both there.
+budget_escalation_doc() {
+  local by="$1" used="$2" limit="$3" step="$4" tier="$5" repair="${6:-}" rel esc desk
+  rel=".nightshift/runs/$id/escalation.md"
+  esc="$wt/$rel"
+  desk="$(ns_desk_run_dir "$(jq -r .project <<<"$run")" "$id")/escalation.md"
+  # a repair keeps the document only when it is this escalation's: the budget heading, the hours
+  # used and the current limit (an older budget document may name a lower budget_hours)
+  local current=0
+  if head -n 1 "$esc" 2>/dev/null | grep -qx '# Budget exceeded' &&
+    grep -qF "used $used h of its $limit h" "$esc" && grep -qx "budget_hours: $limit" "$esc"; then
+    current=1
+  fi
+  if [ -n "$repair" ] && [ "$current" -eq 1 ] && [ -f "$desk" ]; then
+    return 0
+  fi
+  if [ "$current" -eq 0 ] || [ -z "$repair" ]; then
+    mkdir -p "$(dirname "$esc")"
+    cat >"$esc.tmp.$$" <<ESC
+# Budget exceeded
+
+Run $id ($tier) used $used h of its $limit h wall-clock budget at step \`$step\`. The deterministic budget check in \`ns-conductor $by\` stopped its workers and escalated the run here (R-BUD-1).
+
+## Question
+
+Give the run more time, or stop it? To continue, raise \`budget_hours\` below to the new limit in hours (above $used), then run \`ns approve $id\`. To end the run, run \`ns stop $id\` instead.
+
+## Owner's answer
+
+budget_hours: $limit
+ESC
+    mv -f "$esc.tmp.$$" "$esc"
+  fi
+  if ! { git -C "$wt" add -f -- "$rel" && { git -C "$wt" diff --cached --quiet -- "$rel" ||
+    git -C "$wt" commit -q -m "ns: budget escalation for $id" -- "$rel"; }; } >/dev/null 2>&1; then
+    ns_warn "could not commit $rel"
+  fi
+  lg checkpoint "$ledger" --push
+  "$NS_HOME/bin/ns" publish "$id" RUN/escalation.md >&2 || ns_warn "could not publish RUN/escalation.md"
+}
+
+conductor_budget_check() {
+  [ $# -eq 1 ] || ns_usage "ns-conductor budget-check <id>"
+  load_run "$1"
+  # called by the plugin's hooks: during the integration that includes the integrator's calls
+  budget_guard budget-check integrator
+}
+
 valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }
 
 # ---------------------------------------------------------------------------
@@ -85,7 +199,8 @@ valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }
 
 conductor_check_auto() {
   local out rc=0 reason=""
-  out=$(timeout 180 "${NS_CLAUDE:-claude}" -p --permission-mode auto --max-turns 4 --model sonnet \
+  # the nested call is no conductor: it must not see (or hook into) the run's ledger
+  out=$(env -u NS_RUN_ID -u NS_LEDGER timeout 180 "${NS_CLAUDE:-claude}" -p --permission-mode auto --max-turns 4 --model sonnet \
     --output-format json "Run the bash command true, then reply with the single word ok." </dev/null 2>/dev/null) || rc=$?
   if [ "$rc" -eq 0 ]; then
     if jq -e '.is_error != true and ((.permission_denials // []) | length == 0)' <<<"$out" >/dev/null 2>&1; then
@@ -204,10 +319,7 @@ conductor_start() {
     return 3
   fi
   # 2. budget
-  if lg budget-exceeded "$ledger"; then
-    printf 'budget exceeded\n'
-    return 4
-  fi
+  budget_guard start || return
   # 2b. usage-limit pause and transient-retry backoff (exit 8)
   local pu nb now
   now=$(now_epoch)
@@ -561,7 +673,9 @@ conductor_stop() {
 conductor_should_stop() {
   [ $# -eq 1 ] || ns_usage "ns-conductor should-stop <id>"
   load_run "$1"
-  [ -n "$(lg get "$ledger" '.stop_requested // empty')" ]
+  [ -z "$(lg get "$ledger" '.stop_requested // empty')" ] || return 0
+  budget_guard should-stop || return
+  return 1
 }
 
 conductor_park() {
@@ -570,6 +684,8 @@ conductor_park() {
   load_run "$1"
   sr=$(lg get "$ledger" '.stop_requested // empty')
   [ -n "$sr" ] || sr=parked
+  # an open gate (a budget escalation, for example) stays open: the run keeps waiting there
+  [ -z "$(lg get "$ledger" '.gate // empty')" ] || sr=waiting
   stop_workers "$1"
   lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
   lg state "$ledger" "$sr" --note "conductor ended its session"
@@ -599,6 +715,7 @@ main() {
       ;;
     should-stop) conductor_should_stop "$@" ;;
     park) conductor_park "$@" ;;
+    budget-check) conductor_budget_check "$@" ;;
     *)
       # later subcommands live in conductor-loop.sh (phase p16): it defines
       # conductor_loop_dispatch <subcommand> [args], which returns 64 for an unknown one

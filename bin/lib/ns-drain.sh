@@ -54,7 +54,9 @@ ns_drain_main() {
       "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = (.stop_requested // "parked")'
       "$NS_HOME/bin/ns-ledger" event "$ledger" stop-requested "drain: park requested"
     else
-      "$NS_HOME/bin/ns-ledger" set "$ledger" '.state="parked"'
+      # no session: the time since the last checkpoint is a dead gap, not budget used (#9)
+      # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+      "$NS_HOME/bin/ns-ledger" set "$ledger" '.state="parked" | .budget.since = $now'
       "$NS_HOME/bin/ns-ledger" event "$ledger" parked "drain: parked, no session"
     fi
     "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" || true
