@@ -129,6 +129,158 @@ pstate() { lget "(.phases[] | select(.id == \"$1\") | .$2)"; }
   assert_output_contains "p1-alpha pid "
 }
 
+# live_workers: pid files in the pool whose process is alive
+live_workers() {
+  local f pid n=0
+  for f in "$NS_CONFIG_DIR"/workers/*.pid; do
+    [ -f "$f" ] || continue
+    pid=$(sed -n 's/^pid=//p' "$f")
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then n=$((n + 1)); fi
+  done
+  printf '%s\n' "$n"
+}
+
+# pool_lock_free: nobody holds the pool lock (a worker that inherited it would)
+pool_lock_free() {
+  flock -n "$NS_CONFIG_DIR/workers/.lock" true
+}
+
+@test "two concurrent starts with max_workers 1 start exactly one worker (#10)" {
+  printf 'max_workers: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  export CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh"
+  # a lock wait no other test uses, so the waiters below are this test's two starts
+  export NS_POOL_LOCK_WAIT=4711
+  # the phase worktrees exist already, so both starts get to the spawn at once
+  for p in p1-alpha p2-beta; do
+    git -C "$WT" worktree add -q -b "feature/12--$p" "$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12--$p" origin/feature/12
+    mkdir "$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12--$p/.venv"
+  done
+  # hold the pool lock: both starts pass the quick unlocked check (0/1) and block on the lock,
+  # so only the count under the lock can keep the second worker out
+  mkdir -p "$NS_CONFIG_DIR/workers"
+  exec {lk}>>"$NS_CONFIG_DIR/workers/.lock"
+  flock "$lk"
+  for p in p1-alpha p2-beta; do
+    (
+      exec {lk}>&-
+      rc=0
+      ns-conductor start sbx-12 "$p" >"$BATS_TEST_TMPDIR/$p.out" 2>&1 || rc=$?
+      echo "$rc" >"$BATS_TEST_TMPDIR/$p.rc"
+    ) &
+  done
+  for _ in $(seq 1 150); do
+    [ "$(pgrep -c -f "flock -w 4711 9" || true)" -ge 2 ] && break
+    sleep 0.2
+  done
+  [ "$(pgrep -c -f "flock -w 4711 9")" -ge 2 ]
+  exec {lk}>&-
+  wait
+  [ "$(live_workers)" = 1 ]
+  [ "$(cat "$BATS_TEST_TMPDIR"/p1-alpha.rc "$BATS_TEST_TMPDIR"/p2-beta.rc | sort | tr '\n' ' ')" = "0 3 " ]
+  for p in p1-alpha p2-beta; do
+    if [ "$(cat "$BATS_TEST_TMPDIR/$p.rc")" = 3 ]; then
+      grep -q "queued $p: pool full (1/1)" "$BATS_TEST_TMPDIR/$p.out"
+      [ "$(pstate "$p" state)" = queued ]
+    else
+      [ "$(pstate "$p" state)" = running ]
+    fi
+  done
+  # no process of the worker's group has the pool lock open
+  for f in "$NS_CONFIG_DIR"/workers/*.pid; do
+    pid=$(sed -n 's/^pid=//p' "$f")
+    for c in $(pgrep -g "$pid"); do
+      ! ls -l "/proc/$c/fd" 2>/dev/null | grep -q 'workers/\.lock'
+    done
+  done
+  pool_lock_free
+}
+
+@test "the pool lock is released after a start, a queued start and a failed start (#10)" {
+  printf 'max_workers: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  # the live worker must not hold the lock
+  pool_lock_free
+  run ns-conductor start sbx-12 p2-beta
+  assert_failure 3
+  pool_lock_free
+  run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  assert_output_contains "p1-alpha already running"
+  pool_lock_free
+  # a worker that cannot write its pid file: start dies, the lock is free
+  kill -KILL -- "-$(sed -n 's/^pid=//p' "$NS_CONFIG_DIR/workers/sbx-12--p1-alpha.pid")"
+  rm -f "$NS_CONFIG_DIR"/workers/*.pid
+  chmod 555 "$NS_CONFIG_DIR/workers"
+  printf 'exit 0\n' >"$BATS_TEST_TMPDIR/quick.sh"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/quick.sh" run ns-conductor start sbx-12 p2-beta
+  chmod 755 "$NS_CONFIG_DIR/workers"
+  assert_failure 1
+  assert_output_contains "worker for p2-beta did not start"
+  pool_lock_free
+}
+
+@test "a stale pool lock file does not block a start, and a symlinked one is not truncated (#10)" {
+  mkdir -p "$NS_CONFIG_DIR/workers"
+  printf 'pid=999999\n' >"$NS_CONFIG_DIR/workers/.lock"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  rm -f "$NS_CONFIG_DIR/workers/.lock"
+  printf 'keep me\n' >"$BATS_TEST_TMPDIR/target"
+  ln -s "$BATS_TEST_TMPDIR/target" "$NS_CONFIG_DIR/workers/.lock"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/sleeper.sh" run ns-conductor start sbx-12 p2-beta
+  assert_success
+  [ "$(cat "$BATS_TEST_TMPDIR/target")" = "keep me" ]
+}
+
+@test "start queues the phase when the pool lock stays busy (#10)" {
+  mkdir -p "$NS_CONFIG_DIR/workers"
+  exec {lk}>>"$NS_CONFIG_DIR/workers/.lock"
+  flock "$lk"
+  NS_POOL_LOCK_WAIT=1 run ns-conductor start sbx-12 p1-alpha
+  exec {lk}>&-
+  assert_failure 3
+  assert_output_contains "queued p1-alpha: pool lock busy"
+  [ "$(pstate p1-alpha state)" = queued ]
+  [ "$(live_workers)" = 0 ]
+}
+
+@test "a non-numeric NS_POOL_LOCK_WAIT is refused and starts no worker (#10 review)" {
+  NS_POOL_LOCK_WAIT=soon run ns-conductor start sbx-12 p1-alpha
+  assert_failure 1
+  assert_output_contains "NS_POOL_LOCK_WAIT must be a number of seconds"
+  [ "$(live_workers)" = 0 ]
+  pool_lock_free
+}
+
+@test "a queued phase with no own worker: wait sleeps while the pool is full, returns when a slot frees (#10 review)" {
+  printf 'max_workers: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  # another run's worker holds the only slot
+  mkdir -p "$NS_CONFIG_DIR/workers"
+  setsid bash -c 'echo $$ >"$1"; exec sleep 60' other "$BATS_TEST_TMPDIR/other.pid" &
+  for _ in $(seq 1 50); do [ -s "$BATS_TEST_TMPDIR/other.pid" ] && break; sleep 0.1; done
+  printf 'pid=%s\n' "$(cat "$BATS_TEST_TMPDIR/other.pid")" >"$NS_CONFIG_DIR/workers/oth-1--p1.pid"
+  run ns-conductor start sbx-12 p1-alpha
+  assert_failure 3
+  [ "$(pstate p1-alpha state)" = queued ]
+  t0=$(date +%s)
+  run ns-conductor wait sbx-12 --timeout 3
+  assert_failure 124
+  assert_output_contains "pool full: p1-alpha waits for a slot"
+  [ $(($(date +%s) - t0)) -ge 3 ]
+  kill "$(cat "$BATS_TEST_TMPDIR/other.pid")"
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_output_contains "pool slot free"
+  rm -f "$NS_CONFIG_DIR/workers/oth-1--p1.pid"
+}
+
+@test "wait with no workers and no queued phase still returns at once" {
+  run ns-conductor wait sbx-12 --timeout 30
+  assert_success
+  assert_output_contains "no workers"
+}
+
 @test "start with the budget exceeded exits 4" {
   ns-ledger set "$LEDGER" '.budget.limit = 1 | .budget.used = 2'
   run ns-conductor start sbx-12 p1-alpha

@@ -276,3 +276,39 @@ YAML
   run t1_no_denial sbx-1
   [ "$status" -ne 0 ]
 }
+
+@test "pool-watch.sh counts live workers from pid files and session-leader processes, read-only (#10)" {
+  d="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$d/workers"
+  # a worker is a session leader (ns-conductor starts it with setsid); its forked child is not
+  NS_CONFIG_DIR="$d" setsid bash -c 'echo $$ >"$1"; ( sleep 30; true ) & sleep 30; true' ns-worker "$BATS_TEST_TMPDIR/w.pid" &
+  for _ in $(seq 1 50); do [ -s "$BATS_TEST_TMPDIR/w.pid" ] && break; sleep 0.1; done
+  live=$(cat "$BATS_TEST_TMPDIR/w.pid")
+  printf 'pid=%s\n' "$live" >"$d/workers/app-1--p1.pid"
+  printf 'pid=999999\n' >"$d/workers/app-1--p2.pid"
+  printf 'pid=%s\n' "$live" >"$d/workers/app-2--p1.pid"
+  echo 0 >"$d/workers/app-2--p1.exit"
+  before=$(find "$d" -type f -printf '%p %s %T@\n' | sort)
+  run "$E2E/pool-watch.sh" --config-dir "$d" --once
+  kill -- "-$live" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"live=1 procs=1 max_live=1 max_procs=1 app-1--p1"* ]]
+  [[ "$output" == *"max live workers seen: 1 (procs: 1)"* ]]
+  [[ "$output" != *"No such file"* ]]
+  [ "$(find "$d" -type f -printf '%p %s %T@\n' | sort)" = "$before" ]
+  run "$E2E/pool-watch.sh" --interval 0
+  [ "$status" -eq 2 ]
+}
+
+@test "pool-watch.sh fails when a live pid file has no ns-worker process for that home (#10)" {
+  d="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$d/workers"
+  # a live process, but not an ns-worker of this home: the cross-check must not stay silent at 0
+  sleep 30 &
+  printf 'pid=%s\n' "$!" >"$d/workers/app-1--p1.pid"
+  run "$E2E/pool-watch.sh" --config-dir "$d" --once
+  kill "$!" 2>/dev/null || true
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"live=1 procs=0"* ]]
+  [[ "$output" == *"no ns-worker process"* ]]
+}

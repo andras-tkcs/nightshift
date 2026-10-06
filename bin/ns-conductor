@@ -121,6 +121,54 @@ auto_mode_fresh() {
 # ---------------------------------------------------------------------------
 # start
 
+# queue_phase <phase> <reason>: the phase waits for a pool slot
+queue_phase() {
+  phase_update "$1" '.state = "queued"' &&
+    lg event "$ledger" note "queued $1: $2" &&
+    printf 'queued %s: %s\n' "$1" "$2"
+}
+
+# spawn_worker: run by conductor_start under the pool lock (ns_pool_locked), with its locals.
+# Counts the live workers again, starts the worker detached and waits up to 5 seconds for its
+# pid file, so a second start sees this worker in its count. Returns 10 when the phase already
+# has a live worker and 3 (phase queued) when the pool is full. Called as `... || rc=$?`, so
+# set -e is off here: every step checks its own result.
+spawn_worker() {
+  local n max i=0
+  if ns_pool_live "$id" | grep -qx "$id $phase"; then
+    return 10
+  fi
+  n=$(ns_pool_count) || ns_die "cannot count the workers"
+  max=$(ns_pool_max) || ns_die "cannot read max_workers"
+  if [ "$n" -ge "$max" ]; then
+    queue_phase "$phase" "pool full ($n/$max)" || ns_die "cannot queue $phase"
+    return 3
+  fi
+  rm -f "$pidf" "$exf" || ns_die "cannot remove the old pid file of $phase"
+  (
+    cd "$pwt" || exit 1
+    # 9>&-: the worker must not inherit the pool lock
+    # shellcheck disable=SC2016
+    setsid bash -c '
+      pf=$1; ef=$2; prompt=$3; log=$4; run=$5; phase=$6; model=$7; turns=$8; started=$9
+      shift 9
+      printf "pid=%s\nrun=%s\nphase=%s\nstarted=%s\n" "$$" "$run" "$phase" "$started" >"$pf.tmp"
+      mv "$pf.tmp" "$pf"
+      env BASH_DEFAULT_TIMEOUT_MS=600000 BASH_MAX_TIMEOUT_MS=600000 NS_WORKER=1 NS_PHASE="$phase" NS_LEDGER= \
+        "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
+        --max-turns "$turns" --model "$model" --agent ns:implementer "$@" <"$prompt" >"$log" 2>&1
+      echo $? >"$ef"
+    ' ns-worker "$pidf" "$exf" "$prompt" "$log" "$id" "$phase" "$model" "$turns" "$started" "${plugin_args[@]}" \
+      </dev/null >/dev/null 2>&1 9>&- &
+  ) || ns_die "cannot start the worker for $phase"
+  while [ "$i" -lt 50 ]; do
+    [ -f "$pidf" ] && break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ -f "$pidf" ] || ns_die "worker for $phase did not start"
+}
+
 conductor_start() {
   [ $# -ge 2 ] || ns_usage "ns-conductor start <id> <phase> [--feedback <file>]"
   local phase="$2" feedback="" entry title mode feature pbranch pwt model turns n max
@@ -148,13 +196,11 @@ conductor_start() {
     return 0
   fi
 
-  # 1. pool
+  # 1. pool: a quick look before the worktree work; step 7 counts again under the pool lock
   n=$(ns_pool_count)
   max=$(ns_pool_max)
   if [ "$n" -ge "$max" ]; then
-    phase_update "$phase" '.state = "queued"'
-    lg event "$ledger" note "queued $phase: pool full ($n/$max)"
-    printf 'queued %s: pool full (%s/%s)\n' "$phase" "$n" "$max"
+    queue_phase "$phase" "pool full ($n/$max)" || ns_die "cannot queue $phase"
     return 3
   fi
   # 2. budget
@@ -248,38 +294,29 @@ conductor_start() {
     printf 'then the checks you ran with their results, and anything you could not do.\n'
   } >"$prompt"
   rm -rf "$tmp"
-  # 7. spawn
+  # 7. spawn, under the pool lock (R-CON-2)
   model=$(jq -r --argjson e "$entry" '$e.model // .agents.implementer.model // "sonnet"' <<<"$profile")
   turns=$(ns_config_get worker_max_turns 200)
   pidf="$workers/$id--$phase.pid"
   exf="$workers/$id--$phase.exit"
-  rm -f "$pidf" "$exf"
   started=$(ns_now)
   local -a plugin_args=()
   mapfile -t plugin_args < <(ns_plugin_args)
   export NS_WORKER_MODE="$mode"
-  (
-    cd "$pwt"
-    # shellcheck disable=SC2016
-    setsid bash -c '
-      pf=$1; ef=$2; prompt=$3; log=$4; run=$5; phase=$6; model=$7; turns=$8; started=$9
-      shift 9
-      printf "pid=%s\nrun=%s\nphase=%s\nstarted=%s\n" "$$" "$run" "$phase" "$started" >"$pf.tmp"
-      mv "$pf.tmp" "$pf"
-      env BASH_DEFAULT_TIMEOUT_MS=600000 BASH_MAX_TIMEOUT_MS=600000 NS_WORKER=1 NS_PHASE="$phase" NS_LEDGER= \
-        "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
-        --max-turns "$turns" --model "$model" --agent ns:implementer "$@" <"$prompt" >"$log" 2>&1
-      echo $? >"$ef"
-    ' ns-worker "$pidf" "$exf" "$prompt" "$log" "$id" "$phase" "$model" "$turns" "$started" "${plugin_args[@]}" \
-      </dev/null >/dev/null 2>&1 &
-  )
-  local i=0 pid=""
-  while [ "$i" -lt 50 ]; do
-    [ -f "$pidf" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  [ -f "$pidf" ] || ns_die "worker for $phase did not start"
+  local rc=0 pid=""
+  ns_pool_locked spawn_worker || rc=$?
+  case "$rc" in
+    0) ;;
+    10)
+      printf '%s already running\n' "$phase"
+      return 0
+      ;;
+    12)
+      queue_phase "$phase" "pool lock busy" || ns_die "cannot queue $phase"
+      return 3
+      ;;
+    *) return "$rc" ;;
+  esac
   pid=$(ns_pool_field "$pidf" pid)
   # 8. ledger
   phase_update "$phase" ".state = \"running\" | .not_before = null | .attempts += 1 | .branch = $(jstr "$pbranch") | .worktree = $(jstr "$pwt")" "$title"
@@ -390,7 +427,7 @@ due_retry() {
 
 conductor_wait() {
   [ $# -ge 1 ] || ns_usage "ns-conductor wait <id> [--timeout <s>]"
-  local id="$1" timeout=540 deadline now remaining sr f base pid finished live
+  local id="$1" timeout=540 deadline now remaining sr f base pid finished live queued=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -431,27 +468,41 @@ conductor_wait() {
     if [ "${#live[@]}" -eq 0 ]; then
       local due nb ph delay
       due=$(due_retry)
-      if [ -z "$due" ]; then
-        printf 'no workers\n'
-        return 0
-      fi
-      nb=${due%% *}
-      ph=${due#* }
-      delay=$((nb - $(now_epoch)))
-      remaining=$((deadline - $(date +%s)))
-      if [ "$delay" -gt "$remaining" ]; then
-        [ "$remaining" -le 0 ] || sleep "$remaining"
-        printf 'still waiting: retry %s at %s\n' "$ph" "$(iso_of "$nb")"
-        return 124
+      # a transient error's retry that is due (or soon due) comes first
+      if [ -n "$due" ]; then
+        nb=${due%% *}
+        ph=${due#* }
+        delay=$((nb - $(now_epoch)))
+        remaining=$((deadline - $(date +%s)))
+        if [ "$delay" -gt "$remaining" ]; then
+          [ "$remaining" -le 0 ] || sleep "$remaining"
+          printf 'still waiting: retry %s at %s\n' "$ph" "$(iso_of "$nb")"
+          return 124
       fi
       [ "$delay" -le 0 ] || sleep "$delay"
       printf 'retry %s\n' "$ph"
       return 0
+      fi
+      # a phase queued for a pool slot: sleep until another run's worker frees one, so the
+      # caller's retry of start after exit 3 is not a tight loop
+      queued=$(lg get "$ledger" '[.phases[]? | select(.state == "queued") | .id] | join(" ")')
+      if [ -z "$queued" ]; then
+        printf 'no workers\n'
+        return 0
+      fi
+      if [ "$(ns_pool_count)" -lt "$(ns_pool_max)" ]; then
+        printf 'pool slot free\n'
+        return 0
+      fi
     fi
     now=$(date +%s)
     remaining=$((deadline - now))
     if [ "$remaining" -le 0 ]; then
-      printf 'still running: %s\n' "${live[*]}"
+      if [ "${#live[@]}" -eq 0 ]; then
+        printf 'pool full: %s waits for a slot\n' "$queued"
+      else
+        printf 'still running: %s\n' "${live[*]}"
+      fi
       return 124
     fi
     [ "$remaining" -le 5 ] || remaining=5

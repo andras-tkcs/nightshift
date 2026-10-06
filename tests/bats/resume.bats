@@ -126,6 +126,41 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
   lget '.events[].note' | grep -q 'reconciled p1-alpha as merged'
 }
 
+@test "a queued phase becomes pending on resume, so the new conductor schedules it (#10 review)" {
+  git -C "$WT" branch feature/12 origin/main
+  git -C "$WT" push -q origin feature/12
+  ns-ledger set "$LEDGER" '.state="parked" | .feature_branch="feature/12" | .phases=[
+    {id:"p1-alpha",title:"a",state:"queued",branch:null,worktree:null,attempts:0,review_rounds:0},
+    {id:"p2-beta",title:"b",state:"review",branch:null,worktree:null,attempts:1,review_rounds:0}]'
+  run ns resume sbx-12
+  assert_success
+  [ "$(lget '.phases[0].state')" = pending ]
+  [ "$(lget '.phases[1].state')" = review ]
+  lget '.events[].note' | grep -q 'reconciled p1-alpha as pending: queued for a pool slot'
+}
+
+@test "the reconcile reads the trailer from the profile of the project's --branch (#14)" {
+  # the profile on e2e/x sets a custom phase trailer; main keeps the default
+  git -C "$WT" worktree add -q -b e2e/x "$BATS_TEST_TMPDIR/branchwt" origin/main
+  printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\ngit:\n  phase_trailer: Run-Phase\nstacks: [python]\n' \
+    >"$BATS_TEST_TMPDIR/branchwt/.claude/project-profile.yaml"
+  git -C "$BATS_TEST_TMPDIR/branchwt" commit -q -am "branch profile"
+  git -C "$BATS_TEST_TMPDIR/branchwt" push -q origin e2e/x
+  cfg="$NS_CONFIG_DIR/projects.yaml"
+  python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" to-json "$cfg" | jq '.projects[0].branch = "e2e/x"' |
+    python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" from-json "$cfg"
+  git -C "$WT" branch feature/12 origin/main
+  git -C "$WT" worktree add -q "$BATS_TEST_TMPDIR/featwt" feature/12
+  git -C "$BATS_TEST_TMPDIR/featwt" commit -q --allow-empty -m "Merge phase p1-alpha" -m "Run-Phase: p1-alpha"
+  git -C "$BATS_TEST_TMPDIR/featwt" push -q origin feature/12
+  ns-ledger set "$LEDGER" '.state="parked" | .feature_branch="feature/12" | .phases=[
+    {id:"p1-alpha",title:"a",state:"running",branch:null,worktree:null,attempts:1,review_rounds:0}]'
+  run ns resume sbx-12
+  assert_success
+  [ "$(lget '.phases[0].state')" = merged ]
+  lget '.events[].note' | grep -q 'reconciled p1-alpha as merged'
+}
+
 @test "--all resumes parked and crashed runs and leaves waiting and done alone" {
   ns new sbx-13 --tier T1 --yes >/dev/null
   ns new sbx-14 --tier T1 --yes >/dev/null
