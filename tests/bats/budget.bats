@@ -409,19 +409,71 @@ budget_hook() {
   assert_escalated sbx-11
 }
 
-@test "after stack-base passed, the integrator may finish: the hook and the checks allow it" {
-  new_run sbx-11 T1
-  ns-conductor fix-branch sbx-11 >/dev/null
-  # stack-base passed: it recorded stacked_on (the gh stub has no PR list here)
-  ns-ledger set "$(ledger sbx-11)" '.step = "integrate" | .stacked_on = "main"'
-  over_budget sbx-11
+# integrate_run <id>: T1 run past stack-base (no other run PR open), step integrate, used = limit = 2
+integrate_run() {
+  new_run "$1" T1
+  ns-conductor fix-branch "$1" >/dev/null
+  export GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/gh-responses"
+  mkdir -p "$GH_STUB_RESPONSES"
+  printf '[]\n' >"$GH_STUB_RESPONSES/pr-list.json"
+  printf '0\tpr-list.json\t^pr list\n' >"$GH_STUB_RESPONSES/map"
+  run ns-conductor stack-base "$1"
+  assert_success
+  [ "$(lget "$1" .budget.integrate_from)" = "$NS_NOW" ]
+  ns-ledger set "$(ledger "$1")" '.step = "integrate"'
+  over_budget "$1"
+}
+
+@test "after stack-base passed, the integrator's checks and the hook may finish; fix-branch may not" {
+  integrate_run sbx-11
   budget_hook sbx-11
   assert_success
-  run ns-conductor budget-check sbx-11
-  assert_success
+  run ns-conductor checks sbx-11 feature
+  [ "$status" -ne 4 ]
   [ "$(lget sbx-11 .state)" = running ]
-  run ns-conductor stack-base sbx-11
+  run ns-conductor fix-branch sbx-11
   assert_failure 4
+  assert_escalated sbx-11
+}
+
+@test "the integrate exemption ends at the margin: max(0.5 h, 25 % of the limit)" {
+  integrate_run sbx-11
+  ns-ledger set "$(ledger sbx-11)" '.budget.used = 2.49'
+  budget_hook sbx-11
+  assert_success
+  ns-ledger set "$(ledger sbx-11)" '.budget.used = 2.5'
+  budget_hook sbx-11
+  assert_failure 2
+  assert_escalated sbx-11
+}
+
+@test "a resumed integrate session has no exemption: it is escalated over budget" {
+  integrate_run sbx-11
+  run ns resume sbx-11
+  assert_success
+  [ "$(lget sbx-11 '.budget.integrate_from // "none"')" = none ]
+  budget_hook sbx-11
+  assert_failure 2
+  assert_escalated sbx-11
+}
+
+@test "leaving running ends the integrate exemption" {
+  integrate_run sbx-11
+  ns-ledger state "$(ledger sbx-11)" parked
+  [ "$(lget sbx-11 '.budget.integrate_from // "none"')" = none ]
+}
+
+@test "the repair rewrites a stale budget document that does not match the current limit" {
+  new_run sbx-11 T1
+  over_budget sbx-11
+  run ns-conductor should-stop sbx-11
+  assert_failure 4
+  esc="$SBX-sbx-11/.nightshift/runs/sbx-11/escalation.md"
+  sed -i 's/^budget_hours: 2$/budget_hours: 1/' "$esc"
+  run ns-conductor budget-check sbx-11
+  assert_failure 4
+  grep -q '^budget_hours: 2$' "$esc"
+  grep -q '^budget_hours: 2$' "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-11/escalation.md"
 }
 
 @test "the hook says when the escalation failed, and still denies" {
@@ -446,6 +498,11 @@ budget_hook() {
     'printf "{}" | "$1/budget.sh" 2>&1' _ "$HOOKS"
   assert_success
   assert_output_contains "PyYAML"
+}
+
+@test "hooks.json gives the Stop hook a timeout" {
+  t=$(jq '.hooks.Stop[] | .hooks[] | select(.command | test("checkpoint.sh")) | .timeout' "$HOOKS/hooks.json")
+  [ -n "$t" ] && [ "$t" != null ] && [ "$t" -ge 60 ]
 }
 
 @test "hooks.json gives the budget hook a timeout above its budget-check timeout" {
