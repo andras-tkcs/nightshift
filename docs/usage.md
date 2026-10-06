@@ -57,7 +57,7 @@ Running it again with the same repo and prefix prints `already registered` and e
 ```
 ns new <prefix>-<n> [--tier T0..T3] [--yes] [--now]
 ns new <prefix> "<text>" [--tier T0..T3] [--yes] [--now]
-ns new <prefix> --from-desk <path.md> [--tier T0..T3] [--yes] [--now]
+ns new <prefix> --from-desk <path.md> [--allow-outside] [--tier T0..T3] [--yes] [--now]
 ns new <prefix>-onboard --onboard
 ```
 
@@ -69,7 +69,7 @@ At most `max_runs` conductors run at once (`~/.config/ns/config.yaml: max_runs`,
 
 If the run already exists, `ns new` prints `already running` and exits 0 when its tmux session is alive, and otherwise exits 1 and points to `ns resume`. A project whose base branch has no `.claude/project-profile.yaml` is refused until it has one: if the onboarding pull request is open, the message names it.
 
-`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
+`--from-desk <path.md>` takes the request from a note on the review desk (an absolute path, or one relative to the desk directory, such as `<repo>/notes/idea.md`). The resolved path (symlinks followed) must lie inside the desk directory, else the command refuses with `outside the desk directory`; `--allow-outside` permits a file elsewhere. A note that looks like it contains a token is refused. The note's text is copied into the run ledger's request, so the run gets an `<prefix>-x<k>` id; nothing is added to the repository and no pull request is opened. The file must exist and not be empty, and it cannot be combined with inline text, an issue number or `--onboard`. To put a note into the repo, use `ns desk import`.
 
 `--onboard` starts the onboarding run `<prefix>-onboard`: tier T1, source `owner`, the T1 budget, no triage question, using the default profile. `ns project add` starts it automatically for a repo without a profile.
 
@@ -239,7 +239,7 @@ Every action prints `remove <kind> <target>`. `--dry-run` prints `would remove .
 ns desk import <path.md> <repo path>
 ```
 
-`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request.
+`ns desk import` lands a desk note in the project repo through a pull request. The path is absolute or relative to the desk directory; its first component names the project. The note is copied to `<repo path>` (relative, no `..`) on a new branch `nightshift/desk-...` cut from the base branch, pushed, and a pull request is opened with `gh pr create`. Nightshift never merges it. `ns desk import` is not idempotent: running it again for the same note opens another branch and pull request. Agents cannot run it: the guard hook blocks it.
 
 ### ns report
 

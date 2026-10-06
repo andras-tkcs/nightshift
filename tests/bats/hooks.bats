@@ -323,3 +323,10 @@ make_ledger() {
   bash_guard "ns status"
   [ -z "$output" ]
 }
+
+@test "ns desk is blocked for agents (ns-95)" {
+  for c in "ns desk import n/a.md docs/a.md" "NS_X=1 ns desk import n/a.md docs/a.md" "cd /tmp && ns desk import n/a.md docs/a.md"; do
+    bash_guard "$c"
+    blocked "ns desk is the owner's command"
+  done
+}
