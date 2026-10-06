@@ -212,8 +212,9 @@ ns_run_ledger_of() {
 }
 
 @test "ns new --from-desk accepts an absolute path" {
-  printf 'absolute note\n' >"$BATS_TEST_TMPDIR/n.md"
-  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox"
+  printf 'absolute note\n' >"$NS_DESK_DIR/nightshift-sandbox/abs.md"
+  run ns new sbx --from-desk "$NS_DESK_DIR/nightshift-sandbox/abs.md" --tier T1 --yes
   assert_success
   [ "$(run_field sbx-x1 .request.text)" = "absolute note" ]
 }
@@ -230,5 +231,33 @@ ns_run_ledger_of() {
   assert_failure
   run ns new sbx-12 --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
   assert_failure
+  [ ! -d "$SBX-sbx-x1" ]
+}
+
+@test "ns new --from-desk refuses a path outside the desk unless --allow-outside (ns-95)" {
+  printf 'outside note\n' >"$BATS_TEST_TMPDIR/n.md"
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox"
+  printf 'x\n' >"$NS_DESK_DIR/../x.md"
+  run ns new sbx --from-desk ../x.md --tier T1 --yes
+  assert_failure
+  assert_output_contains "outside the desk"
+  run ns new sbx --from-desk /etc/passwd --tier T1 --yes
+  assert_failure
+  assert_output_contains "outside the desk"
+  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/n.md" --tier T1 --yes
+  assert_failure
+  assert_output_contains "--allow-outside"
+  [ ! -d "$SBX-sbx-x1" ]
+  run ns new sbx --from-desk "$BATS_TEST_TMPDIR/n.md" --allow-outside --tier T1 --yes
+  assert_success
+  [ "$(run_field sbx-x1 .request.text)" = "outside note" ]
+}
+
+@test "ns new --from-desk refuses a note that holds a token (ns-95)" {
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox/notes"
+  printf 'key ghp_%s\n' "abcdefghijklmnopqrstuvwxyz0123456789" >"$NS_DESK_DIR/nightshift-sandbox/notes/t.md"
+  run ns new sbx --from-desk nightshift-sandbox/notes/t.md --tier T1 --yes
+  assert_failure
+  assert_output_contains "token"
   [ ! -d "$SBX-sbx-x1" ]
 }

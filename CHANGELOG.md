@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
+
 ### Changed
 
 - CI is split into parallel jobs `lint`, `bats` and `plugin-validate`, plus an aggregate job `checks` (the required status check, unchanged) that fails unless all three succeed, so lint failures no longer wait behind the bats suite (issue #103).

@@ -351,3 +351,33 @@ published() {
   run ns desk import nightshift-sandbox/notes/idea.md docs/ok.md
   assert_success
 }
+
+desk_leftovers() {
+  local co="$NS_CODING_DIR/nightshift-sandbox"
+  [ -z "$(git -C "$co" branch --list 'nightshift/desk-*')" ]
+  [ -z "$(find "$NS_CODING_DIR/worktrees" -maxdepth 1 -name '*desk-*')" ]
+}
+
+@test "ns desk import cleans up when git push fails (ns-95)" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  hook="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git/hooks/pre-receive"
+  printf '#!/bin/sh\nexit 1\n' >"$hook"
+  chmod +x "$hook"
+  run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
+  assert_failure
+  assert_output_contains "could not push"
+  ! grep -q 'pr create' "$GH_STUB_LOG"
+  desk_leftovers
+}
+
+@test "ns desk import cleans up when gh pr create fails (ns-95)" {
+  mkdir -p "$DESK/notes"
+  printf '# Idea\n' >"$DESK/notes/idea.md"
+  mkdir -p "$BATS_TEST_TMPDIR/resp"
+  printf '1\t-\t^pr create\n' >"$BATS_TEST_TMPDIR/resp/map"
+  GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/resp" run ns desk import nightshift-sandbox/notes/idea.md docs/idea.md
+  assert_failure
+  assert_output_contains "gh pr create failed"
+  desk_leftovers
+}
