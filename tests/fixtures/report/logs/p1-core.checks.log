@@ -1,0 +1,4 @@
+== python lint: ruff check .
+All checks passed!
+== python test: pytest -q
+3 passed in 0.02s

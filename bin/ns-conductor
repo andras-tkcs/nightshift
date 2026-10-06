@@ -375,6 +375,12 @@ conductor_start() {
   mkdir -p "$workers"
   prompt="$logdir/$phase.prompt.md"
   log="$logdir/$phase.jsonl"
+  # keep an earlier attempt's log (its tokens and cost) as <phase>--attempt<n>.jsonl (#65)
+  if [ -s "$log" ]; then
+    n=1
+    while [ -e "$logdir/$phase--attempt$n.jsonl" ]; do n=$((n + 1)); done
+    mv "$log" "$logdir/$phase--attempt$n.jsonl"
+  fi
   docs=$(jq -r '.docs // {} | to_entries[] | .value' <<<"$profile" | sed 's/^/- /')
   [ -n "$docs" ] || docs="- (none)"
   checks=$(jq -r '.checks // [] | .[] | "- \(.stack) \(.name): \(.cmd)"' <<<"$profile")

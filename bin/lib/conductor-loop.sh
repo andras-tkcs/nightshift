@@ -552,8 +552,14 @@ conductor_gate() {
   esac
   load_run "$1"
   shift 2
+  # gate 1.5: the question goes into the event note, so each escalation keeps its cause (#118)
+  local note="gate $gate: waiting for the owner" q=""
+  if [ "$gate" = 1.5 ] && [ -f "$wt/.nightshift/runs/$id/escalation.md" ]; then
+    q=$(ns_escalation_question "$wt/.nightshift/runs/$id/escalation.md") || q=""
+  fi
+  [ -z "$q" ] || note="$note: $q"
   lg state "$ledger" waiting --gate "$gate"
-  lg event "$ledger" gate "gate $gate: waiting for the owner"
+  lg event "$ledger" gate "$note"
   lg checkpoint "$ledger" --push
   "$NS_HOME/bin/ns" publish "$id" "$@"
 }
@@ -569,20 +575,30 @@ conductor_finish() {
     *) lg state "$ledger" "done" --note "pull request $url" ;;
   esac
   lg event "$ledger" finish "run finished: $url"
-  # the run report is best effort: a failure here never fails the run
-  local -a docs=()
+  # the run report is best effort: writing or publishing it never fails the run. The
+  # handoff report of a T2/T3 run is not: the owner needs it at gate 2 (#118)
+  local report=false hand=false
   if "$NS_HOME/bin/ns" report "$id" >/dev/null; then
-    docs+=("RUN/run-report.md")
+    report=true
   else
     ns_warn "could not write the run report for $id"
   fi
   handoff="$wt/.nightshift/runs/$id/handoff.html"
   case "$tier" in
-    T2 | T3) [ ! -f "$handoff" ] || docs=("RUN/handoff.html" "${docs[@]}") ;;
+    T2 | T3) [ ! -f "$handoff" ] || hand=true ;;
   esac
   lg checkpoint "$ledger" --push
-  if [ "${#docs[@]}" -gt 0 ]; then
-    "$NS_HOME/bin/ns" publish "$id" "${docs[@]}" || ns_warn "could not publish ${docs[*]}"
+  local -a docs=()
+  [ "$hand" = false ] || docs+=("RUN/handoff.html")
+  [ "$report" = false ] || docs+=("RUN/run-report.md")
+  # one publish (one notification) when both are fine; else each on its own
+  if [ "${#docs[@]}" -gt 0 ] && ! "$NS_HOME/bin/ns" publish "$id" "${docs[@]}"; then
+    if [ "$report" = true ] && { [ "$hand" = false ] || ! "$NS_HOME/bin/ns" publish "$id" RUN/run-report.md; }; then
+      ns_warn "could not publish RUN/run-report.md"
+    fi
+    if [ "$hand" = true ] && ! "$NS_HOME/bin/ns" publish "$id" RUN/handoff.html; then
+      ns_die "could not publish the handoff report: fix RUN/handoff.html, then ns publish $id RUN/handoff.html"
+    fi
   fi
   printf 'finished %s: %s\n' "$id" "$url"
 }

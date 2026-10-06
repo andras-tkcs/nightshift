@@ -794,3 +794,93 @@ review_phase() {
   assert_success
   [ "$(ns-ledger get "$R13/ledger.yaml" '(.phases[] | select(.id == "fix") | .reviewed_head)')" = "$head" ]
 }
+
+@test "checks writes a start and an end line per check into the log, and the run report shows them (#65)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd "echo collected 0 items; exit 5"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  log="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log"
+  t='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  grep -Eq "^== start python lint $t\$" "$log"
+  grep -Eq "^== end python lint $t PASS exit 0\$" "$log"
+  grep -Eq "^== start python test $t\$" "$log"
+  grep -Eq "^== end python test $t SKIP exit 5\$" "$log"
+  # the command's output stays between the two lines
+  [ "$(sed -n '/^== start python test/,/^== end python test/p' "$log" | grep -c 'collected 0 items')" = 1 ]
+  run "$NS_REPO_ROOT/bin/ns" report sbx-12
+  assert_success
+  grep -Eq '^\| feature \| python lint \| PASS \| [0-9]+s \| ' "$output"
+  grep -Eq '^\| feature \| python test \| SKIP \| [0-9]+s \| ' "$output"
+  grep -qF 'SKIP (pytest collected no tests' "$output"
+}
+
+@test "gate 1.5 keeps the question of RUN/escalation.md in the gate event note (#118)" {
+  printf '# Escalation: checks\n\n## Question\nAccept the | failure?\nOr not.\n\n## Owner'"'"'s answer\n' >"$RUNDIR/escalation.md"
+  run ns-conductor gate sbx-12 1.5 RUN/escalation.md
+  assert_success
+  [ "$(lget '[.events[] | select(.type == "gate")][-1].note')" = "gate 1.5: waiting for the owner: Accept the | failure? Or not." ]
+  run "$NS_REPO_ROOT/bin/ns" report sbx-12
+  assert_success
+  grep -qF '(gate 1.5): Accept the \| failure? Or not.' "$output"
+}
+
+@test "gate 1 and gate 1.5 without a question keep the plain note (#118)" {
+  printf '# Plan\n' >"$RUNDIR/plan.md"
+  ns-conductor gate sbx-12 1 RUN/plan.md >/dev/null
+  [ "$(lget '[.events[] | select(.type == "gate")][-1].note')" = "gate 1: waiting for the owner" ]
+  printf '# Escalation\n\nno question section\n' >"$RUNDIR/escalation.md"
+  ns-conductor gate sbx-12 1.5 RUN/escalation.md >/dev/null
+  [ "$(lget '[.events[] | select(.type == "gate")][-1].note')" = "gate 1.5: waiting for the owner" ]
+}
+
+@test "finish commits and pushes RUN/run-report.md and publishes it next to the handoff (#118)" {
+  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
+  assert_success
+  git -C "$WT" ls-files --error-unmatch .nightshift/runs/sbx-12/run-report.md >/dev/null
+  [ -z "$(git -C "$WT" status --porcelain -- .nightshift/runs/sbx-12/run-report.md)" ]
+  git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md | grep -q '^- State: done$'
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+}
+
+@test "finish on T2: a failed handoff publish is fatal, the run report is still committed and published (#118)" {
+  printf '<html><script>x()</script></html>\n' >"$RUNDIR/handoff.html"
+  run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
+  assert_failure 1
+  assert_output_contains "could not publish the handoff report"
+  [ "$(lget .state)" = done ]
+  [ "$(lget '.events[-1].type')" = finish ]
+  git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md >/dev/null
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
+  [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+}
+
+@test "finish on T2: a failed run report publish only warns, the handoff is published (#118)" {
+  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  # a directory in the way on the desk: copying the run report fails, the handoff copy does not
+  mkdir -p "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md"
+  run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
+  assert_success
+  assert_output_contains "could not publish RUN/run-report.md"
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+  [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
+  git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md >/dev/null
+}
+
+@test "gate 1.5: the question in the note has no control characters and is cut at 200 characters, not bytes (#157 review)" {
+  long=$(printf 'a%.0s' $(seq 1 199))
+  printf '# Escalation\n\n## Question\nWhy\r\tnot \033[31mred?\n%sé more\n' "$long" >"$RUNDIR/escalation.md"
+  run ns-conductor gate sbx-12 1.5 RUN/escalation.md
+  assert_success
+  note=$(lget '[.events[] | select(.type == "gate")][-1].note')
+  python3 - "$note" <<'PY2'
+import sys
+q = sys.argv[1].split("waiting for the owner: ", 1)[1]
+assert not any(ord(c) < 32 or ord(c) == 127 for c in q), repr(q)
+assert len(q) == 200, len(q)
+assert q.startswith("Why not [31mred? a"), repr(q[:30])
+PY2
+}

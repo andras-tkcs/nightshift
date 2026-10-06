@@ -336,6 +336,22 @@ EOF
   grep -q 'PHASE-REPORT p1-alpha' "$NS_CONFIG_DIR/logs/sbx-12/p1-alpha.jsonl"
 }
 
+@test "a restarted phase keeps the earlier attempt's log as <phase>--attempt<n>.jsonl (#65)" {
+  ns-conductor start sbx-12 p1-alpha >/dev/null
+  ns-conductor wait sbx-12 --timeout 30 >/dev/null
+  CLAUDE_STUB_RESULT="second attempt" run ns-conductor start sbx-12 p1-alpha
+  assert_success
+  ns-conductor wait sbx-12 --timeout 30 >/dev/null
+  logs="$NS_CONFIG_DIR/logs/sbx-12"
+  grep -q 'PHASE-REPORT p1-alpha' "$logs/p1-alpha--attempt1.jsonl"
+  grep -q 'second attempt' "$logs/p1-alpha.jsonl"
+  ! grep -q 'PHASE-REPORT' "$logs/p1-alpha.jsonl"
+  run "$NS_REPO_ROOT/bin/ns" report sbx-12
+  assert_success
+  grep -qF '| p1-alpha worker (attempt 1) | p1-alpha--attempt1.jsonl |' "$output"
+  grep -qF '| p1-alpha worker | p1-alpha.jsonl |' "$output"
+}
+
 # result_line <is_error> <api_error_status> <text>: a claude -p result line as JSON
 result_line() {
   jq -nc --argjson e "$1" --argjson s "$2" --arg t "$3" \

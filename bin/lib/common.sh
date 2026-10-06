@@ -102,9 +102,16 @@ ns_age() {
 # ASCII letters and digits, spelled out: a range like [A-Za-z0-9] depends on the locale
 # (en_US.UTF-8 lets it match é).
 NS_ALNUM=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789
+# token-shaped strings (GitHub, Anthropic, ntfy); match it with LC_ALL=C
+NS_TOKEN_RE="(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|tk_[$NS_ALNUM]{29})"
 
 ns_has_token() {
-  printf '%s' "$1" | LC_ALL=C grep -Eq "(github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|tk_[$NS_ALNUM]{29})"
+  printf '%s' "$1" | LC_ALL=C grep -Eq "$NS_TOKEN_RE"
+}
+
+# ns_redact_tokens <file>: replace every token-shaped string in <file> with [redacted]
+ns_redact_tokens() {
+  LC_ALL=C sed -E -i "s/$NS_TOKEN_RE/[redacted]/g" "$1"
 }
 
 # ns_ntfy_own_url [url]: true only when url may get the ntfy token: an allowlist, so no

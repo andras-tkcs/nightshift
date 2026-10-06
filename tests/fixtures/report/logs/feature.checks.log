@@ -1,0 +1,8 @@
+== python lint: ruff check .
+== start python lint 2026-10-02T12:58:00Z
+All checks passed!
+== end python lint 2026-10-02T12:58:04Z PASS exit 0
+== python test: pytest -q
+== start python test 2026-10-02T12:58:04Z
+no tests ran in 0.01s
+== end python test 2026-10-02T12:58:10Z SKIP exit 5
