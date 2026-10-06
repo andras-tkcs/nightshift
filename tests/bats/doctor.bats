@@ -158,12 +158,12 @@ EOF
 @test "tokens/ntfy never reaches gh; only the registered owner's token does (#33)" {
   gh_spy
   ntfy_token
-  run ns doctor
+  NS_NTFY_URL=https://ntfy.example:8444 run ns doctor
   assert_success
   [ ! -e "$BATS_TEST_TMPDIR/ntfy-at-gh" ]
   [ "$(user_calls)" = 1 ]
   assert_output_contains "ok   token andras-tkcs"
-  assert_output_contains "ok   token ntfy: mode 600, test publish to https://ntfy.sh ok"
+  assert_output_contains "ok   token ntfy: mode 600, test publish to https://ntfy.example:8444 ok"
   assert_output_not_contains "$NTFY_TOKEN"
 }
 
@@ -221,7 +221,7 @@ EOF
 
 @test "a refused ntfy test publish is a FAIL (#33)" {
   ntfy_token
-  CURL_STUB_HTTP_CODE=403 run ns doctor
+  NS_NTFY_URL=https://ntfy.example:8444 CURL_STUB_HTTP_CODE=403 run ns doctor
   assert_failure 1
   assert_output_contains "FAIL token ntfy: test publish failed: ns-notify: ntfy answered HTTP 403; not sent"
 }
@@ -232,4 +232,43 @@ EOF
   run ns doctor
   assert_output_contains "warn token ntfy: mode 600, test publish skipped (NS_NTFY_TOPIC not set)"
   ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "a token file name with a newline never matches an owner (review 2)" {
+  gh_spy
+  local f="$NS_CONFIG_DIR/tokens/andras-tkcs"$'\n'zzz
+  printf '%s\n' "$NTFY_TOKEN" >"$f"
+  chmod 600 "$f"
+  run ns doctor
+  [ ! -e "$BATS_TEST_TMPDIR/ntfy-at-gh" ]
+  [ "$(user_calls)" = 1 ]
+  assert_output_contains "not named after a registered project owner, not checked"
+}
+
+@test "with NS_NTFY_URL unset or ntfy.sh the test publish is skipped with a warning (review 4)" {
+  ntfy_token
+  for u in "" https://ntfy.sh; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns doctor
+    assert_success
+    assert_output_contains "warn token ntfy: mode 600, test publish skipped (NS_NTFY_URL is not set or points at ntfy.sh; the token is only sent to your own ntfy, see R-NOT-5)"
+    ! grep -q '^curl' "$NS_STUB_LOG"
+  done
+}
+
+@test "an owner token file holding an ntfy token is a FAIL and never sent (review 5)" {
+  gh_spy
+  printf '%s\n' "$NTFY_TOKEN" >"$NS_CONFIG_DIR/tokens/andras-tkcs"
+  run ns doctor
+  assert_failure 1
+  assert_output_contains "FAIL token andras-tkcs: holds an ntfy token, not sent to GitHub"
+  [ ! -e "$BATS_TEST_TMPDIR/ntfy-at-gh" ]
+  [ "$(user_calls)" = 0 ]
+}
+
+@test "the doctor test publish has priority min (review 6)" {
+  ntfy_token
+  NS_NTFY_URL=https://ntfy.example:8444 run ns doctor
+  assert_success
+  grep -qF -- '-H Priority: min' "$NS_STUB_LOG"
 }

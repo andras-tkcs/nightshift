@@ -291,7 +291,7 @@ published() {
 }
 
 @test "ns-notify passes the ntfy token via stdin or a file, never argv" {
-  export NS_NTFY_TOPIC=topic1
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
   ntfy_token
   run ns-notify "hello"
   assert_success
@@ -315,7 +315,7 @@ published() {
 }
 
 @test "ns-notify fails on a non-2xx answer and keeps the token out of the output" {
-  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE=403 NS_NTFY_URL=https://ntfy.example:8444
   ntfy_token
   run ns-notify "hello"
   assert_failure 1
@@ -324,7 +324,7 @@ published() {
 }
 
 @test "ns-notify refuses a token file that is not mode 600 (#34)" {
-  export NS_NTFY_TOPIC=topic1
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
   ntfy_token 644
   run ns-notify "hello"
   assert_failure 1
@@ -333,7 +333,7 @@ published() {
 }
 
 @test "ns-notify refuses a token with a quote before it reaches the curl config (#34)" {
-  export NS_NTFY_TOPIC=topic1
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
   ntfy_token 600 'tk_abcdefghijklmnopqrstuvwxy"1'
   run ns-notify "hello"
   assert_failure 1
@@ -343,7 +343,7 @@ published() {
 }
 
 @test "ns-notify refuses a token that is too short or spans lines (#34)" {
-  export NS_NTFY_TOPIC=topic1
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
   ntfy_token 600 tk_short
   run ns-notify "hello"
   assert_failure 1
@@ -365,7 +365,7 @@ published() {
 }
 
 @test "ns-notify keeps curl's reason with a token, and the token stays out of it (#34)" {
-  export NS_NTFY_TOPIC=topic1 CURL_STUB_EXIT=28
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_EXIT=28 NS_NTFY_URL=https://ntfy.example:8444
   export CURL_STUB_STDERR='curl: (28) Connection timed out after 10001 milliseconds'
   ntfy_token
   run ns-notify "hello"
@@ -439,4 +439,81 @@ desk_leftovers() {
   assert_failure
   assert_output_contains "gh pr create failed"
   desk_leftovers
+}
+
+@test "a ~/.curlrc with verbose and stderr - never puts the token in the output (review 1)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444 CURL_STUB_HTTP_CODE=403
+  ntfy_token
+  printf 'verbose\nstderr -\n' >"$HOME/.curlrc"
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_not_contains "$NTFY_TOKEN"
+  assert_output_contains "ns-notify: ntfy answered HTTP 403; not sent"
+  grep -q '^curl -q ' "$NS_STUB_LOG"
+}
+
+@test "ns-notify prints HTTP ? for an answer that is not a 3-digit code (review 1)" {
+  export NS_NTFY_TOPIC=topic1 CURL_STUB_HTTP_CODE='> x'
+  run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "ns-notify: ntfy answered HTTP ?; not sent"
+}
+
+@test "ns-notify refuses a token with a non-ASCII letter in a UTF-8 locale (review 3)" {
+  local loc=C.UTF-8
+  if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then loc=en_US.UTF-8; fi
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.example:8444
+  ntfy_token 600 "tk_é$(printf 'a%.0s' $(seq 1 28))"
+  LC_ALL=$loc run ns-notify "hello"
+  assert_failure 1
+  assert_output_contains "does not hold an ntfy token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+}
+
+@test "ns-notify never sends the token to ntfy.sh and says so (review 4)" {
+  export NS_NTFY_TOPIC=topic1
+  ntfy_token
+  for u in "" https://ntfy.sh https://NTFY.sh/ https://ntfy.sh:443 http://user@ntfy.sh https://x.ntfy.sh; do
+    : >"$NS_STUB_LOG"
+    NS_NTFY_URL=$u run ns-notify "hello"
+    assert_success
+    assert_output_contains "ns-notify: warning: not sending the ntfy token to ntfy.sh; set NS_NTFY_URL to your own ntfy"
+    grep -q '^curl ' "$NS_STUB_LOG"
+    ! grep -qi 'Authorization' "$NS_STUB_LOG"
+    ! grep -q "$NTFY_TOKEN" "$NS_STUB_LOG"
+  done
+}
+
+@test "ns-notify sends the token to a host that only contains ntfy.sh (review 4)" {
+  export NS_NTFY_TOPIC=topic1 NS_NTFY_URL=https://ntfy.sh.example.org
+  ntfy_token
+  run ns-notify "hello"
+  assert_success
+  grep -qF "Authorization: Bearer $NTFY_TOKEN" "$NS_STUB_LOG"
+}
+
+@test "NS_NTFY_PRIORITY sets the Priority header; an invalid value is refused (review 6)" {
+  export NS_NTFY_TOPIC=topic1
+  NS_NTFY_PRIORITY=min run ns-notify "hello"
+  assert_success
+  grep -qF -- '-H Priority: min' "$NS_STUB_LOG"
+  : >"$NS_STUB_LOG"
+  NS_NTFY_PRIORITY=$'min\nX-Evil: 1' run ns-notify "hello"
+  assert_failure 2
+  assert_output_contains "NS_NTFY_PRIORITY must be one of min low default high max 1 2 3 4 5"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+  run ns-notify "hello"
+  ! grep -q 'Priority' "$NS_STUB_LOG"
+}
+
+@test "ns-notify and ns publish refuse text holding an ntfy token (review 7)" {
+  export NS_NTFY_TOPIC=topic1
+  run ns-notify "oops tk_abcdefghijklmnopqrstuvwxyz012"
+  assert_failure 1
+  assert_output_contains "ns-notify: refusing to send something that looks like a token"
+  ! grep -q '^curl' "$NS_STUB_LOG"
+  printf 'key tk_abcdefghijklmnopqrstuvwxyz012\n' >"$RUNDIR/plan.md"
+  run ns publish sbx-12 RUN/plan.md
+  assert_failure 1
+  assert_output_contains "plan.md: looks like it contains a token; not published"
 }
