@@ -141,7 +141,7 @@ Bash, one entry point `bin/ns`, subcommands in `bin/lib/ns-<cmd>.sh`. Every subc
 | `ns tag <vX.Y.Z> [--repo <dir>] [--yes]` | Check that the base branch is clean and equal to origin, that the version is the next step, that the tag is new and that the project checks pass, then tag, push and print the upgrade command; warn when CI is not green or Nightshift runs are active (owner only). |
 | `ns drain` | Ask every run to stop at its next checkpoint; return when all are `parked`. |
 | `ns up` | After a reboot: run `ns doctor`, then restart the Remote Control tmux session. |
-| `ns resume <id>` / `--all` | Restart parked/stopped runs from their ledgers. |
+| `ns resume <id>` / `--all` | Restart a parked, crashed or stopped run from its ledger; `--all`: parked and crashed runs; stopped runs only by name. |
 | `ns publish <id> <file>…` | Copy gate documents to `/srv/ns-space/<repo>/runs/<id>/`, update `index.md`, send ntfy. |
 | `ns approve <id>` | Show the diff between the desk copies and the run's branch, ask, then commit the edited Markdown back with trailer `Approved-By: owner` and release the gate. |
 | `ns desk import <path.md> <repo path>` | Copy a desk note to `<repo path>` on a new branch cut from the base branch, push it and open a pull request; never merge it (owner only). |

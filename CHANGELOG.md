@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- No tmux server started by `ns` keeps a `GH_TOKEN` (bats-tested for `ns new`, `ns resume`, `ns up` and `ns dequeue`); the ledger push of a run that `ns dequeue` starts gets that run's owner token in the push's environment only; `logs/` and `logs/<id>/` are created (or set) mode 700 and `dequeue.log` mode 600; a symlinked `queue.lock` is never truncated (issue #96).
+- No tmux server started by `ns` keeps a `GH_TOKEN` (bats-tested for `ns new`, `ns resume`, `ns up` and `ns dequeue`); the ledger push of a run that `ns resume` or `ns dequeue` starts gets that run's owner token (else `gh`'s login, never the caller's `GH_TOKEN`) in the push's environment only; `ns drain` keeps an owner's pending `ns stop`; `logs/` and `logs/<id>/` are created (or set) mode 700 and `dequeue.log` mode 600; a symlinked `queue.lock` is never truncated (issue #96).
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed
@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `ns resume` and `ns dequeue` roll a run back to its previous state and queue mark when the `resumed` event, the ledger push or the tmux start fails after the ledger was set to `running` (before, the run stayed `running` with no session, or lost its place in the queue), and a failed ledger write while phases are reconciled stops the resume (issue #96).
+- `ns resume` and `ns dequeue` roll a run back to its previous state and queue mark when the `resumed` event, the ledger commit (or a token file with the wrong mode) or the tmux start fails after the ledger was set to `running` (before, the run stayed `running` with no session, or lost its place in the queue), and a failed ledger write while phases are reconciled stops the resume (issue #96).
 - A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
 
 ## [0.1.5] - 2026-10-05

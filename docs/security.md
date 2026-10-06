@@ -32,7 +32,7 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 
 Nothing prints a token: `ns doctor` shows only file modes and expiry dates, `ns publish` and `ns-notify` refuse anything that looks like a token, and secrets are read with hidden input.
 
-A token never reaches a tmux server: every tmux session in `bin/` is started through one function that drops `GH_TOKEN`, so a server started by `ns new`, `ns resume`, `ns approve`, `ns up` or `ns dequeue` does not keep the caller's token in its global environment; each conductor loads its own owner's token in `ns-launch`. When a conductor ends, `ns-launch` runs `ns dequeue` without the ending run's token. The ledger push of a run that `ns dequeue` or `ns resume` starts or queues runs with the token of that run's project owner (`tokens/<owner>` when it exists), set only in the environment of that one `git push`.
+A token never reaches a tmux server: every tmux session in `bin/` is started through one function that drops `GH_TOKEN`, so a server started by `ns new`, `ns resume`, `ns approve`, `ns up` or `ns dequeue` does not keep the caller's token in its global environment; each conductor loads its own owner's token in `ns-launch`. When a conductor ends, `ns-launch` runs `ns dequeue` without the ending run's token. The ledger push of a run that `ns dequeue` or `ns resume` starts or queues runs with the token of that run's project owner (`tokens/<owner>` when it exists, else `gh`'s own login; a `GH_TOKEN` of the caller is dropped first), set only in the environment of that one `ns-ledger checkpoint --push` (its git commit, push and the repo's hooks).
 
 ## Token scopes
 

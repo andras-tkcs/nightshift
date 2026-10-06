@@ -69,10 +69,13 @@ ns_resume_reconcile() {
 # ns_resume_push <id> <ledger>: commit the ledger and push it with the token of the run's
 # project owner. The token is set only in this push's subshell: ns dequeue runs without one
 # (ns-launch drops the ending run's token), and it must never reach a tmux server or another run.
+# A caller's GH_TOKEN (another owner's, or an agent's) is dropped first; without a token file
+# the push uses gh's own login, like the conductor sessions.
 ns_resume_push() {
   local id="$1" ledger="$2"
   (
     local entry project repo
+    unset GH_TOKEN
     if entry=$(ns_run_get "$id") && project=$(ns_project_by_name "$(jq -r .project <<<"$entry")"); then
       repo=$(jq -r .repo <<<"$project")
       ns_token_export "${repo%%/*}"

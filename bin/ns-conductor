@@ -291,7 +291,7 @@ finish_worker() {
     [[ $code =~ ^[0-9]+$ ]] || code=137
   fi
   done_dir="$logdir/done"
-  mkdir -p "$done_dir"
+  ns_private_dir "$done_dir"
   mv -f "$f" "$done_dir/$base.pid"
   [ ! -f "$ef" ] || mv -f "$ef" "$done_dir/$base.exit"
   lastres=""
