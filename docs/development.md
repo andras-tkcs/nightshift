@@ -29,6 +29,8 @@ tests/e2e/run.sh cleanup <branch>   # remove what a failed attempt left behind
 
 Cost grows with the tier: `preflight` uses almost no usage, `t0` and `t1` take minutes and a little usage, `t2` and `t3` take much longer and use a lot, `stack` runs two T0 runs in a row and checks that the second pull request is stacked on the first (its base is the first branch and its diff shows only its own change), and `resume` kills a conductor and resumes it. Each run appends a line to `tests/e2e/results.md`. `--keep` leaves the pull request and branches in place after a pass. Run one scenario at a time (4 GB RAM).
 
+`tests/e2e/pool-watch.sh [--config-dir <dir>] [--interval <s>] [--once]` watches the worker pool of one Nightshift home (default `$NS_CONFIG_DIR`): every few seconds it prints the live workers by pid file (the count `ns-conductor start` uses), the `ns-worker` processes started for that home and the most seen, and `max live workers seen: <k>` when stopped. It only reads. Use it to check that `max_workers` holds while several runs share one home.
+
 ## Conventions
 
 - Bash executables start with `#!/usr/bin/env bash` and `set -euo pipefail`, and are shellcheck clean.

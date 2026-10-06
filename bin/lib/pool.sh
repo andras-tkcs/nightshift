@@ -42,3 +42,19 @@ ns_pool_count() {
 ns_pool_max() {
   ns_config_get max_workers 2
 }
+
+# ns_pool_locked <cmd...>: run the command holding the exclusive pool lock (workers/.lock), so
+# the count, the spawn and the pid-file wait of one start are atomic across runs (R-CON-2).
+# The lock is an flock, released when the subshell exits on any path; a lock file left behind
+# never blocks. >> never truncates the file a symlinked .lock points to. Returns 12 when the
+# lock stays busy for NS_POOL_LOCK_WAIT seconds (default 60). A process started under the lock
+# must close fd 9 (9>&-), or it holds the lock for its whole life.
+ns_pool_locked() {
+  local dir
+  dir="$(ns_pool_dir)"
+  mkdir -p "$dir"
+  (
+    flock -w "${NS_POOL_LOCK_WAIT:-60}" 9 || exit 12
+    "$@"
+  ) 9>>"$dir/.lock"
+}

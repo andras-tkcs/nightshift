@@ -114,3 +114,23 @@ setup() {
 @test "the fixture README has the typo exactly once" {
   [ "$(grep -o 'recieve' "$FIX/README.md" | wc -l)" -eq 1 ]
 }
+
+@test "pool-watch.sh counts live workers from pid files and processes, read-only (#10)" {
+  d="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$d/workers"
+  NS_CONFIG_DIR="$d" bash -c 'sleep 30; true' ns-worker &
+  live=$!
+  printf 'pid=%s\n' "$live" >"$d/workers/app-1--p1.pid"
+  printf 'pid=999999\n' >"$d/workers/app-1--p2.pid"
+  printf 'pid=%s\n' "$live" >"$d/workers/app-2--p1.pid"
+  echo 0 >"$d/workers/app-2--p1.exit"
+  before=$(find "$d" -type f -printf '%p %s %T@\n' | sort)
+  run "$E2E/pool-watch.sh" --config-dir "$d" --once
+  kill "$live" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"live=1 procs=1 max=1 app-1--p1"* ]]
+  [[ "$output" == *"max live workers seen: 1"* ]]
+  [ "$(find "$d" -type f -printf '%p %s %T@\n' | sort)" = "$before" ]
+  run "$E2E/pool-watch.sh" --interval 0
+  [ "$status" -eq 2 ]
+}

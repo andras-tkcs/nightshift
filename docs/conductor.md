@@ -18,13 +18,13 @@ ns-conductor start <id> <phase> [--feedback <file>]
 
 Starts a worker for one phase. It checks, in order:
 
-1. The pool: when `ns_pool_count` has reached `ns_pool_max`, the phase becomes `queued`, `start` prints `queued <phase>: pool full (<n>/<max>)` and exits 3.
+1. The pool: when `ns_pool_count` has reached `ns_pool_max`, the phase becomes `queued`, `start` prints `queued <phase>: pool full (<n>/<max>)` and exits 3. This is a quick look before the worktree work; the count that decides is taken again under the pool lock when the worker is spawned (below).
 2. The budget: when `ns-ledger budget-exceeded` is true, it prints `budget exceeded` and exits 4.
 3. Auto mode: with `NS_WORKER_MODE=auto` (the default) and no `auto-mode.ok` file younger than 24 hours, it runs `check-auto`. If that fails, `start` exits 5 with the hint "auto permission mode does not work in headless calls on this machine. Fix it, or set NS_WORKER_MODE=bypassPermissions in ~/.config/ns/env after reading docs/security.md, section "Worker permission mode"." (R-CON-4).
 4. The phase entry, read from the Implementation manifest of the plan document in the run worktree. A phase id of the form `fix-<n>` that is not in the manifest gets a standard entry ("Fix review findings"). Any other missing phase exits 1.
 5. The feature branch: `feature_branch` must be set in the ledger, else exit 1 `no feature branch yet`. The phase branch is the profile's `git.phase_branch`. A missing phase worktree is created from `origin/<phase branch>` if that exists, else from `origin/<feature branch>`; the stack setup runs when the worktree has no `.venv`.
 
-Then it writes the worker prompt (below) to `logs/<id>/<phase>.prompt.md`, starts the worker detached and waits up to 5 seconds for its pid file. The phase becomes `running`, `attempts` goes up by one, `branch` and `worktree` are recorded, an event `phase-start` is added and the ledger is checkpointed. It prints `started <phase> pid <pid>` and exits 0. If the phase already has a live worker it prints `<phase> already running` and exits 0.
+Then it writes the worker prompt (below) to `logs/<id>/<phase>.prompt.md` and takes the pool lock (an `flock` on `workers/.lock` in the config directory, shared by all runs). Holding it, it checks again that the phase has no live worker (`<phase> already running`, exit 0) and that the pool has a free slot (else the phase is queued as in step 1, exit 3), starts the worker detached and waits up to 5 seconds for its pid file, so two conductors can never both take the last slot (R-CON-2). The lock is released on every exit path and the worker does not inherit it; a lock file left behind never blocks, and a symlinked one is opened for appending, never truncated. When another start holds the lock for longer than `NS_POOL_LOCK_WAIT` seconds (default 60), the phase becomes `queued`, `start` prints `queued <phase>: pool lock busy` and exits 3. The phase becomes `running`, `attempts` goes up by one, `branch` and `worktree` are recorded, an event `phase-start` is added and the ledger is checkpointed. It prints `started <phase> pid <pid>` and exits 0. If the phase already has a live worker it prints `<phase> already running` and exits 0.
 
 `--feedback <file>` appends the review feedback to the prompt. The worker's model is the phase's `model`, else the profile's `agents.implementer.model`, else `sonnet`. The turn limit is `worker_max_turns` in the config (default 200).
 
@@ -183,7 +183,7 @@ The pool lives in `~/.config/ns/workers/` (or `$NS_CONFIG_DIR/workers/`).
 | `<id>--<phase>.pid` | the lines `pid=…`, `run=…`, `phase=…`, `started=…`; written by the worker's own shell |
 | `<id>--<phase>.exit` | the worker's exit code, written when it ends |
 
-A worker is live when its pid file exists, no exit file exists and its process is running. `bin/lib/pool.sh` provides `ns_pool_live [<run>]` (lines `<run> <phase>`), `ns_pool_count` and `ns_pool_max` (`max_workers` in `config.yaml`, default 2). The pool is shared by all runs, so `max_workers` bounds the whole machine.
+A worker is live when its pid file exists, no exit file exists and its process is running. `bin/lib/pool.sh` provides `ns_pool_live [<run>]` (lines `<run> <phase>`), `ns_pool_count`, `ns_pool_max` (`max_workers` in `config.yaml`, default 2) and `ns_pool_locked <cmd...>` (runs the command holding the pool lock `workers/.lock`; `start` counts and spawns under it). The pool is shared by all runs, so `max_workers` bounds the whole machine.
 
 ## The worker prompt
 
