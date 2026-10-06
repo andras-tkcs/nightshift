@@ -653,3 +653,39 @@ EOF" "cp /tmp/h .git/hooks/pre-push" "echo x >> .git/config"
   blocked_all "cannot parse" "echo 'x \$(printf ns) \$(printf k''ill)" 'echo "$(printf ns) tag'
   allowed_all "echo 'unbalanced"
 }
+
+# review of PR #130
+
+@test "a script that is not tracked and clean at HEAD is checked as strictly as the command line" {
+  local s="$REPO/run.sh" out="$BATS_TEST_TMPDIR/out.sh"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\necho start\n$CMD $SUB sbx-12\n' >"$s"
+  cp "$s" "$out"
+  chmod +x "$s" "$out"
+  # untracked
+  blocked_all "cannot tell which command" "bash run.sh" "./run.sh" "source run.sh" "bash $out" "$out"
+  # tracked and clean at HEAD: the repo's own code, read non-strict
+  git -C "$REPO" add run.sh
+  git -C "$REPO" commit -q -m "add run.sh"
+  allowed_all "bash run.sh" "./run.sh" "source run.sh"
+  # tracked but modified against HEAD
+  printf 'echo changed\n' >>"$s"
+  blocked_all "cannot tell which command" "bash run.sh" "./run.sh"
+  # staged but not committed
+  git -C "$REPO" add run.sh
+  blocked_all "cannot tell which command" "bash run.sh"
+  # an untracked script that names nothing dynamic stays allowed
+  printf '#!/bin/sh\necho fine\n' >"$REPO/ok.sh"
+  allowed_all "bash ok.sh"
+}
+
+@test "viewers, interpreters and sed may read bin/lib/ns-*.sh as a file" {
+  printf 'print(1)\n' >"$REPO/script.py"
+  allowed_all "less bin/lib/ns-desk.sh" "vim bin/lib/ns-desk.sh" "nvim bin/lib/ns-stack.sh" "more bin/lib/ns-kill.sh" \
+    "view bin/lib/ns-tag.sh" "man ./bin/lib/ns-gc.sh" "awk 'NR<5' bin/lib/ns-gc.sh" "awk -F: '{print \$1}' bin/lib/ns-rm.sh" \
+    "python3 script.py bin/lib/ns-gc.sh" "perl -ne 'print if /x/' bin/lib/ns-tag.sh" "sed -n 1p bin/lib/ns-tag.sh" \
+    "head -5 bin/lib/ns-approve.sh"
+  # library code in the program text itself is still refused
+  blocked_all "is the owner's to run" "python3 -c 'import os; os.system(\"bash bin/lib/ns-kill.sh\")'" \
+    "awk 'BEGIN { system(\"ns_stack_merge sbx\") }'" "vim -c '!source bin/lib/ns-stack.sh; ns_stack_merge' x"
+}
