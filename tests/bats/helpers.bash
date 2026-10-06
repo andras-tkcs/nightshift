@@ -94,3 +94,11 @@ refute_token_in() {
     fi
   done
 }
+
+# fake_bootstrap: a live process whose command line names bootstrap.sh (the holder of an
+# upgrade lock); sets FAKE_BS_PID. Kill it in teardown.
+fake_bootstrap() {
+  bash -c "exec -a /opt/nightshift/current/bin/bootstrap.sh sleep 300" 3>&- >/dev/null 2>&1 &
+  # shellcheck disable=SC2034  # read by the test files that load this one
+  FAKE_BS_PID=$!
+}

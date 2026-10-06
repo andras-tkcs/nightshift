@@ -26,7 +26,7 @@ gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
 stop_requested: null             # null | stopped | parked
 branch: plan/sbx-12
-release: v0.1.0                 # Nightshift release the run started on; null for a dev checkout. Resume and workers use it
+release: v0.1.0                 # Nightshift release the run started on (set only when NS_HOME is ${NS_OPT:-/opt/nightshift}/<tag>); null for a dev checkout. Resume and workers use it, scripts and plugins
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
 queued_for_slot: false           # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
 stacked_on: null                 # null | the base branch (git.base_branch) | run id of the PR this run is stacked on (ns-conductor stack-base)

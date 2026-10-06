@@ -267,3 +267,91 @@ parked_paused() {
   run bash -c "'$NS_REPO_ROOT/bin/lib/stream-view.py' <'$BATS_TEST_TMPDIR/one.jsonl' >&-"
   assert_success
 }
+
+teardown() {
+  [ -z "${CHECKS_PID:-}" ] || kill "$CHECKS_PID" 2>/dev/null || true
+  [ -z "${OTHER_PID:-}" ] || kill "$OTHER_PID" 2>/dev/null || true
+}
+
+# checks_running <id>: a foreground "ns-conductor checks <id> feature" under the conductor's pane
+checks_running() {
+  mkdir -p "$NS_CONFIG_DIR/logs/$1"
+  : >"$NS_CONFIG_DIR/logs/$1/feature.checks.log"
+  touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/feature.checks.log"
+  bash -c "exec -a 'ns-conductor checks $1 feature' sleep 300" 3>&- >/dev/null 2>&1 &
+  CHECKS_PID=$!
+}
+
+@test "a run whose conductor runs its checks is not silent (#56)" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  run ns status sbx-12
+  assert_success
+  assert_output_contains "health   ok"
+  run ns health-check
+  assert_success
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 0 ]
+  # the checks end: silent again
+  kill "$CHECKS_PID"
+  wait "$CHECKS_PID" 2>/dev/null || true
+  run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}
+
+@test "checks of another run, outside the conductor's pane, do not count (#56)" {
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  # the pane is another live process, not an ancestor of the checks
+  sleep 300 3>&- >/dev/null 2>&1 &
+  OTHER_PID=$!
+  export TMUX_STUB_PANE_PID=$OTHER_PID
+  run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}
+
+@test "a fresh checks log or checks.rc counts as output (#56)" {
+  running_run sbx-12
+  age_log sbx-12
+  : >"$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  touch -d "2026-10-02T20:59:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+  touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  printf '0\n' >"$NS_CONFIG_DIR/logs/sbx-12/p1.checks.rc"
+  touch -d "2026-10-02T20:58:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.rc"
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+}
+
+@test "a tick that cannot read the ledger does not cause a second notification (#56)" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  age_log sbx-12
+  run ns health-check
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  l="$(ledger_of sbx-12)"
+  # ns-ledger get fails for one tick: its lock file cannot be opened
+  touch "$l.lock"
+  chmod 000 "$l.lock"
+  run ns health-check
+  chmod 644 "$l.lock"
+  assert_output_contains "0 run(s) checked"
+  [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
+  run ns health-check
+  assert_success
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+}
+
+@test "checks that run longer than NS_CHECKS_MAX_SECS count as silent again (#56 review)" {
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+  sleep 2
+  NS_CHECKS_MAX_SECS=1 run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}

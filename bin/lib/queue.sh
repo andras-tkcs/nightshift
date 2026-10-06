@@ -58,3 +58,25 @@ ns_queue_list() {
 ns_queue_msg() {
   printf 'queued %s: %s of %s runs active (starts when one finishes)\n' "$1" "$2" "$(ns_queue_max)"
 }
+
+# ns_queue_for_upgrade <id> <ledger> <state> [<push function>]: under the queue lock, when the
+# upgrade lock was taken after the caller's first check: queue the run (ns dequeue starts it once
+# the lock is gone). The push function (called with <id> <ledger>, as ns_resume_push) commits and
+# pushes the ledger; without one it is ns-ledger checkpoint --push.
+ns_queue_for_upgrade() {
+  local id="$1" ledger="$2" state="$3" push="${4:-}"
+  if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
+    # no live conductor here: the gap since the last checkpoint is not budget used (#9)
+    # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+    "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true | .budget.since = $now' || return 1
+    "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for the upgrade to end" || return 1
+    "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for the upgrade to end" || return 1
+    if [ -n "$push" ]; then
+      "$push" "$id" "$ledger" || return 1
+    else
+      "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&- || return 1
+    fi
+  fi
+  printf 'queued %s: an upgrade is in progress (starts with ns dequeue when it ends)\n' "$id"
+  return 10
+}

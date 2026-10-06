@@ -147,3 +147,26 @@ ns_plugin_args() {
     printf '%s\n%s\n' --plugin-dir "$d"
   done
 }
+
+# ns_upgrade_locked [quiet]: true while bootstrap.sh holds the upgrade lock
+# ${NS_OPT:-/opt/nightshift}/.upgrade.lock. A lock whose pid is not a live bootstrap.sh process
+# (gone, or reused by another program) is stale: warn (unless quiet) and return false. A lock
+# without a readable pid (being written, or damaged) counts as held; the recovery is to remove
+# it by hand once no bootstrap.sh runs.
+ns_upgrade_locked() {
+  local f pid
+  f="${NS_OPT:-/opt/nightshift}/.upgrade.lock"
+  [ -e "$f" ] || return 1
+  pid=$(head -c 256 "$f" 2>/dev/null | sed -n 's/^pid=//p' | head -n1) || pid=""
+  if [[ $pid =~ ^[0-9]+$ ]] && ! ps -o args= -p "$pid" 2>/dev/null | grep -q 'bootstrap\.sh'; then
+    [ "${1:-}" = quiet ] || ns_warn "ignoring a stale upgrade lock $f (pid $pid is not a running bootstrap.sh)"
+    return 1
+  fi
+  return 0
+}
+
+# ns_upgrade_guard: refuse (exit 1) to start a conductor while bootstrap.sh holds the upgrade lock
+ns_upgrade_guard() {
+  local f="${NS_OPT:-/opt/nightshift}/.upgrade.lock"
+  ! ns_upgrade_locked || ns_die "an upgrade is in progress (bootstrap.sh holds $f): no conductor starts until it ends; try again then (if no bootstrap.sh runs, remove $f as root)"
+}

@@ -219,10 +219,21 @@ init_ledger() {
 @test "init records the release tag when NS_HOME is /opt/nightshift/<tag> (ns-46)" {
   mkdir -p "$BATS_TEST_TMPDIR/opt"
   ln -s "$NS_REPO_ROOT" "$BATS_TEST_TMPDIR/opt/v0.1.0"
-  NS_HOME="$BATS_TEST_TMPDIR/opt/v0.1.0" init_ledger
+  NS_OPT="$BATS_TEST_TMPDIR/opt" NS_HOME="$BATS_TEST_TMPDIR/opt/v0.1.0" init_ledger
   run ns-ledger get "$L" '.release'
   assert_success
   [ "$output" = "v0.1.0" ]
+}
+
+@test "init records no release for a v-named NS_HOME outside NS_OPT or a name that is not a tag (#72)" {
+  mkdir -p "$BATS_TEST_TMPDIR/opt" "$BATS_TEST_TMPDIR/elsewhere"
+  ln -s "$NS_REPO_ROOT" "$BATS_TEST_TMPDIR/elsewhere/v0.1.0"
+  ln -s "$NS_REPO_ROOT" "$BATS_TEST_TMPDIR/opt/v1+x"
+  NS_OPT="$BATS_TEST_TMPDIR/opt" NS_HOME="$BATS_TEST_TMPDIR/elsewhere/v0.1.0" init_ledger
+  [ "$(ns-ledger get "$L" '.release')" = null ]
+  rm -rf "$(dirname "$L")"
+  NS_OPT="$BATS_TEST_TMPDIR/opt" NS_HOME="$BATS_TEST_TMPDIR/opt/v1+x" init_ledger
+  [ "$(ns-ledger get "$L" '.release')" = null ]
 }
 
 @test "ns_ledger_read launches python3 exactly once (ns-101)" {

@@ -123,10 +123,17 @@ ns_resume_start() {
     ns_resume_dequeue_check "$id" "$ledger" || return
     state=queued
     mark=true
+    # the upgrade lock taken after the caller's check: the run stays in the queue (#78)
+    ! ns_upgrade_locked quiet || return 10
   else
     if ns_tmux_has "$id"; then
       printf '%s is already running\n' "$id"
       return 0
+    fi
+    # the upgrade lock taken after ns_resume_one's check: the run waits in the queue
+    if ns_upgrade_locked quiet; then
+      ns_queue_for_upgrade "$id" "$ledger" "$state" ns_resume_push
+      return
     fi
     live=$(ns_queue_live_count)
     if [ "$live" -ge "$(ns_queue_max)" ]; then
@@ -160,6 +167,7 @@ ns_resume_start() {
 # ns_resume_one <id>: returns 10 when the run had to wait in the queue
 ns_resume_one() {
   local id="$1" entry wt ledger state gate rhome
+  ns_upgrade_guard
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")

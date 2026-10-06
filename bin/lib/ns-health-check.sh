@@ -9,7 +9,8 @@ source "$NS_HOME/bin/lib/runs.sh"
 ns_health_check_help() {
   printf 'usage: ns health-check\n\n'
   printf 'Looks at every active run that is running with no open gate. A run whose tmux session is\n'
-  printf 'gone is dead; one whose log has not grown for NS_SILENT_SECS (default 1200) is silent.\n'
+  printf 'gone is dead; one whose logs (JSONL, checks log) have not grown for NS_SILENT_SECS (default\n'
+  printf '1200) is silent, unless its conductor is running ns-conductor checks.\n'
   printf 'Each incident sends one ns-notify message (another when it changes between dead and silent); the incident is remembered in\n'
   printf '<config dir>/health/<id> and cleared when the run is healthy again. A systemd timer runs\n'
   printf 'this every 5 minutes.\n\n'
@@ -26,11 +27,12 @@ ns_health_check_main() {
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     id=$(jq -r .id <<<"$entry")
+    # seen first: a tick that cannot read the ledger must keep the incident, or the next one notifies again
+    seen="$seen$id "
     ledger=$(ns_run_ledger "$id") || continue
     [ -f "$ledger" ] || continue
     led=$("$NS_HOME/bin/ns-ledger" get "$ledger" 2>/dev/null) || continue
     total=$((total + 1))
-    seen="$seen$id "
     state=$(jq -r '.state // ""' <<<"$led")
     gate=$(jq -r '.gate // ""' <<<"$led")
     health=$(ns_run_health "$id" "$state" "$gate")

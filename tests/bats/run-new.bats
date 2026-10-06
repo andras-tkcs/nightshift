@@ -20,6 +20,10 @@ EOF
   SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
 }
 
+teardown() {
+  [ -z "${FAKE_BS_PID:-}" ] || kill "$FAKE_BS_PID" 2>/dev/null || true
+}
+
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
 run_field() { # <id> <jq filter on the ledger>
@@ -394,4 +398,25 @@ launched_running() {
   CLAUDE_STUB_RESULT_LINE='{"type":"result","subtype":"success","is_error":true,"result":"You'"'"'ve hit your session limit · resets 11pm (UTC)"}' \
     run ns-launch sbx-12
   [ "$(ns-ledger get "$L" .state)" = parked ]
+}
+
+@test "an upgrade that starts during triage queues the new run instead of starting it (#78)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  write_triage_script
+  # bootstrap.sh takes the lock while triage runs, after ns new's first check passed
+  fake_bootstrap
+  printf 'printf "pid=%%s\\n" %s >"%s"\n' "$FAKE_BS_PID" "$NS_OPT/.upgrade.lock" >>"$BATS_TEST_TMPDIR/triage.sh"
+  run ns new sbx-7 --yes
+  assert_success
+  assert_output_contains "upgrade"
+  [ ! -e "$TMUX_STUB_DIR/sbx-7" ]
+  [ "$(run_field sbx-7 .state)" = queued ]
+  [ "$(run_field sbx-7 .queued_for_slot)" = true ]
+  # the upgrade ends: ns dequeue starts it
+  rm "$NS_OPT/.upgrade.lock"
+  run ns dequeue
+  assert_success
+  assert_output_contains "1 started"
+  [ -f "$TMUX_STUB_DIR/sbx-7" ]
 }
