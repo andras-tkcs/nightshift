@@ -333,13 +333,13 @@ make_ledger() {
 
 # #16, #58, #81, #117: owner-only commands in every form
 
-# blocked_all <reason> <command>...: every command is blocked with "ns guard: <reason>"
+# blocked_all <reason> <command>...: every command is blocked, the message after "ns guard: " contains <reason>
 blocked_all() {
   local reason="$1" c
   shift
   for c in "$@"; do
     bash_guard "$c"
-    if [ "$status" -ne 2 ] || [[ $output != *"ns guard: $reason"* ]]; then
+    if [ "$status" -ne 2 ] || [[ $output != *"ns guard: "*"$reason"* ]]; then
       printf 'not blocked as "%s": %s\n  -> status %s: %s\n' "$reason" "$c" "$status" "$output"
       return 1
     fi
@@ -599,4 +599,57 @@ make_origin_repo() {
   assert_success
   CWD="$(dirname "$NS_CONFIG_DIR")" guard Glob pattern "repo/src/*.py"
   assert_success
+}
+
+@test "arrays, indirect variables, function and coproc bodies, case branches cannot hide an owner-only command" {
+  blocked_all "ns kill is the owner's command" \
+    "declare -a c='(ns kill sbx-12)'; \"\${c[@]}\"" 'a=(ns kill sbx-12); "${a[@]}"' \
+    'function f { ns kill sbx-12; }; f' 'coproc W { ns kill sbx-12; }' 'time { ns kill sbx-12; }' \
+    'IFS=,; X="ns,kill,sbx-12"; $X' 'case x in a) X=ns; $X kill sbx-12;; esac' \
+    'case x in (a|b) ns kill sbx-12;; esac' 'n=$'"'"'\x6e\x73'"'"'; $n kill sbx-12'
+  blocked_all "cannot tell which command" "X='ns kill'; ref=X; \${!ref} sbx-12" '"${!ref}"' '${X:-ns} kill sbx-12' \
+    '/usr/local/bin/n? kill sbx-12' "printf -v n '%s' ns; \$n kill sbx-12" \
+    'case x in a) $(printf ns) $(printf kill) sbx-12;; esac'
+  allowed_all 'case $x in a) echo a;; b|c) echo b;; *) echo c;; esac' 'y=$(case $x in a) echo a;; esac); echo "$y"'
+}
+
+@test "a PATH override, parallel, editors, databases and sed e cannot hide an owner-only command" {
+  mkdir -p "$BATS_TEST_TMPDIR/evil"
+  ln -s "$NS_REPO_ROOT/bin/ns" "$BATS_TEST_TMPDIR/evil/x"
+  blocked_all "ns kill is the owner's command" "PATH=$BATS_TEST_TMPDIR/evil:\$PATH x kill sbx-12" \
+    "sqlite3 x.db '.shell ns kill sbx-12'" "vim -es -c '!ns kill sbx-12' -c q" "echo '!ns kill sbx-12' | ed" \
+    "GIT_EXTERNAL_DIFF='ns kill sbx-12' git diff" "git -c alias.k='!f(){ ns kill sbx-12; }; f' k"
+  blocked_all "cannot tell which ns command" "parallel ns {} ::: kill" "parallel ns ::: kill" "xargs -a /tmp/args ns"
+  blocked_all "sed's e command" "echo x | sed 's/.*/ns kill sbx-12/e'" "sed -n 'e cat' f"
+  allowed_all "sed -i 's/old/new/' f" "sed -n '1,20p' f" "sed -i -e 's/x/y/g' -e '/^\$/d' f"
+}
+
+@test "a script written and run in the same command line is refused until it exists" {
+  blocked_all "does not exist yet" "echo bnM= | base64 -d > $BATS_TEST_TMPDIR/z.sh; bash $BATS_TEST_TMPDIR/z.sh"
+  blocked_all "created in this same command line" \
+    "echo bnM= | base64 -d > $BATS_TEST_TMPDIR/z.sh; chmod +x $BATS_TEST_TMPDIR/z.sh; $BATS_TEST_TMPDIR/z.sh"
+  allowed_all "make && ./a.out"
+}
+
+@test "git hooks, command-running git config and NS_HOME are off limits" {
+  guard Write file_path "$REPO/.git/hooks/pre-commit"
+  blocked "git hooks and git config are off limits"
+  guard Edit file_path "$REPO/.git/config"
+  blocked "git hooks and git config are off limits"
+  guard Read file_path "$REPO/.git/config"
+  assert_success
+  blocked_all "git hooks and git config are off limits" "cat > .git/hooks/pre-commit <<'EOF'
+echo hi
+EOF" "cp /tmp/h .git/hooks/pre-push" "echo x >> .git/config"
+  blocked_all "runs commands the guard cannot see" "git -c core.hooksPath=/tmp/h commit -m x" \
+    "git config core.hooksPath /tmp/h" "git config --global core.pager 'sh /tmp/x'" "git -c core.sshCommand=/tmp/x fetch"
+  blocked_all "NS_HOME decides which Nightshift code runs" "NS_HOME=/tmp/fake ns-conductor status sbx-12" \
+    "export NS_HOME=/tmp/fake" "env NS_HOME=/tmp/fake ns-ledger get l .x"
+  allowed_all "git -c core.pager=cat log" "git --no-pager log -5" "GIT_PAGER=cat git log" "git config user.name Nightshift" \
+    'ns-ledger get "$NS_LEDGER" .state' '"$NS_HOME/bin/ns-ledger" get "$NS_LEDGER" .state'
+}
+
+@test "a command line the guard cannot parse is blocked when it names an owner-only subcommand" {
+  blocked_all "cannot parse" "echo 'x \$(printf ns) \$(printf k''ill)" 'echo "$(printf ns) tag'
+  allowed_all "echo 'unbalanced"
 }
