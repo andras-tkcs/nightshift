@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load helpers
+bats_require_minimum_version 1.5.0
 
 setup() {
   ns_test_setup
@@ -240,4 +241,82 @@ SHIM
   assert_success
   [ "$output" = "queued" ]
   [ "$(wc -l <"$count")" -eq 1 ]
+}
+
+# py_shim [stderr text]: put a python3 on PATH that counts launches and, if given, prints a line
+# on stderr first. Sets COUNT.
+py_shim() {
+  local real
+  real=$(command -v python3)
+  mkdir -p "$BATS_TEST_TMPDIR/shim"
+  COUNT="$BATS_TEST_TMPDIR/py-launches"
+  : >"$COUNT"
+  cat >"$BATS_TEST_TMPDIR/shim/python3" <<SHIM
+#!/usr/bin/env bash
+echo x >>"$COUNT"
+[ -z "${1:-}" ] || echo "${1:-}" >&2
+exec "$real" "\$@"
+SHIM
+  chmod +x "$BATS_TEST_TMPDIR/shim/python3"
+}
+
+@test "ns_ledger_read reads a drift ledger in one python3 launch (ns-120)" {
+  init_ledger
+  printf 'wip_field: ns-50\n' >>"$L"
+  py_shim
+  PATH="$BATS_TEST_TMPDIR/shim:$PATH" run ns-ledger get "$L" .state
+  assert_success
+  [ "$output" = "$(printf 'ns-ledger: warning: ledger has unknown field wip_field; kept\nqueued')" ]
+  [ "$(wc -l <"$COUNT")" -eq 1 ]
+}
+
+@test "a warning python3 prints on stderr does not become the ledger JSON (ns-120)" {
+  init_ledger
+  py_shim "DeprecationWarning: something old"
+  PATH="$BATS_TEST_TMPDIR/shim:$PATH" run --separate-stderr ns-ledger get "$L" .state
+  assert_success
+  [ "$output" = "queued" ]
+  [[ $stderr == *"DeprecationWarning: something old"* ]]
+}
+
+@test "a drift ledger with a hard error and no committed version dies with the exact line (ns-120)" {
+  init_ledger
+  printf 'wip_field: ns-50\ntags: 5\n' >>"$L"
+  run --separate-stderr ns-ledger get "$L" .state
+  assert_failure 1
+  [ "$stderr" = "ns-ledger: ledger $L is corrupt and has no valid committed version: \$.tags: 5 is not of type 'array'; run: ns-ledger validate $L" ]
+}
+
+@test "after a recovery the warning names the restored version's unknown fields only (ns-120)" {
+  init_ledger
+  printf 'old_field: kept\n' >>"$L"
+  ns-ledger checkpoint "$L" 2>/dev/null
+  printf 'wip_field: ns-50\ntags: 5\n' >>"$L"
+  run --separate-stderr ns-ledger get "$L" .state
+  assert_success
+  [ "$output" = "queued" ]
+  [[ $stderr == *"restored from"* ]]
+  [[ $stderr == *"ledger has unknown field old_field; kept"* ]]
+  [[ $stderr != *"wip_field"* ]]
+  grep -q '^old_field: kept' "$L"
+  ! grep -q wip_field "$L"
+}
+
+@test "drift is a root additionalProperties error and the ledger schema has no root patternProperties (ns-120)" {
+  run jq -e 'has("patternProperties") | not' "$NS_REPO_ROOT/schema/ledger.schema.json"
+  assert_success
+  # With root patternProperties, jsonschema words the error differently; nsyaml.py still calls
+  # it drift (by validator) but ns_ledger_keys_filter (by message) would not see the key.
+  S="$BATS_TEST_TMPDIR/s.json"
+  D="$BATS_TEST_TMPDIR/d.yaml"
+  printf '{"type":"object","patternProperties":{"^x_":{}},"additionalProperties":false}\n' >"$S"
+  printf 'odd: 1\n' >"$D"
+  run python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" read "$D" "$S"
+  assert_success
+  [ "${lines[0]}" = '{"odd": 1}' ]
+  [[ ${lines[1]} == "$D: \$: 'odd' does not match any of the regexes: '^x_'" ]]
+  printf '{"type":"object","additionalProperties":false}\n' >"$S"
+  run python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" read "$D" "$S"
+  assert_success
+  [ "${lines[1]}" = "$D: \$: Additional properties are not allowed ('odd' was unexpected)" ]
 }

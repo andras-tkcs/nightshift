@@ -35,6 +35,8 @@ The generic layer ships as Claude Code plugins from the Nightshift repo, which i
 
 `project-profile.yaml` is the only contract between the layers. Generic agents never hard-code project facts; they read commands, protected paths, risk zones, compliance regimes and domain skills from the profile. See [profile-reference.md](profile-reference.md). The agents and skills are described in [agents.md](agents.md).
 
+The bash tooling handles YAML through one Python helper, `bin/lib/nsyaml.py`, plus `jq` (ADR 0004). Its subcommands are `to-json`, `from-json`, `validate` and `read` (validate and print as JSON in one launch, used for ledger reads).
+
 The specialist bench (database expert, data analyst, UI/UX designer) is Build B, together with the skills they use.
 
 ## Languages and platforms

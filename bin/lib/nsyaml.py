@@ -100,6 +100,11 @@ def cmd_read(path, schema_path):
     errors = sorted(validator.iter_errors(doc),
                     key=lambda e: (json_path(e.absolute_path), e.message))
     lines = [f"{path}: {json_path(e.absolute_path)}: {e.message}" for e in errors]
+    # Drift is an additionalProperties error at the root, classified by validator. The bash side
+    # (ns_ledger_keys_filter, ns_ledger_error in bin/lib/ledger.sh) matches the message
+    # "Additional properties are not allowed" instead. Both agree while the root schema has no
+    # patternProperties; with them jsonschema words the error "... does not match any of the
+    # regexes" and the bash side would no longer see the key. tests/bats/ledger.bats checks this.
     drift = [e.validator == "additionalProperties" and not list(e.absolute_path)
              for e in errors]
     if not all(drift):
