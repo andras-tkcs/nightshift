@@ -35,7 +35,8 @@ ns_kill_group() {
 # Kills workers (and the session when asked), resets running phases, marks the run stopped.
 # With keep-state (done/failed runs) only the processes are killed; the ledger is untouched.
 ns_kill_teardown() {
-  local id="$1" ledger="$2" note="$3" session="${4:-}" keep="${5:-}" pane="" r phase f
+  local id="$1" ledger="$2" note="$3" session="${4:-}" keep="${5:-}" pane="" r phase f dead=" | .budget.since = \$now"
+  if ns_tmux_has "$id"; then dead=""; fi
   if [ -n "$session" ] && ns_tmux_has "$id"; then
     pane=$(ns_tmux_pane_pid "$id" 2>/dev/null) || pane=""
     ns_tmux_kill "$id" || true
@@ -48,7 +49,8 @@ ns_kill_teardown() {
     rm -f "$f" "$(ns_pool_dir)/$r--$phase.exit"
   done < <(ns_pool_live "$id")
   [ -z "$keep" ] || return 0
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end) | .stop_requested = null'
+  # without a live conductor the time since the last checkpoint is a dead gap, not budget used (#9)
+  "$NS_HOME/bin/ns-ledger" set "$ledger" ".phases |= map(if .state == \"running\" then .state = \"pending\" else . end) | .stop_requested = null$dead"
   "$NS_HOME/bin/ns-ledger" state "$ledger" stopped --note "$note"
   "$NS_HOME/bin/ns-ledger" checkpoint "$ledger"
 }

@@ -39,12 +39,13 @@ lock() {
 # BUDGET_TX: jq definition budget_tx($old; $now). The budget clock runs while the state is running and
 # the budget is not paused. When a write starts or stops the clock, the hours up to now are charged
 # (if it ran) and since is set to now, so time spent parked, queued, stopped or at a gate is never
-# charged by the next checkpoint (#9).
+# charged by the next checkpoint (#9). A write that sets since itself (a dead run leaving running:
+# ns resume, ns drain, ns kill set since to now) is not charged: its gap is not budget used.
 # shellcheck disable=SC2016 # jq variables, not shell ones
 BUDGET_TX='def budget_tx($old; $now):
   def active: .state == "running" and ((.budget.paused // false) | not);
   if ($old | active) == active then .
-  else (if ($old | active)
+  else (if ($old | active) and .budget.since == $old.budget.since
         then .budget.used = (((.budget.used + (($now | fromdateiso8601) - ($old.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100)
         else . end)
     | .budget.since = $now
@@ -195,9 +196,12 @@ cmd_checkpoint() {
   now="$(ns_now)"
   json="$(ns_ledger_read "$ledger" | jq -c --arg now "$now" '
     (if .state == "running" and (.budget.paused | not)
-     then .budget.used = ((.budget.used + (($now | fromdateiso8601) - (.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100
-     else . end)
-    | .budget.since = $now | .updated = $now')"
+     then ((((($now | fromdateiso8601) - (.budget.since | fromdateiso8601)) / 36) | floor) as $u
+           | (if $u > 0 then $u else 0 end) as $u
+           | .budget.used = (((.budget.used * 100 | round) + $u) / 100)
+           | .budget.since = ((.budget.since | fromdateiso8601) + $u * 36 | todateiso8601))
+     else .budget.since = $now end)
+    | .updated = $now')"
   printf '%s\n' "$json" | ns_ledger_write "$ledger"
   state="$(jq -r .state <<<"$json")"
   id="$(jq -r .id <<<"$json")"

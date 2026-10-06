@@ -125,7 +125,9 @@ ns_resume_start() {
     live=$(ns_queue_live_count)
     if [ "$live" -ge "$(ns_queue_max)" ]; then
       if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
-        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+        # no live conductor here: a crashed run's dead gap is not budget used (#9)
+        # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true | .budget.since = $now' || return 1
         "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot" || return 1
         "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot" || return 1
         ns_resume_push "$id" "$ledger" || return 1
