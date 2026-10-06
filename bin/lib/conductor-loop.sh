@@ -104,7 +104,7 @@ conductor_feature() {
 # when the open run PRs form more than one chain.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
-  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since
+  local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since chain skipped row msg
   load_run "$1"
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
@@ -154,7 +154,26 @@ conductor_stack_base() {
       "$(jq -r --arg b "$base" '[$b] + . | (.[:-1] | join(", ")) + " or " + .[-1]' <<<"$tops")" >&2
     exit 7
   fi
-  top=$(jq -c 'last // empty' <<<"$others")
+  # red base: walk down from the top of the chain to the nearest PR whose checks are not failing
+  # (pending and no checks count as not red); the skipped PRs are recorded and named
+  chain=$(ns_stack_chains "$others" 2>/dev/null | jq -c '.[0] // []')
+  top=""
+  skipped="[]"
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    if [ "$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")" = fail ]; then
+      skipped=$(jq -c --argjson r "$row" '. + [{run: $r.run, number: $r.number}]' <<<"$skipped")
+      continue
+    fi
+    top="$row"
+    break
+  done < <(jq -c 'reverse | .[]' <<<"$chain")
+  lg set "$ledger" ".stack_skipped = $skipped"
+  if [ "$skipped" != "[]" ]; then
+    msg="Stacked on $(if [ -n "$top" ]; then jq -r '"#\(.number)"' <<<"$top"; else printf '%s' "$base"; fi) instead of #$(jq -r '.[0].number' <<<"$skipped") (checks failing on $(jq -r 'map("#\(.number)") | join(", ")' <<<"$skipped"))"
+    printf '%s\n' "$msg" >&2
+    lg event "$ledger" stack "$msg"
+  fi
   if [ -z "$top" ]; then
     lg set "$ledger" ".stacked_on = $(jstr "$base")"
     lg checkpoint "$ledger"

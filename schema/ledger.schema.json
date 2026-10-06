@@ -33,7 +33,12 @@
     "branch": { "type": "string", "minLength": 1, "description": "Run branch holding the ledger." },
     "release": { "type": ["string", "null"], "pattern": "^v[0-9][0-9A-Za-z._-]*$", "description": "Nightshift release tag the run started on (basename of NS_HOME); null for a dev checkout. Resume and workers use this release." },
     "feature_branch": { "$ref": "#/$defs/nullable_string", "description": "Code branch, set when created." },
-    "stacked_on": { "$ref": "#/$defs/nullable_string", "description": "Run id of the open PR this run is stacked on, or main; set by ns-conductor stack-base." },
+    "stacked_on": { "$ref": "#/$defs/nullable_string", "description": "Run id of the open PR this run is stacked on, or the base branch; set by ns-conductor stack-base." },
+    "stack_skipped": {
+      "type": "array",
+      "description": "Open run PRs above stacked_on that stack-base skipped because their checks were failing, top first; empty when none was skipped.",
+      "items": { "type": "object", "additionalProperties": false, "required": ["run", "number"], "properties": { "run": { "type": "string", "minLength": 1 }, "number": { "type": "integer", "minimum": 1 } } }
+    },
     "queued_for_slot": { "type": "boolean", "description": "True while the run waits in the run queue (max_runs); set and cleared under the queue lock by ns new and ns resume." },
     "pr": { "$ref": "#/$defs/nullable_string", "description": "Pull request URL." },
     "created": { "$ref": "#/$defs/time", "description": "Creation time." },
