@@ -24,6 +24,7 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 | Claude login | `~/.claude` | `ns` |
 | ntfy topic, desk URL, health-check URL | `~/.config/ns/env`, mode 600 | `ns` |
 | ntfy token for `ns-notify` (`tk_` and 29 letters or digits; write-only on the one topic) | `~/.config/ns/tokens/ntfy`, mode 600 (`ns-notify` refuses another mode) | `ns`; it goes only to curl on stdin for your own ntfy at `NS_NTFY_URL`, never to ntfy.sh, GitHub (`ns doctor` skips it in the GitHub token check, `ns_token_export` refuses the name `ntfy`), argv, logs or output |
+| Run logs (session streams, prompts, check output, `dequeue.log`) | `~/.config/ns/logs/` and `logs/<id>/`, mode 700; `dequeue.log` mode 600 | `ns` |
 | Cloudflare tunnel token | the `cloudflared` service on ns-main | root |
 | The release | `/opt/nightshift/<tag>`, owned by root | read-only for `ns` |
 | The desk | `/srv/ns-space` (owner `ns`, group `caddy`, mode 2750) | `ns`, the web server; reached through Access |
@@ -31,6 +32,8 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 | QA test credentials | only on the self-hosted QA runner, never on ns-main | not ns-main |
 
 Nothing prints a token: `ns doctor` shows only file modes and expiry dates and sends only the `tokens/<owner>` files of registered project owners to GitHub, `ns publish` and `ns-notify` refuse anything that looks like a token, and secrets are read with hidden input.
+
+A token never reaches a tmux server: every tmux session in `bin/` is started through one function that drops `GH_TOKEN`, so a server started by `ns new`, `ns resume`, `ns approve`, `ns up` or `ns dequeue` does not keep the caller's token in its global environment; each conductor loads its own owner's token in `ns-launch`. When a conductor ends, `ns-launch` runs `ns dequeue` without the ending run's token. The ledger push of a run that `ns dequeue` or `ns resume` starts or queues runs with the token of that run's project owner (`tokens/<owner>` when it exists, else `gh`'s own login; a `GH_TOKEN` of the caller is dropped first), set only in the environment of that one `ns-ledger checkpoint --push` (its git commit, push and the repo's hooks).
 
 ## Token scopes
 

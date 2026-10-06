@@ -50,7 +50,8 @@ ns_drain_main() {
       *) continue ;;
     esac
     if ns_tmux_has "$id"; then
-      "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested="parked"'
+      # keep an owner's pending ns stop: a stopped run must not come back with ns resume --all
+      "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = (.stop_requested // "parked")'
       "$NS_HOME/bin/ns-ledger" event "$ledger" stop-requested "drain: park requested"
     else
       "$NS_HOME/bin/ns-ledger" set "$ledger" '.state="parked"'

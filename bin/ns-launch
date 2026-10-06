@@ -81,8 +81,8 @@ fi
 
 mapfile -t plugin_args < <(ns_plugin_args)
 
-log="$(ns_config_dir)/logs/$id/conductor.jsonl"
-mkdir -p "$(dirname "$log")"
+logdir=$(ns_run_logdir "$id")
+log="$logdir/conductor.jsonl"
 
 cd "$wt"
 rc=0
@@ -93,9 +93,9 @@ wait || true
 # the conductor ended: let the next queued run take the slot
 if [ "$mode" != --triage ]; then
   # clean environment: the ending run's token and ids must not reach other runs' conductors
-  mkdir -p "$(ns_config_dir)/logs/$id"
-  (umask 077 && : >>"$(ns_config_dir)/logs/$id/dequeue.log")
+  logdir=$(ns_run_logdir "$id")
+  (umask 077 && : >>"$logdir/dequeue.log") && chmod 600 "$logdir/dequeue.log"
   env -u GH_TOKEN -u NS_RUN_ID -u NS_LEDGER -u NS_PROJECT NS_QUEUE_EXCLUDE="$id" \
-    "$NS_HOME/bin/ns" dequeue >>"$(ns_config_dir)/logs/$id/dequeue.log" 2>&1 || true
+    "$NS_HOME/bin/ns" dequeue >>"$logdir/dequeue.log" 2>&1 || true
 fi
 exit "$rc"

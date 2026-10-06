@@ -10,7 +10,7 @@ ns_stack_setup() {
   local dir="$1" profile="$2" logdir log cmd name sf
   local -a cmds=()
   logdir="$(ns_config_dir)/logs"
-  mkdir -p "$logdir"
+  ns_private_dir "$logdir"
   log="$logdir/setup-$(basename "$dir").log"
   : >"$log"
   cmd=$(jq -r '.commands.setup // empty' <<<"$profile")

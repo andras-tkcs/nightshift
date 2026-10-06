@@ -20,6 +20,15 @@ ns_now() {
 
 ns_config_dir() { printf '%s\n' "${NS_CONFIG_DIR:-$HOME/.config/ns}"; }
 ns_desk_dir() { printf '%s\n' "${NS_DESK_DIR:-/srv/ns-space}"; }
+# ns_private_dir <dir>: create <dir> (missing parents too) readable by the owner only; an
+# existing <dir> is set to 700 as well
+ns_private_dir() { (umask 077 && mkdir -p "$1") && chmod 700 "$1"; }
+# ns_run_logdir <id>: create logs/ and logs/<id> private (700) and print logs/<id>
+ns_run_logdir() {
+  local d
+  d="$(ns_config_dir)/logs"
+  ns_private_dir "$d/$1" && chmod 700 "$d" && printf '%s\n' "$d/$1"
+}
 ns_coding_dir() { printf '%s\n' "${NS_CODING_DIR:-$HOME/Coding}"; }
 ns_worktree_root() { printf '%s/worktrees\n' "$(ns_coding_dir)"; }
 

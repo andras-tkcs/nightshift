@@ -43,7 +43,7 @@ ns ls
 ns resume --all
 ```
 
-`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked, stopped or crashed run; use `ns resume <id>` for one. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` timer come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
+`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked or crashed run; runs you stopped with `ns stop` or `ns kill` stay stopped (it names them) until you `ns resume <id>` them. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` timer come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
 
 ## A run that stopped without telling you
 
