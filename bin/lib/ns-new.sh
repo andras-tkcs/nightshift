@@ -51,7 +51,7 @@ ns_new_start() {
 ns_new_main() {
   local arg="" text="" tier="" yes=false onboard=false now=false desk_file="" allow_outside=false
   local prefix n id project profile rc=0 path pname repo branch base plan_branch wt ledger hours
-  local ans rec src
+  local ans rec src known
   while [ $# -gt 0 ]; do
     case "$1" in
       --tier)
@@ -144,7 +144,10 @@ ns_new_main() {
   branch=$(jq -r '.branch // ""' <<<"$project")
 
   # 2. already known?
-  if [ -n "$id" ] && ns_run_get "$id" >/dev/null; then
+  if [ -n "$id" ] && known=$(ns_run_get "$id"); then
+    if [ "$(jq -r '.archived // false' <<<"$known")" = true ]; then
+      ns_die "run $id is archived (removed by ns rm or ns gc; it stays in ns ls --all): to start $id again, free the id with ns rm $id --forget --remote, which deletes $(jq -r '.branch // "its plan branch"' <<<"$known") and the run's feature and phase branches on origin and closes an open PR (see what it would do with ns rm $id --forget --remote --dry-run first), then ns new $id"
+    fi
     if ns_tmux_has "$id"; then
       printf '%s is already running: ns attach %s\n' "$id" "$id"
       return 0
