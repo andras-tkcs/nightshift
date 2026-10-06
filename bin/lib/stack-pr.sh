@@ -104,16 +104,25 @@ ns_stack_checks_state() {
 
 # ns_stack_chains <open prs json>: JSON array of chains, each an array of PRs bottom to top.
 # One chain per leaf (a PR no other run PR is based on); a lower PR shared by a fork is in each chain.
+# When bases form a cycle it warns on stderr naming the PRs in the cycle: a path down from a leaf stops
+# before it repeats a PR, and a PR of a cycle that no chain reaches is listed on its own.
 ns_stack_chains() {
-  local out
-  out=$(jq -c '. as $all | length as $max
-    | def path($p; $n): if $n <= 0 then [$p]
-        else ([$all[] | select(.head == $p.base)] | first) as $b
-          | if $b == null then [$p] else path($b; $n - 1) + [$p] end end;
-    ([.[] as $p | select(any($all[]; .base == $p.head) | not) | path($p; $max)]) as $c
-    | if ($c | length) == 0 and ($all | length) > 0 then [$all[] | [.]] else $c end' <<<"$1")
-  if jq -e 'length > 0 and (. as $all | all(.[]; . as $p | any($all[]; .base == $p.head)))' <<<"$1" >/dev/null; then
-    printf 'warning: the bases of the open run PRs form a cycle: listing each PR on its own\n' >&2
+  local out cyc
+  out=$(jq -c '. as $all
+    | def up($p): [$all[] | select(.head == $p.base)] | first;
+      def path($p; $seen): up($p) as $b
+        | if $b == null or any($seen[]; . == $b.head) then [$p] else path($b; $seen + [$b.head]) + [$p] end;
+    [.[] as $p | select(any($all[]; .base == $p.head) | not) | path($p; [$p.head])] as $c
+    | ([$c[][] | .number]) as $in
+    | $c + [$all[] | select(.number as $n | any($in[]; . == $n) | not) | [.]]' <<<"$1")
+  cyc=$(jq -r '. as $all
+    | def up($p): [$all[] | select(.head == $p.base)] | first;
+      def path($p; $seen): up($p) as $b
+        | if $b == null or any($seen[]; . == $b.head) then [$p] else path($b; $seen + [$b.head]) + [$p] end;
+    [.[] | . as $p | path($p; [$p.head]) as $pa | up($pa[0]) as $b
+      | select($b != null and $b.head == $p.head) | "#\(.number)"] | join(", ")' <<<"$1")
+  if [ -n "$cyc" ]; then
+    printf 'warning: the bases of the open run PRs %s form a cycle: retarget one of them by hand\n' "$cyc" >&2
   fi
   printf '%s\n' "$out"
 }

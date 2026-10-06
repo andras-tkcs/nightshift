@@ -569,7 +569,7 @@ PRS_PARTIAL_CYCLE='[
   run ns stack sbx
   assert_success
   assert_output_contains "cycle"
-  [ "$(grep -c ' #6 ' <<<"$output")" -eq 1 ]
-  [ "$(grep -c ' #7 ' <<<"$output")" -eq 1 ]
-  [ "$(grep -c ' #8 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -cE '^  sbx-[0-9]+ +#6 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -cE '^  sbx-[0-9]+ +#7 ' <<<"$output")" -eq 1 ]
+  [ "$(grep -cE '^  sbx-[0-9]+ +#8 ' <<<"$output")" -eq 1 ]
 }
