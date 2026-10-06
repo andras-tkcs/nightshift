@@ -73,23 +73,40 @@ ns_stack_open_prs() {
     map(. + {depth: depth(.; $max)}) | sort_by([.depth, .createdAt]) | map(del(.depth))' <<<"$rows"
 }
 
-# ns_stack_on_base <open prs json> <base branch> <fix pattern> <feature pattern> <prefix>: keep the run PRs
-# whose chain bottoms out at the base branch: a stack belongs to one base branch. A chain whose bottom PR
-# targets a run branch without an open PR (its PR was closed or merged) is kept, so a closed base is still
-# reported; PRs whose bases form a cycle have no bottom and are kept. Chains on another base are dropped.
+# ns_stack_on_base <open prs json> <base branch> <fix pattern> <feature pattern> <prefix> [repo] [closed list json]:
+# keep the run PRs whose chain belongs to the base branch: a stack belongs to one base branch. A chain's
+# bottom PR targets the base branch, or a run branch without an open PR: then the base is resolved through
+# the closed PRs (closed or merged) of that head, following their bases until the base branch (kept), another
+# branch (dropped) or a run branch whose PR is not found in the closed list (kept with base_unknown: true; the
+# caller escalates). The first closed PR must have been closed at or after the bottom PR was created (a
+# reused name does not count). Without a closed list it is fetched from the repo when needed. PRs whose
+# bases form a cycle have no bottom and are kept.
 ns_stack_on_base() {
-  local prs="$1" basebr="$2" fixpat="$3" featpat="$4" prefix="$5" b ok="[]"
+  local prs="$1" basebr="$2" fixpat="$3" featpat="$4" prefix="$5" repo="${6:-}" cl="${7:-}" fre ere since
+  fre=$(ns_stack_pattern_re "$fixpat" "$prefix")
+  ere=$(ns_stack_pattern_re "$featpat" "$prefix")
   prs=$(jq -c '. as $all
     | def up($p): [$all[] | select(.head == $p.base)] | first;
       def bottom($p; $seen): up($p) as $b
-        | if $b == null then $p.base elif any($seen[]; . == $b.head) then null else bottom($b; $seen + [$b.head]) end;
-    map(. + {bottom: bottom(.; [.head])})' <<<"$prs")
-  while IFS= read -r b; do
-    [ -n "$b" ] || continue
-    if ns_stack_run_id "$fixpat" "$featpat" "$prefix" "$b" >/dev/null; then ok=$(jq -c --arg b "$b" '. + [$b]' <<<"$ok"); fi
-  done < <(jq -r --arg base "$basebr" '[.[].bottom | select(. != null and . != $base)] | unique | .[]' <<<"$prs")
-  jq -c --arg base "$basebr" --argjson ok "$ok" \
-    'map(select(.bottom == null or .bottom == $base or (.bottom as $x | any($ok[]; . == $x))) | del(.bottom))' <<<"$prs"
+        | if $b == null then $p elif any($seen[]; . == $b.head) then null else bottom($b; $seen + [$b.head]) end;
+    map(bottom(.; [.head]) as $b | . + {bottom: $b.base, bottomCreated: $b.createdAt})' <<<"$prs")
+  if [ -z "$cl" ]; then
+    cl="[]"
+    since=$(jq -r --arg base "$basebr" --arg f "$fre" --arg e "$ere" '[.[] | select(.bottom != null and .bottom != $base
+      and (.bottom | test($f) or test($e))) | .bottomCreated] | min // empty' <<<"$prs")
+    if [ -n "$since" ] && [ -n "$repo" ]; then cl=$(ns_stack_closed_list "$repo" "$since"); fi
+  fi
+  jq -c --arg base "$basebr" --arg f "$fre" --arg e "$ere" --argjson cl "$cl" '
+    def isrun($b): ($b | test($f) or test($e));
+    def res($b; $created; $seen; $first):
+      if $b == $base then "base"
+      elif isrun($b) | not then "other"
+      elif any($seen[]; . == $b) then "unknown"
+      else ([$cl[] | select(.headRefName == $b and (($first | not) or .closedAt >= $created))] | sort_by(.closedAt) | last) as $c
+        | if $c == null or ($c.baseRefName // null) == null then "unknown" else res($c.baseRefName; $created; $seen + [$b]; false) end
+      end;
+    map((if .bottom == null then "base" else res(.bottom; .bottomCreated; []; true) end) as $r
+      | select($r != "other") | del(.bottom, .bottomCreated) | if $r == "unknown" then . + {base_unknown: true} else . end)' <<<"$prs"
 }
 
 # ns_stack_checks_state <statusCheckRollup json>: none | pending | fail | pass
@@ -127,28 +144,37 @@ ns_stack_chains() {
   printf '%s\n' "$out"
 }
 
-# ns_stack_closed_list <repo> [since]: JSON array of the PRs closed without a merge (number, headRefName,
-# closedAt), all pages of a GitHub search (at most 1000 results); with since (UTC time) only those closed then or later
+# ns_stack_closed_list <repo> [since]: JSON array of the closed PRs, merged or not (number, headRefName,
+# baseRefName, closedAt, merged), all pages of a GitHub search (at most 1000 results); with since (UTC time)
+# only those closed then or later. When the search fails it warns on stderr and prints [].
 ns_stack_closed_list() {
-  local q="repo:$1 is:pr is:closed is:unmerged" out
+  local q="repo:$1 is:pr is:closed" out
   [ -z "${2:-}" ] || q="$q closed:>=$2"
   # shellcheck disable=SC2016
-  out=$(gh api graphql --paginate -f q="$q" -f query='query ClosedRunPRs($q: String!, $endCursor: String) {
+  if ! out=$(gh api graphql --paginate -f q="$q" -f query='query ClosedRunPRs($q: String!, $endCursor: String) {
   search(query: $q, type: ISSUE, first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor }
-    nodes { ... on PullRequest { number headRefName state mergedAt closedAt } } } }' \
-    --jq '.data.search.nodes[]' 2>/dev/null) || {
+    nodes { ... on PullRequest { number headRefName baseRefName state mergedAt closedAt } } } }' \
+    --jq '.data.search.nodes[]' 2>/dev/null) || ! out=$(jq -sc '[.[] | select(.number != null)
+    | {number, headRefName, baseRefName, closedAt: (.closedAt // "9999"), merged: (.mergedAt != null or .state == "MERGED")}]' <<<"$out" 2>/dev/null); then
+    printf 'warning: could not search the closed PRs of %s: closed and merged bases are not checked\n' "$1" >&2
     printf '[]\n'
     return 0
-  }
-  jq -sc '[.[] | select((.state // "") == "CLOSED" and .mergedAt == null)
-    | {number, headRefName, closedAt: (.closedAt // "9999")}]' <<<"$out" 2>/dev/null || printf '[]\n'
+  fi
+  printf '%s\n' "$out"
 }
 
-# ns_stack_closed_candidates <open prs json> [base branch]: JSON array of the bases of the open run PRs that
-# could be a PR closed without a merge: not the base branch, and no open PR has that head (a reused name)
+# ns_stack_closed_candidates <open prs json> [base branch] [fix pattern feature pattern prefix]: JSON array of
+# the bases of the open run PRs that could be a closed PR: not the base branch, and no open PR has that head
+# (a reused name); with the patterns, only run branches
 ns_stack_closed_candidates() {
-  jq -c --arg b "${2:-}" '. as $all | [.[] | .base | select(. != $b)
-    | select(. as $x | any($all[]; .head == $x) | not)] | unique' <<<"$1" 2>/dev/null || printf '[]\n'
+  local fre="" ere=""
+  if [ $# -ge 5 ]; then
+    fre=$(ns_stack_pattern_re "$3" "$5")
+    ere=$(ns_stack_pattern_re "$4" "$5")
+  fi
+  jq -c --arg b "${2:-}" --arg f "$fre" --arg e "$ere" '. as $all | [.[] | .base | select(. != $b)
+    | select(. as $x | any($all[]; .head == $x) | not)
+    | select($f == "" or test($f) or test($e))] | unique' <<<"$1" 2>/dev/null || printf '[]\n'
 }
 
 # ns_stack_closed_since <open prs json> <candidates json>: the earliest creation time of a PR on a candidate base
@@ -166,7 +192,7 @@ ns_stack_closed_heads() {
   cands=$(ns_stack_closed_candidates "$prs" "$basebr")
   [ "$cands" != '[]' ] || return 0
   [ -n "$cl" ] || cl=$(ns_stack_closed_list "$repo" "$(ns_stack_closed_since "$prs" "$cands")")
-  jq -r --argjson prs "$prs" --argjson cands "$cands" '. as $cl
+  jq -r --argjson prs "$prs" --argjson cands "$cands" 'map(select(.merged | not)) as $cl
     | $prs | [.[] | . as $p | select(any($cands[]; . == $p.base))
         | select(any($cl[]; .headRefName == $p.base and .closedAt >= $p.createdAt)) | .base]
     | unique | .[]' <<<"$cl" 2>/dev/null || true
@@ -218,5 +244,5 @@ ns_stack_project_prs() {
   fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
   featpat=$(jq -r '.git.feature_branch' <<<"$prof")
   prs=$(ns_stack_open_prs "$(jq -r .repo <<<"$p")" "$fixpat" "$featpat" "$prefix" "$path") || return 1
-  ns_stack_on_base "$prs" "$(jq -r '.git.base_branch' <<<"$prof")" "$fixpat" "$featpat" "$prefix"
+  ns_stack_on_base "$prs" "$(jq -r '.git.base_branch' <<<"$prof")" "$fixpat" "$featpat" "$prefix" "$(jq -r .repo <<<"$p")"
 }

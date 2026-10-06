@@ -70,7 +70,7 @@ ns_stack_list() {
     local row age chains nch ci closed note all basebr off
     basebr=$(jq -r '.git.base_branch // ""' <<<"$prof")
     all="$prs"
-    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix")
+    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix" "$repo")
     printf '%s\n' "$repo"
     off=$(jq -c --argjson on "$prs" '[.[] | select(. as $p | any($on[]; .number == $p.number) | not) | "#\(.number)"]' <<<"$all")
     [ "$off" = "[]" ] || printf '  %s open run PRs target other base branches than %s (not shown): %s\n' \
@@ -90,6 +90,7 @@ ns_stack_list() {
         age=$(ns_age "$(jq -r .createdAt <<<"$row")" 2>/dev/null) || age="-"
         note=""
         if [ -n "$closed" ] && grep -qxF -- "$(jq -r .base <<<"$row")" <<<"$closed"; then note="  base closed"; fi
+        if [ "$(jq -r '.base_unknown // false' <<<"$row")" = true ]; then note="$note  base unknown"; fi
         printf '  %-12s %-6s %-22s %-8s %-18s %s%s\n' "$(jq -r .run <<<"$row")" "#$(jq -r .number <<<"$row")" \
           "$(jq -r .base <<<"$row")" "$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")" \
           "$(jq -r 'if .reviewDecision == "" then "-" else .reviewDecision end' <<<"$row")" "$age" "$note"
