@@ -64,6 +64,10 @@ ns_resume_reconcile() {
     elif [ "$st" = running ] && ! grep -qxF "$ph" <<<"$live"; then
       "$NS_HOME/bin/ns-ledger" set "$ledger" "(.phases[] | select(.id == \"$ph\") | .state) = \"pending\"" || return 1
       "$NS_HOME/bin/ns-ledger" event "$ledger" note "reconciled $ph as pending: no live worker" || return 1
+    elif [ "$st" = queued ]; then
+      # queued for a pool slot by the last session; the new conductor schedules pending phases
+      "$NS_HOME/bin/ns-ledger" set "$ledger" "(.phases[] | select(.id == \"$ph\") | .state) = \"pending\"" || return 1
+      "$NS_HOME/bin/ns-ledger" event "$ledger" note "reconciled $ph as pending: queued for a pool slot" || return 1
     fi
   done <<<"$phases"
 }

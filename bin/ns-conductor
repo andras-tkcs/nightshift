@@ -123,9 +123,9 @@ auto_mode_fresh() {
 
 # queue_phase <phase> <reason>: the phase waits for a pool slot
 queue_phase() {
-  phase_update "$1" '.state = "queued"'
-  lg event "$ledger" note "queued $1: $2"
-  printf 'queued %s: %s\n' "$1" "$2"
+  phase_update "$1" '.state = "queued"' &&
+    lg event "$ledger" note "queued $1: $2" &&
+    printf 'queued %s: %s\n' "$1" "$2"
 }
 
 # spawn_worker: run by conductor_start under the pool lock (ns_pool_locked), with its locals.
@@ -200,7 +200,7 @@ conductor_start() {
   n=$(ns_pool_count)
   max=$(ns_pool_max)
   if [ "$n" -ge "$max" ]; then
-    queue_phase "$phase" "pool full ($n/$max)"
+    queue_phase "$phase" "pool full ($n/$max)" || ns_die "cannot queue $phase"
     return 3
   fi
   # 2. budget
@@ -299,7 +299,7 @@ conductor_start() {
       return 0
       ;;
     12)
-      queue_phase "$phase" "pool lock busy"
+      queue_phase "$phase" "pool lock busy" || ns_die "cannot queue $phase"
       return 3
       ;;
     *) return "$rc" ;;
@@ -349,7 +349,7 @@ finish_worker() {
 
 conductor_wait() {
   [ $# -ge 1 ] || ns_usage "ns-conductor wait <id> [--timeout <s>]"
-  local id="$1" timeout=540 deadline now remaining sr f base pid finished live
+  local id="$1" timeout=540 deadline now remaining sr f base pid finished live queued=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -388,13 +388,26 @@ conductor_wait() {
       return 0
     fi
     if [ "${#live[@]}" -eq 0 ]; then
-      printf 'no workers\n'
-      return 0
+      # a phase queued for a pool slot: sleep until another run's worker frees one, so the
+      # caller's retry of start after exit 3 is not a tight loop
+      queued=$(lg get "$ledger" '[.phases[]? | select(.state == "queued") | .id] | join(" ")')
+      if [ -z "$queued" ]; then
+        printf 'no workers\n'
+        return 0
+      fi
+      if [ "$(ns_pool_count)" -lt "$(ns_pool_max)" ]; then
+        printf 'pool slot free\n'
+        return 0
+      fi
     fi
     now=$(date +%s)
     remaining=$((deadline - now))
     if [ "$remaining" -le 0 ]; then
-      printf 'still running: %s\n' "${live[*]}"
+      if [ "${#live[@]}" -eq 0 ]; then
+        printf 'pool full: %s waits for a slot\n' "$queued"
+      else
+        printf 'still running: %s\n' "${live[*]}"
+      fi
       return 124
     fi
     [ "$remaining" -le 5 ] || remaining=5
