@@ -158,3 +158,113 @@ set_pr() {
   assert_output_contains "kept sbx-12"
   [ -d "$WT" ]
 }
+
+@test "ns new on an archived id says it is archived and names ns rm --forget" {
+  ns rm sbx-12 --yes >/dev/null
+  run ns new sbx-12 --tier T1 --yes
+  assert_failure
+  assert_output_contains "archived"
+  assert_output_contains "ns rm sbx-12 --forget --remote"
+  assert_output_not_contains "ns resume"
+}
+
+@test "ns rm --remote on an already removed run reads origin/plan and deletes the remote branches" {
+  ns rm sbx-12 --yes >/dev/null
+  [ ! -e "$WT" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  run ns rm sbx-12 --yes --remote
+  assert_success
+  assert_output_contains "remove remote-branch origin/plan/sbx-12"
+  [ -z "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12' 'phase/sbx-12--p1' 'feature/sbx-12')" ]
+  run ns ls --all
+  assert_output_contains "sbx-12"
+}
+
+@test "ns rm --forget without --remote refuses while plan/<id> is on origin" {
+  snapshot "$BATS_TEST_TMPDIR/before"
+  run ns rm sbx-12 --forget --yes
+  assert_failure
+  assert_output_contains "plan/sbx-12 is still on origin"
+  assert_output_contains "--remote"
+  snapshot "$BATS_TEST_TMPDIR/after"
+  diff "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/after"
+  ns ls --all | grep -q sbx-12
+  # also after a plain ns rm: the entry stays until the branch is gone
+  ns rm sbx-12 --yes >/dev/null
+  run ns rm sbx-12 --forget --yes
+  assert_failure
+  assert_output_contains "plan/sbx-12 is still on origin"
+  ns ls --all | grep -q sbx-12
+}
+
+@test "ns rm --forget --remote on a removed run frees the id and ns new works afterwards" {
+  ns rm sbx-12 --yes >/dev/null
+  run ns rm sbx-12 --forget --remote --yes
+  assert_success
+  assert_output_contains "forgot sbx-12"
+  [ -z "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12' 'phase/sbx-12--p1' 'feature/sbx-12')" ]
+  run ns ls --all
+  assert_output_not_contains "sbx-12"
+  run ns new sbx-12 --tier T1 --yes
+  assert_success
+  [ -f "$LEDGER" ]
+  [ "$(lget .state)" != parked ]
+}
+
+@test "ns rm --forget --remote removes and forgets a parked run in one call" {
+  set_pr 103
+  run ns rm sbx-12 --forget --remote --yes
+  assert_success
+  assert_output_contains "closed PR"
+  assert_output_contains "forgot sbx-12"
+  [ ! -e "$WT" ]
+  [ -z "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  run ns new sbx-12 --tier T1 --yes
+  assert_success
+}
+
+@test "ns rm --forget refuses a live run" {
+  ns-ledger set "$LEDGER" '.state="running"'
+  ns-ledger checkpoint "$LEDGER" --push
+  run ns rm sbx-12 --forget --remote --yes
+  assert_failure
+  assert_output_contains "ns stop"
+  [ -d "$WT" ]
+  [ -n "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  ns ls --all | grep -q sbx-12
+}
+
+@test "ns rm --forget --remote --dry-run prints what it would do and changes nothing" {
+  ns rm sbx-12 --yes >/dev/null
+  cp "$NS_CONFIG_DIR/runs.yaml" "$BATS_TEST_TMPDIR/runs.before"
+  snapshot "$BATS_TEST_TMPDIR/before"
+  run ns rm sbx-12 --forget --remote --dry-run
+  assert_success
+  assert_output_contains "would remove remote-branch origin/plan/sbx-12"
+  assert_output_contains "would forget sbx-12"
+  snapshot "$BATS_TEST_TMPDIR/after"
+  diff "$BATS_TEST_TMPDIR/before" "$BATS_TEST_TMPDIR/after"
+  diff "$BATS_TEST_TMPDIR/runs.before" "$NS_CONFIG_DIR/runs.yaml"
+}
+
+@test "ns rm --all-stopped does not take --forget" {
+  run ns rm --all-stopped --forget --yes
+  assert_failure
+  [ -d "$WT" ]
+}
+
+@test "ns rm --help mentions --forget" {
+  run ns rm --help
+  assert_success
+  assert_output_contains "--forget"
+}
+
+@test "ns rm --forget without --remote frees the id once plan/<id> is gone from origin" {
+  ns rm sbx-12 --yes --remote >/dev/null
+  [ -z "$(git ls-remote --heads "$REMOTE" 'plan/sbx-12')" ]
+  run ns rm sbx-12 --forget --yes
+  assert_success
+  assert_output_contains "forgot sbx-12"
+  run ns ls --all
+  assert_output_not_contains "sbx-12"
+}
