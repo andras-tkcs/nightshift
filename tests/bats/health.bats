@@ -344,3 +344,14 @@ checks_running() {
   assert_success
   [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
 }
+
+@test "checks that run longer than NS_CHECKS_MAX_SECS count as silent again (#56 review)" {
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+  sleep 2
+  NS_CHECKS_MAX_SECS=1 run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}

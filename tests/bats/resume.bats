@@ -26,6 +26,10 @@ EOF
   rm -f "$TMUX_STUB_DIR/sbx-12"
 }
 
+teardown() {
+  [ -z "${FAKE_BS_PID:-}" ] || kill "$FAKE_BS_PID" 2>/dev/null || true
+}
+
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 lget() { ns-ledger get "$LEDGER" "$1"; }
 
@@ -244,7 +248,8 @@ $NS_OPT/v0.0.9/plugins/ns-python" ]
 @test "ns new, ns resume and ns approve refuse while the upgrade lock is held (#78)" {
   export NS_OPT="$BATS_TEST_TMPDIR/opt"
   mkdir -p "$NS_OPT"
-  printf 'pid=%s\n' "$$" >"$NS_OPT/.upgrade.lock"
+  fake_bootstrap
+  printf 'pid=%s\n' "$FAKE_BS_PID" >"$NS_OPT/.upgrade.lock"
   run ns new sbx-13 --tier T1 --yes
   assert_failure 1
   assert_output_contains "upgrade"
@@ -284,7 +289,8 @@ $NS_OPT/v0.0.9/plugins/ns-python" ]
   mkdir -p "$NS_OPT"
   ns-ledger set "$LEDGER" '.state="parked"'
   # the lock appears after ns resume's first check: call the start step directly
-  printf 'pid=%s\n' "$$" >"$NS_OPT/.upgrade.lock"
+  fake_bootstrap
+  printf 'pid=%s\n' "$FAKE_BS_PID" >"$NS_OPT/.upgrade.lock"
   run bash -c 'source "$1/bin/lib/common.sh"; source "$1/bin/lib/runs.sh"; source "$1/bin/lib/queue.sh"
     source "$1/bin/lib/ns-resume.sh"; ns_resume_start sbx-12 "$2" "$3" parked "$1"' _ "$NS_REPO_ROOT" "$WT" "$LEDGER"
   [ "$status" -eq 10 ]
@@ -297,4 +303,42 @@ $NS_OPT/v0.0.9/plugins/ns-python" ]
     source "$1/bin/lib/ns-resume.sh"; NS_DEQUEUE=1 ns_resume_start sbx-12 "$2" "$3" queued "$1"' _ "$NS_REPO_ROOT" "$WT" "$LEDGER"
   [ "$status" -eq 10 ]
   [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "an upgrade lock whose pid is a live process other than bootstrap.sh is stale (#78 review)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  sleep 300 3>&- >/dev/null 2>&1 &
+  FAKE_BS_PID=$!
+  printf 'pid=%s\n' "$FAKE_BS_PID" >"$NS_OPT/.upgrade.lock"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  run ns resume sbx-12
+  assert_success
+  assert_output_contains "stale upgrade lock"
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "an upgrade lock without a readable pid counts as held and names the recovery (#78 review)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  printf 'garbage\n' >"$NS_OPT/.upgrade.lock"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  run ns resume sbx-12
+  assert_failure 1
+  assert_output_contains "rm $NS_OPT/.upgrade.lock"
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "ns-launch writes conductor.pid while it runs and removes only its own (#78 review)" {
+  pidf="$NS_CONFIG_DIR/logs/sbx-12/conductor.pid"
+  printf 'cat "%s" >"%s"\n' "$pidf" "$BATS_TEST_TMPDIR/seen.pid" >"$BATS_TEST_TMPDIR/look.sh"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/look.sh" run ns-launch sbx-12 --resume
+  assert_success
+  [[ $(cat "$BATS_TEST_TMPDIR/seen.pid") =~ ^[0-9]+$ ]]
+  [ ! -e "$pidf" ]
+  # another ns-launch took the file over meanwhile: it stays
+  printf 'printf "%%s\\n" 999999 >"%s"\n' "$pidf" >"$BATS_TEST_TMPDIR/take.sh"
+  CLAUDE_STUB_MODE="script:$BATS_TEST_TMPDIR/take.sh" run ns-launch sbx-12 --resume
+  assert_success
+  [ "$(cat "$pidf")" = 999999 ]
 }

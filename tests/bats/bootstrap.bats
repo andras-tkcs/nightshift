@@ -476,10 +476,99 @@ teardown() {
 
 @test "a second bootstrap refuses while a live one holds the upgrade lock (#78)" {
   mkdir -p "$NS_BS_ROOT/opt/nightshift"
-  printf 'pid=%s\n' "$$" >"$NS_BS_ROOT/opt/nightshift/.upgrade.lock"
+  live_process /opt/nightshift/current/bin/bootstrap.sh
+  printf 'pid=%s\n' "$LIVE_PID" >"$NS_BS_ROOT/opt/nightshift/.upgrade.lock"
   run bootstrap_apply --upgrade v0.1.0
   assert_failure 1
   assert_output_contains "holds"
   [ ! -e "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
   [ -e "$NS_BS_ROOT/opt/nightshift/.upgrade.lock" ]
+}
+
+@test "bootstrap waits for a conductor start in flight under the queue lock (#78 review)" {
+  make_active_run
+  ns-ledger set "$BATS_TEST_TMPDIR/wt-act/.nightshift/runs/act-1/ledger.yaml" '.state="queued"'
+  live_process sleep
+  export TMUX_STUB_PANE_PID="$LIVE_PID"
+  # ns new / ns resume hold the queue lock from their late lock check to the tmux start
+  (
+    flock 9
+    : >"$BATS_TEST_TMPDIR/held"
+    sleep 2
+    printf 'DIR x\n' >"$TMUX_STUB_DIR/act-1"
+  ) 9>>"$NS_CONFIG_DIR/queue.lock" 3>&- >/dev/null 2>&1 &
+  until [ -e "$BATS_TEST_TMPDIR/held" ]; do sleep 0.1; done
+  run bootstrap_apply --upgrade v0.1.0
+  assert_failure 1
+  assert_output_contains "act-1  queued  v0.0.9  $LIVE_PID"
+  [ ! -e "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+}
+
+@test "a queue lock that stays busy refuses the install unless --force (#78 review)" {
+  make_active_run
+  mkdir -p "$NS_CONFIG_DIR"
+  (
+    flock 9
+    : >"$BATS_TEST_TMPDIR/held"
+    sleep 6
+  ) 9>>"$NS_CONFIG_DIR/queue.lock" 3>&- >/dev/null 2>&1 &
+  until [ -e "$BATS_TEST_TMPDIR/held" ]; do sleep 0.1; done
+  NS_BS_QUEUE_WAIT=1 run bootstrap_apply --upgrade v0.1.0
+  assert_failure 1
+  assert_output_contains "queue lock"
+  [ ! -e "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+  [ ! -e "$NS_BS_ROOT/opt/nightshift/.upgrade.lock" ]
+  NS_BS_QUEUE_WAIT=1 run bootstrap_apply --upgrade v0.1.0 --force
+  assert_success
+  [ -d "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+}
+
+@test "pid files that are symlinks or huge are not read (#78 review)" {
+  make_active_run
+  live_process ns-launch
+  mkdir -p "$NS_CONFIG_DIR/logs/act-1" "$NS_CONFIG_DIR/workers"
+  ln -s /dev/zero "$NS_CONFIG_DIR/logs/act-1/conductor.pid"
+  printf 'pid=%s\n' "$LIVE_PID" >"$BATS_TEST_TMPDIR/real.pid"
+  ln -s "$BATS_TEST_TMPDIR/real.pid" "$NS_CONFIG_DIR/workers/act-1--p1.pid"
+  run timeout 60 env NS_BS_TEST=1 RUNUSER_STUB_EXEC=1 "$NS_REPO_ROOT/bin/bootstrap.sh" --upgrade v0.1.0
+  assert_success
+  assert_output_contains "looks dead"
+  rm "$NS_CONFIG_DIR/logs/act-1/conductor.pid"
+  # a regular file: only its first bytes are read
+  { printf '%s' "$LIVE_PID"; head -c 100000 /dev/zero | tr '\0' 7; printf '\n'; } >"$NS_CONFIG_DIR/logs/act-1/conductor.pid"
+  rm "$NS_CONFIG_DIR/workers/act-1--p1.pid"
+  run timeout 60 env NS_BS_TEST=1 RUNUSER_STUB_EXEC=1 "$NS_REPO_ROOT/bin/bootstrap.sh" --upgrade v0.1.0
+  assert_success
+  assert_output_contains "looks dead"
+}
+
+@test "a conductor pid file that points at a live process other than ns-launch is ignored (#78 review)" {
+  make_active_run
+  live_process sleep
+  mkdir -p "$NS_CONFIG_DIR/logs/act-1"
+  printf '%s\n' "$LIVE_PID" >"$NS_CONFIG_DIR/logs/act-1/conductor.pid"
+  run bootstrap_apply --upgrade v0.1.0
+  assert_success
+  assert_output_contains "looks dead"
+}
+
+@test "control characters in ledger fields are not printed (#78 review)" {
+  make_active_run
+  ns-ledger set "$BATS_TEST_TMPDIR/wt-act/.nightshift/runs/act-1/ledger.yaml" \
+    '.state="parked" | .release="v0.0.9\u001b]0;pwned\u0007\u001b[2J"'
+  run bootstrap_apply --upgrade v0.1.0
+  assert_success
+  assert_output_contains "act-1  parked  v0.0.9]0;pwned[2J"
+  ! printf '%s' "$output" | grep -q $'\e'
+  ! printf '%s' "$output" | grep -q $'\a'
+}
+
+@test "a lock held by a live process that is not bootstrap.sh is stale (#78 review)" {
+  live_process sleep
+  mkdir -p "$NS_BS_ROOT/opt/nightshift"
+  printf 'pid=%s\n' "$LIVE_PID" >"$NS_BS_ROOT/opt/nightshift/.upgrade.lock"
+  run bootstrap_apply --upgrade v0.1.0
+  assert_success
+  [ -d "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+  [ ! -e "$NS_BS_ROOT/opt/nightshift/.upgrade.lock" ]
 }

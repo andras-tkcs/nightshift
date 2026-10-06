@@ -20,6 +20,10 @@ EOF
   SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
 }
 
+teardown() {
+  [ -z "${FAKE_BS_PID:-}" ] || kill "$FAKE_BS_PID" 2>/dev/null || true
+}
+
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
 
 run_field() { # <id> <jq filter on the ledger>
@@ -376,7 +380,8 @@ launched_running() {
   mkdir -p "$NS_OPT"
   write_triage_script
   # bootstrap.sh takes the lock while triage runs, after ns new's first check passed
-  printf 'printf "pid=%%s\\n" %s >"%s"\n' "$$" "$NS_OPT/.upgrade.lock" >>"$BATS_TEST_TMPDIR/triage.sh"
+  fake_bootstrap
+  printf 'printf "pid=%%s\\n" %s >"%s"\n' "$FAKE_BS_PID" "$NS_OPT/.upgrade.lock" >>"$BATS_TEST_TMPDIR/triage.sh"
   run ns new sbx-7 --yes
   assert_success
   assert_output_contains "upgrade"
