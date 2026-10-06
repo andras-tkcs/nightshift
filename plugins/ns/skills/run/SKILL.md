@@ -133,4 +133,4 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 - Never merge a PR. Never push to the base branch. Never tag. Never force-push.
 - Reviewers see the diff, the plan and the phase entry only, never a worker's log.
 - Every step ends with `ns-ledger checkpoint "$NS_LEDGER" --push` and `ns-conductor should-stop <id>`; on exit 0 run `ns-conductor park <id>` and end the session.
-- Exit 4 from any `ns-conductor` subcommand, or a tool call denied with `ns budget:`, means the time budget is used up and the run already waits at gate 1.5 (`budget-guard`): end the session with a one-line summary; never write a second escalation and never change `budget.limit`.
+- Exit 4 from any `ns-conductor` subcommand, or a tool call denied by the budget hook, means the time budget is used up and the run already waits at gate 1.5 (`budget-guard`): end the session with a one-line summary; never write a second escalation and never change `budget.limit`.
