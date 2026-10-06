@@ -67,10 +67,14 @@ ns_stack_list() {
     fixpat=$(jq -r '.git.fix_branch' <<<"$prof")
     featpat=$(jq -r '.git.feature_branch' <<<"$prof")
     prs=$(ns_stack_open_prs "$repo" "$fixpat" "$featpat" "$prefix" "$path") || ns_die "could not list the pull requests of $repo"
-    local row age chains nch ci closed note all basebr off
+    local row age chains nch ci closed note all basebr off cands clist
     basebr=$(jq -r '.git.base_branch // ""' <<<"$prof")
     all="$prs"
-    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix" "$repo")
+    # one closed search per project serves the base-branch check and the base closed marks
+    cands=$(ns_stack_closed_candidates "$all" "$basebr" "$fixpat" "$featpat" "$prefix")
+    clist="[]"
+    [ "$cands" = "[]" ] || clist=$(ns_stack_closed_list "$repo" "$(ns_stack_closed_since "$all" "$cands")")
+    prs=$(ns_stack_on_base "$all" "$basebr" "$fixpat" "$featpat" "$prefix" "$repo" "$clist")
     printf '%s\n' "$repo"
     off=$(jq -c --argjson on "$prs" '[.[] | select(. as $p | any($on[]; .number == $p.number) | not) | "#\(.number)"]' <<<"$all")
     [ "$off" = "[]" ] || printf '  %s open run PRs target other base branches than %s (not shown): %s\n' \
@@ -80,7 +84,7 @@ ns_stack_list() {
       printf '  no open run PRs\n'
       continue
     fi
-    closed=$(ns_stack_closed_heads "$repo" "$prs" "$basebr")
+    closed=$(ns_stack_closed_heads "$repo" "$prs" "$basebr" "$clist")
     chains=$(ns_stack_chains "$prs")
     nch=$(jq length <<<"$chains")
     for ((ci = 0; ci < nch; ci++)); do

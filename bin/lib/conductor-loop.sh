@@ -161,6 +161,8 @@ conductor_stack_base() {
     while IFS= read -r row; do
       [ -n "$row" ] || continue
       [ "$(ns_stack_checks_state "$(jq -c .statusCheckRollup <<<"$row")")" = fail ] || continue
+      # a PR whose base is unknown may belong to another base branch: it escalates below, it is not skipped
+      [ "$(jq -r '.base_unknown // false' <<<"$row")" != true ] || continue
       head=$(jq -r .head <<<"$row")
       if [ -d "$dir" ] && git -C "$dir" fetch -q origin "$head" 2>/dev/null &&
         git -C "$dir" merge-base --is-ancestor "origin/$head" HEAD 2>/dev/null; then

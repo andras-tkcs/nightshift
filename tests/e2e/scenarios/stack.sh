@@ -78,6 +78,11 @@ stack_leftovers() {
   ns_stack_on_base "$rows" "$base" "$fixpat" "$featpat" "$prefix" "$repo" "$closed" | jq -r '[.[].head] | join(" ")'
 }
 
+stack_pr_urls() {
+  local id
+  for id in "$@"; do printf '%s ' "$(e2e_pr_url "$id")"; done
+}
+
 # stack_wait_approved <id>...: poll until every PR has reviewDecision APPROVED, or time out
 stack_wait_approved() {
   local start id ok
@@ -122,8 +127,13 @@ stack_base_is_first() {
 }
 
 # stack_changes: "<file><TAB><changed line>" for each added or removed line of a diff on stdin
+# (a deleted file has `+++ /dev/null`: its lines go to the `--- a/<file>` name)
 stack_changes() {
-  awk '/^\+\+\+ b\// {f = substr($0, 7); next} /^(\+\+\+|---) / {next}
+  awk '/^diff --git / {old = ""; f = ""; next}
+    /^--- a\// {old = substr($0, 7); next}
+    /^\+\+\+ b\// {f = substr($0, 7); next}
+    /^\+\+\+ \/dev\/null/ {f = old; next}
+    /^(\+\+\+|---) / {next}
     /^[+-]/ && f != "" && length($0) > 1 {print f "\t" $0}'
 }
 
