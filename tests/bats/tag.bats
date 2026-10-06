@@ -266,6 +266,35 @@ changelog() {
   assert_output_contains "no ## [0.1.1] section"
 }
 
+@test "ns tag refuses before running the project checks (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  [[ $output != *"running project checks"* ]]
+}
+
+@test "ns tag only counts a version heading at the start of a line (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-10-01\n\n- see ### [0.1.1] notes and ## [0.1.1] later\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_failure 1
+  assert_output_contains "no ## [0.1.1] section"
+  assert_output_contains "add a '## [0.1.1] - <date>' section"
+}
+
+@test "ns tag accepts empty sub-headings and comments under [Unreleased] (#88)" {
+  changelog $'# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Fixed\n\n<!-- next release -->\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n'
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+}
+
+@test "ns tag checks the committed CHANGELOG.md, not an untracked local copy (#88)" {
+  # an ignored local CHANGELOG.md with entries; the commit being tagged has none, so nothing is checked
+  printf 'CHANGELOG.md\n' >>"$REPO/.git/info/exclude"
+  printf '# Changelog\n\n## [Unreleased]\n\n- local only\n' >"$REPO/CHANGELOG.md"
+  run ns tag v0.1.1 --repo "$REPO" --yes
+  assert_success
+}
+
 @test "ns tag tags when [Unreleased] is empty and the version has its section (#88)" {
   changelog $'# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-10-06\n\n- a fix\n\n## [0.1.0] - 2026-10-01\n\n- first\n\n[Unreleased]: https://example.invalid/compare/v0.1.1...HEAD\n'
   run ns tag v0.1.1 --repo "$REPO" --yes
