@@ -210,3 +210,118 @@ EOS
   assert_failure
   assert_output_contains "v0.0.1"
 }
+
+# fake_home: an NS_HOME ($FH) that is this checkout, except that its ns-ledger fails every call
+# whose arguments match the glob $NS_LEDGER_FAIL and runs the real ns-ledger otherwise
+fake_home() {
+  FH="$BATS_TEST_TMPDIR/fakehome"
+  mkdir -p "$FH/bin"
+  local f
+  for f in "$NS_REPO_ROOT"/*; do
+    [ "$(basename "$f")" = bin ] || ln -s "$f" "$FH/"
+  done
+  for f in "$NS_REPO_ROOT"/bin/*; do ln -s "$f" "$FH/bin/"; done
+  rm "$FH/bin/ns" "$FH/bin/ns-ledger"
+  cp "$NS_REPO_ROOT/bin/ns" "$FH/bin/ns"
+  cat >"$FH/bin/ns-ledger" <<EOS
+#!/usr/bin/env bash
+# shellcheck disable=SC2053
+if [ -n "\${NS_LEDGER_FAIL:-}" ] && [[ "\$*" == \$NS_LEDGER_FAIL ]]; then
+  echo "ns-ledger stub: failing \$1" >&2
+  exit 1
+fi
+exec "$NS_REPO_ROOT/bin/ns-ledger" "\$@"
+EOS
+  chmod +x "$FH/bin/ns-ledger"
+}
+
+# fail_tmux_start: a tmux on $PATH whose new-session fails
+fail_tmux_start() {
+  local real_tmux
+  real_tmux=$(command -v tmux)
+  mkdir -p "$BATS_TEST_TMPDIR/failbin"
+  cat >"$BATS_TEST_TMPDIR/failbin/tmux" <<EOS
+#!/usr/bin/env bash
+[ "\${1:-}" != new-session ] || exit 1
+exec "$real_tmux" "\$@"
+EOS
+  chmod +x "$BATS_TEST_TMPDIR/failbin/tmux"
+  export PATH="$BATS_TEST_TMPDIR/failbin:$PATH"
+}
+
+@test "a failed resumed event after the state was set rolls the run back (#96)" {
+  fake_home
+  ns-ledger set "$LEDGER" '.state="parked"'
+  NS_LEDGER_FAIL='event * resumed *' run "$FH/bin/ns" resume sbx-12
+  assert_failure
+  [ "$(lget .state)" = parked ]
+  [ "$(lget '.queued_for_slot // false')" = false ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a failed checkpoint after the state was set rolls the run back (#96)" {
+  fake_home
+  ns-ledger set "$LEDGER" '.state="parked"'
+  NS_LEDGER_FAIL='checkpoint *' run "$FH/bin/ns" resume sbx-12
+  assert_failure
+  [ "$(lget .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a failed resumed event during ns dequeue leaves the run queued (#96)" {
+  fake_home
+  ns-ledger set "$LEDGER" '.state="queued" | .queued_for_slot=true'
+  NS_LEDGER_FAIL='event * resumed *' run "$FH/bin/ns" dequeue
+  assert_output_contains "0 started, 1 still queued"
+  [ "$(lget .state)" = queued ]
+  [ "$(lget .queued_for_slot)" = true ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "a failed tmux start of ns resume on a queued run keeps it in the queue (#96)" {
+  ns-ledger set "$LEDGER" '.state="queued" | .queued_for_slot=true'
+  fail_tmux_start
+  run ns resume sbx-12
+  assert_failure
+  [ "$(lget .state)" = queued ]
+  [ "$(lget .queued_for_slot)" = true ]
+}
+
+@test "a failed ledger write during the reconcile stops the resume (#96)" {
+  fake_home
+  ns-ledger set "$LEDGER" '.state="parked" | .feature_branch="feature/sbx-12" | .phases=[
+    {id:"p1-alpha",title:"a",state:"running",branch:null,worktree:null,attempts:1,review_rounds:0}]'
+  NS_LEDGER_FAIL='set *phases*' run "$FH/bin/ns" resume sbx-12
+  assert_failure
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget .state)" = parked ]
+  [ "$(lget '[.events[] | select(.note // "" | test("reconciled"))] | length')" = 0 ]
+}
+
+@test "--all leaves runs stopped by the owner alone; ns resume <id> restarts them (#96)" {
+  ns new sbx-13 --tier T1 --yes >/dev/null
+  rm -f "$TMUX_STUB_DIR/sbx-13"
+  L13="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13/.nightshift/runs/sbx-13/ledger.yaml"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  run ns kill sbx-13
+  assert_success
+  [ "$(ns-ledger get "$L13" .state)" = stopped ]
+  run ns resume --all
+  assert_success
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-13" ]
+  [ "$(ns-ledger get "$L13" .state)" = stopped ]
+  assert_output_contains "sbx-13 is stopped; resume it by name: ns resume sbx-13"
+  run ns resume sbx-13
+  assert_success
+  [ -f "$TMUX_STUB_DIR/sbx-13" ]
+  [ "$(ns-ledger get "$L13" .state)" = running ]
+}
+
+@test "--all with only stopped runs starts nothing (#96)" {
+  ns-ledger set "$LEDGER" '.state="stopped"'
+  run ns resume --all
+  assert_success
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  assert_output_contains "nothing to resume"
+}

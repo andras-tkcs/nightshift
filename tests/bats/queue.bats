@@ -212,3 +212,109 @@ EOS
   run bash -c 'source "$NS_REPO_ROOT/bin/lib/common.sh"; NS_HOME="$NS_REPO_ROOT"; source "$NS_REPO_ROOT/bin/lib/queue.sh"; ns_queue_max'
   assert_output_contains "using 2"
 }
+
+# fake_token: a token-shaped test value in tokens/andras-tkcs (never a real token)
+fake_token() {
+  FAKE_TOKEN="ghp_$(printf 'q%.0s' {1..36})"
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf '%s\n' "$FAKE_TOKEN" >"$NS_CONFIG_DIR/tokens/andras-tkcs"
+  chmod 600 "$NS_CONFIG_DIR/tokens/andras-tkcs"
+}
+
+# server_env_clean: the tmux server started by the last command has no token in its environment
+server_env_clean() {
+  local out
+  out=$(tmux show-environment -g)
+  [ -n "$out" ]
+  ! grep -q '^GH_TOKEN=' <<<"$out"
+  ! grep -qF "$FAKE_TOKEN" <<<"$out"
+}
+
+@test "no tmux server started by ns inherits GH_TOKEN (#96)" {
+  # every tmux new-session in bin/ is the one in ns_tmux_start, which drops GH_TOKEN
+  run grep -rn 'tmux new-session' "$NS_REPO_ROOT/bin"
+  [ "$(grep -c . <<<"$output")" = 1 ]
+  assert_output_contains 'env -u GH_TOKEN tmux new-session'
+  fake_token
+  export GH_TOKEN="$FAKE_TOKEN"
+  export TMUX_STUB_SERVER_ENV="$BATS_TEST_TMPDIR/server.env"
+  ns new sbx-41 --tier T1 --yes >/dev/null
+  server_env_clean
+  rm -f "$TMUX_STUB_SERVER_ENV" "$TMUX_STUB_DIR/sbx-41"
+  ns-ledger set "$(ledger sbx-41)" '.state="parked"'
+  ns resume sbx-41 >/dev/null
+  server_env_clean
+  rm -f "$TMUX_STUB_SERVER_ENV"
+  ns up >/dev/null || true
+  [ -f "$TMUX_STUB_DIR/rc" ]
+  server_env_clean
+  set_max_runs 1
+  ns new sbx-42 --tier T1 --yes >/dev/null
+  [ "$(lget sbx-42 .state)" = queued ]
+  end_session 41
+  rm -f "$TMUX_STUB_SERVER_ENV" "$TMUX_STUB_DIR/rc"
+  ns dequeue >/dev/null
+  [ -f "$TMUX_STUB_DIR/sbx-42" ]
+  server_env_clean
+  ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-42"
+}
+
+@test "the dequeue pushes carry the run owner's token, the session does not (#96)" {
+  fake_token
+  set_max_runs 1
+  live_run 11
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  end_session 11
+  mkdir -p "$BATS_TEST_TMPDIR/hooks"
+  cat >"$BATS_TEST_TMPDIR/hooks/pre-push" <<EOS
+#!/usr/bin/env bash
+printf '%s\n' "\${GH_TOKEN:-none}" >>"$BATS_TEST_TMPDIR/push.env"
+EOS
+  chmod +x "$BATS_TEST_TMPDIR/hooks/pre-push"
+  git config --file "$GIT_CONFIG_GLOBAL" core.hooksPath "$BATS_TEST_TMPDIR/hooks"
+  export TMUX_STUB_SERVER_ENV="$BATS_TEST_TMPDIR/server.env"
+  # ns-launch runs ns dequeue without a token
+  run env -u GH_TOKEN "$NS_REPO_ROOT/bin/ns" dequeue
+  assert_success
+  assert_output_contains "1 started"
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(grep -c . "$BATS_TEST_TMPDIR/push.env")" -ge 2 ]
+  [ "$(sort -u "$BATS_TEST_TMPDIR/push.env")" = "$FAKE_TOKEN" ]
+  ! grep -q GH_TOKEN "$TMUX_STUB_DIR/sbx-12"
+  server_env_clean
+  assert_output_not_contains "$FAKE_TOKEN"
+}
+
+@test "ns-launch keeps logs/<id> private: directory 700, dequeue.log 600 (#96)" {
+  ns new sbx-12 --tier T1 --yes >/dev/null
+  rm -f "$TMUX_STUB_DIR/sbx-12"
+  # a directory left by an older release with the default umask
+  mkdir -p "$NS_CONFIG_DIR/logs/sbx-12"
+  chmod 755 "$NS_CONFIG_DIR/logs" "$NS_CONFIG_DIR/logs/sbx-12"
+  run bash -c 'umask 022 && exec ns-launch sbx-12 --resume'
+  assert_success
+  [ "$(stat -c %a "$NS_CONFIG_DIR/logs")" = 700 ]
+  [ "$(stat -c %a "$NS_CONFIG_DIR/logs/sbx-12")" = 700 ]
+  [ "$(stat -c %a "$NS_CONFIG_DIR/logs/sbx-12/dequeue.log")" = 600 ]
+  ns new sbx-13 --tier T1 --yes >/dev/null
+  rm -f "$TMUX_STUB_DIR/sbx-13"
+  run bash -c 'umask 022 && exec ns-launch sbx-13 --resume'
+  assert_success
+  [ "$(stat -c %a "$NS_CONFIG_DIR/logs/sbx-13")" = 700 ]
+  [ "$(stat -c %a "$NS_CONFIG_DIR/logs/sbx-13/dequeue.log")" = 600 ]
+}
+
+@test "a symlinked queue.lock is never truncated (#96)" {
+  printf 'keep me\n' >"$BATS_TEST_TMPDIR/target"
+  ln -s "$BATS_TEST_TMPDIR/target" "$NS_CONFIG_DIR/queue.lock"
+  set_max_runs 1
+  live_run 11
+  run ns new sbx-12 --tier T1 --yes
+  assert_success
+  assert_output_contains "queued sbx-12"
+  end_session 11
+  run ns dequeue
+  assert_success
+  [ -L "$NS_CONFIG_DIR/queue.lock" ]
+  [ "$(cat "$BATS_TEST_TMPDIR/target")" = "keep me" ]
+}
