@@ -511,3 +511,31 @@ prs_150() {
   assert_success
   assert_output_contains "base closed"
 }
+
+# #119 item 6: no closed list when no base can be a closed PR and the run is not stacked on another run
+@test "stack-base does not fetch the closed PRs when every base is the base branch or an open PR" {
+  other_run_branch fix/sbx-11 main other.txt "from 11"
+  other_run_branch fix/sbx-13 fix/sbx-11 top.txt "top"
+  plan_branch sbx-11
+  plan_branch sbx-13
+  pr_list "$PRS_TWO"
+  pr_closed "$CLOSED_11"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  run grep -E "ClosedRunPRs|--state closed" "$GH_STUB_LOG"
+  assert_failure 1
+}
+
+# #119 item 7: this run's own open PR hides a closed PR with the same head (a reused name)
+@test "stack-base: a closed PR with the head of this run's own open PR gives no closed warning" {
+  other_run_branch fix/sbx-13 main top.txt "top"
+  git ls-remote --exit-code "$REMOTE" refs/heads/plan/sbx-12 >/dev/null || plan_branch sbx-12
+  plan_branch sbx-13
+  pr_list '[
+ {"number":7,"headRefName":"fix/sbx-12","baseRefName":"main","createdAt":"2026-10-02T09:00:00Z","reviewDecision":"","statusCheckRollup":[]},
+ {"number":8,"headRefName":"fix/sbx-13","baseRefName":"fix/sbx-12","createdAt":"2026-10-02T12:00:00Z","reviewDecision":"","statusCheckRollup":[]}
+]'
+  pr_closed '[{"number":4,"headRefName":"fix/sbx-12","state":"CLOSED","mergedAt":null,"closedAt":"2026-10-02T13:00:00Z"}]'
+  run ns-conductor stack-base sbx-12
+  case "$output" in *"closed without a merge"*) echo "false warning: $output" >&2; return 1 ;; esac
+}
