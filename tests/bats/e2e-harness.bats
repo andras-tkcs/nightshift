@@ -144,3 +144,28 @@ setup() {
   run stack_leftovers "$open" "$plans" e2e/20261002-1 sbx "fix/{slug}" "feature/{n}" "" "$closed"
   [ "$output" = "fix/sbx-x1 fix/sbx-x6 fix/sbx-x4" ]
 }
+
+@test "stack scenario: the second PR's own extra files pass, a repeated change of the first PR fails (sprint #122, check 2)" {
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/stack.sh"
+  local d="$BATS_TEST_TMPDIR/diffs"
+  mkdir -p "$d"
+  printf '%s\n' 'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -1 +1 @@' \
+    '-It helps you recieve text' '+It helps you receive text' >"$d/1"
+  # an agent's own extras: a README pointer and a test with a common import line
+  printf '%s\n' 'diff --git a/NOTES.md b/NOTES.md' '--- /dev/null' '+++ b/NOTES.md' '@@ -0,0 +1 @@' '+second run' \
+    'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -15 +15,2 @@' '+See NOTES.md' >"$d/2"
+  # the first PR's change leaked into the second
+  printf '%s\n' 'diff --git a/NOTES.md b/NOTES.md' '--- /dev/null' '+++ b/NOTES.md' '@@ -0,0 +1 @@' '+second run' \
+    'diff --git a/README.md b/README.md' '--- a/README.md' '+++ b/README.md' '@@ -1 +1 @@' \
+    '-It helps you recieve text' '+It helps you receive text' >"$d/3"
+  e2e_pr_url() { printf '%s\n' "$1"; }
+  gh() { cat "$d/$3"; }
+  e2e_log() { :; }
+  run stack_diff_is_own 1 2
+  [ "$status" -eq 0 ]
+  run stack_diff_is_own 1 3
+  [ "$status" -ne 0 ]
+  run stack_diff_is_own 1 1
+  [ "$status" -ne 0 ]
+}

@@ -42,7 +42,7 @@ scenario_main() {
   e2e_wait "$second" '.state == "done"' "$E2E_TIMEOUT" || return 1
   e2e_assert "second run is stacked on the first" e2e_ledger_has "$second" ".stacked_on == \"$first\"" || return 1
   e2e_assert "second PR is based on the first PR's branch" stack_base_is_first "$first" "$second" || return 1
-  e2e_assert "second PR's diff shows only its own change" stack_diff_is_own "$second" || return 1
+  e2e_assert "second PR's diff shows only its own change" stack_diff_is_own "$first" "$second" || return 1
 
   e2e_new_run "$E2E_PREFIX" "Add a file THIRD.md that contains the line 'third run'" --tier T0 --yes || return 1
   third="$E2E_ID"
@@ -121,8 +121,23 @@ stack_base_is_first() {
   [ -n "$want" ] && [ "$want" = "$got" ]
 }
 
+# stack_changes: "<file><TAB><changed line>" for each added or removed line of a diff on stdin
+stack_changes() {
+  awk '/^\+\+\+ b\// {f = substr($0, 7); next} /^(\+\+\+|---) / {next}
+    /^[+-]/ && f != "" && length($0) > 1 {print f "\t" $0}'
+}
+
+# stack_diff_is_own <first> <second>: the second PR adds NOTES.md and repeats none of the first PR's
+# changed lines in the same file (an agent may add a test or a README pointer of its own; that is
+# still its own change)
 stack_diff_is_own() {
-  local files
-  files=$(gh pr diff "$(e2e_pr_url "$1")" -R "$E2E_REPO" --name-only) || return 1
-  [ "$files" = NOTES.md ]
+  local first second dup
+  first=$(gh pr diff "$(e2e_pr_url "$1")" -R "$E2E_REPO" | stack_changes) || return 1
+  second=$(gh pr diff "$(e2e_pr_url "$2")" -R "$E2E_REPO" | stack_changes) || return 1
+  grep -q $'^NOTES.md\t+' <<<"$second" || return 1
+  dup=$(grep -xF -f <(printf '%s\n' "$first") <<<"$second" || true)
+  [ -z "$dup" ] || {
+    e2e_log "the second PR repeats changes of the first: $dup"
+    return 1
+  }
 }
