@@ -160,7 +160,15 @@ ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --
 
 An unknown top-level key (for example one written by a newer or older release) is not corruption: `ns-ledger get`, `ns ls`, `ns status` and `ns resume` read the ledger, print `ledger has unknown field <k>; kept` and keep the key on write. A missing required field or a wrong type is an error that names the field; run `ns-ledger validate <ledger>` to see it.
 
-`ns-launch` exports `NS_RUN_HOME`, the home that launched the run. A command whose `NS_HOME` differs from `NS_RUN_HOME` (a different checkout) refuses to write the ledger that `NS_LEDGER` names while `NS_RUN_ID` is set, because that ledger belongs to a live run. Without `NS_RUN_HOME`, only an installed release (`NS_HOME` under `${NS_OPT:-/opt/nightshift}/`) may write it. Any other ledger (a test fixture or temp file) can still be written.
+After a recovery the warning names the unknown fields of the restored version, which are kept. Unknown fields that only the corrupt version had are lost with it and are not reported; the `restored from <sha>` warning already says that everything since that commit is gone.
+
+While `NS_RUN_ID` is set, the ledger that `NS_LEDGER` names belongs to a live run, and only the home that launched the run may write it. The check uses the running script's own directory (the resolved directory of the `ns-ledger` that bash is executing), not only `NS_HOME`, so a checkout's `bin/ns-ledger` that inherited the run's `NS_HOME` is refused too. The script must be `<home>/bin`, `NS_HOME` must resolve to the same home, and the home is:
+
+- the release the ledger records (`release: vX.Y.Z`): `${NS_OPT:-/opt/nightshift}/vX.Y.Z`, resolved, whose real directory is named `vX.Y.Z`. `NS_RUN_HOME` does not count for such a run;
+- for a run launched from a checkout (`release: null`): `NS_RUN_HOME`, which `ns-launch` exports, resolved;
+- without either: any home under the resolved `${NS_OPT:-/opt/nightshift}/`.
+
+Symlinks (`/opt/nightshift/current`, a symlinked `NS_OPT`, `~/.local/bin/ns-ledger`) are resolved on both sides. The refusal reads `refusing to write <ledger>: it belongs to live run <id> and this command runs from <dir> (NS_HOME=<home>), not from the home that launched it (<home>/bin); test new code against a temp ledger`. Any other ledger (a test fixture or temp file) can still be written. What this check trusts is in `docs/security.md`, section "Live-ledger guard".
 
 ## Recovery
 

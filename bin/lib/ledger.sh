@@ -39,22 +39,69 @@ ns_ledger_error() {
   return 1
 }
 
+# NS_LEDGER_SELF_BIN: the resolved bin directory of the script that is running (the outermost
+# file bash is executing), taken from bash itself and never from the environment.
+NS_LEDGER_SELF_BIN=""
+ns_ledger_self_bin() {
+  local i src=""
+  for ((i = ${#BASH_SOURCE[@]} - 1; i >= 0; i--)); do
+    src="${BASH_SOURCE[$i]}"
+    [ -z "$src" ] || break
+  done
+  [ -n "$src" ] || src="$0"
+  dirname "$(readlink -f "$src")"
+}
+NS_LEDGER_SELF_BIN="$(ns_ledger_self_bin)"
+
+# ns_ledger_release <ledger>: print the release tag recorded in the ledger file, or nothing.
+# Read with sed, not Python, so it also works on a ledger that does not parse.
+ns_ledger_release() {
+  local rel
+  [ -f "$1" ] || return 0
+  rel="$(sed -n -e "s/^release: *['\"]\{0,1\}\([^'\"]*\)['\"]\{0,1\} *\$/\1/p" "$1" | head -n1)"
+  if [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]]; then
+    printf '%s\n' "$rel"
+  fi
+}
+
 # ns_ledger_guard <ledger>: refuse to write a live run's ledger from a dev checkout.
-# NS_RUN_ID and NS_LEDGER mark the live run; ns-launch exports NS_RUN_HOME, the home that launched it.
-# Only that home may write the run's ledger. Without NS_RUN_HOME, only an installed release may.
+# NS_RUN_ID and NS_LEDGER mark the live run's ledger. Only the home that launched the run may
+# write it, and the check is made on the running script's own resolved directory
+# (NS_LEDGER_SELF_BIN), which must be <home>/bin and match the resolved NS_HOME:
+# - the ledger records a release (it was started from an installed release): the home is
+#   ${NS_OPT:-/opt/nightshift}/<release>, resolved, and its real directory is named <release>;
+#   NS_RUN_HOME is not trusted for this;
+# - no release (a run launched from a checkout): the home is NS_RUN_HOME, resolved;
+# - neither: any home under the resolved ${NS_OPT:-/opt/nightshift}.
+# See docs/ledger.md and docs/security.md for what this trusts.
 ns_ledger_guard() {
-  local ledger="$1" live
+  local ledger="$1" live self home opt rel want=""
   [ -n "${NS_RUN_ID:-}" ] && [ -n "${NS_LEDGER:-}" ] || return 0
   live="$(readlink -f "$NS_LEDGER" 2>/dev/null || printf '%s' "$NS_LEDGER")"
   [ "$(readlink -f "$ledger" 2>/dev/null || printf '%s' "$ledger")" = "$live" ] || return 0
-  if [ -n "${NS_RUN_HOME:-}" ]; then
-    [ "$(readlink -f "$NS_HOME")" != "$(readlink -f "$NS_RUN_HOME")" ] || return 0
+  self="$NS_LEDGER_SELF_BIN"
+  home="$(readlink -m "$NS_HOME")"
+  opt="$(readlink -m "${NS_OPT:-/opt/nightshift}")"
+  rel="$(ns_ledger_release "$ledger")"
+  if [ -n "$rel" ]; then
+    want="$(readlink -m "$opt/$rel")"
+    if [ "$self" = "$home/bin" ] && [ "$home" = "$want" ] && [ "$(basename "$want")" = "$rel" ]; then
+      return 0
+    fi
+  elif [ -n "${NS_RUN_HOME:-}" ]; then
+    want="$(readlink -m "$NS_RUN_HOME")"
+    if [ "$self" = "$home/bin" ] && [ "$home" = "$want" ]; then
+      return 0
+    fi
   else
-    case "$(readlink -f "$NS_HOME")/" in
-      "${NS_OPT:-/opt/nightshift}"/*) return 0 ;;
-    esac
+    want="$opt/<release>"
+    if [ "$self" = "$home/bin" ]; then
+      case "$home/" in
+        "$opt"/*) return 0 ;;
+      esac
+    fi
   fi
-  ns_die "refusing to write $ledger: it belongs to live run $NS_RUN_ID and NS_HOME=$NS_HOME is not the home that launched it (${NS_RUN_HOME:-${NS_OPT:-/opt/nightshift}}); test new code against a temp ledger"
+  ns_die "refusing to write $ledger: it belongs to live run $NS_RUN_ID and this command runs from $self (NS_HOME=$NS_HOME), not from the home that launched it ($want/bin); test new code against a temp ledger"
 }
 
 # ns_ledger_write <ledger>: read JSON on stdin, validate, replace the file atomically.
@@ -91,22 +138,45 @@ ns_ledger_recover() {
   ns_warn "ledger $ledger was corrupt; restored from $sha"
 }
 
-# ns_ledger_read <ledger>: print the ledger as compact JSON, recovering if needed.
-ns_ledger_read() {
-  local ledger="$1"
-  [ -f "$ledger" ] || ns_die "no such ledger: $ledger"
-  local out rc=0 chk err key
-  out="$(python3 "$NS_HOME/bin/lib/nsyaml.py" read "$ledger" "$NS_LEDGER_SCHEMA" 2>&1)" || rc=$?
-  if [ "$rc" -eq 0 ]; then
+# ns_ledger_parse <ledger>: one python3 launch that validates the ledger and prints it as JSON.
+# Sets NS_LEDGER_OUT (stdout) and NS_LEDGER_ERRS (stderr, kept apart so a warning cannot pass for
+# the JSON line) and returns python3's exit status.
+ns_ledger_parse() {
+  local errf rc=0
+  errf="$(mktemp)"
+  NS_LEDGER_OUT="$(python3 "$NS_HOME/bin/lib/nsyaml.py" read "$1" "$NS_LEDGER_SCHEMA" 2>"$errf")" || rc=$?
+  NS_LEDGER_ERRS="$(cat "$errf")"
+  rm -f "$errf"
+  return "$rc"
+}
+
+# ns_ledger_emit <ledger>: after a successful ns_ledger_parse, pass python3's stderr through, warn
+# once per unknown top-level key (drift lines follow the JSON line) and print the JSON.
+ns_ledger_emit() {
+  local key
+  [ -z "$NS_LEDGER_ERRS" ] || printf '%s\n' "$NS_LEDGER_ERRS" >&2
+  if [[ $NS_LEDGER_OUT == *$'\n'* ]]; then
     while IFS= read -r key; do
       [ -z "$key" ] || ns_warn "ledger has unknown field $key; kept"
-    done < <(printf '%s\n' "${out#*$'\n'}" | sed -e "s|^$ledger: ||" | ns_ledger_keys_filter)
-    printf '%s\n' "${out%%$'\n'*}"
+    done < <(printf '%s\n' "${NS_LEDGER_OUT#*$'\n'}" | sed -e "s|^$1: ||" | ns_ledger_keys_filter)
+  fi
+  printf '%s\n' "${NS_LEDGER_OUT%%$'\n'*}"
+}
+
+# ns_ledger_read <ledger>: print the ledger as compact JSON, recovering if needed.
+# Unknown top-level keys are reported for the version that is read. After a recovery that is the
+# restored version: keys only the corrupt version had are gone with it and are not reported.
+ns_ledger_read() {
+  local ledger="$1" chk err
+  [ -f "$ledger" ] || ns_die "no such ledger: $ledger"
+  if ns_ledger_parse "$ledger"; then
+    ns_ledger_emit "$ledger"
     return 0
   fi
-  chk="$(printf '%s\n' "$out" | sed -e 's/^nsyaml: //' -e "s|^$ledger: ||")"
+  chk="$(printf '%s\n%s\n' "$NS_LEDGER_ERRS" "$NS_LEDGER_OUT" | sed -e 's/^nsyaml: //' -e "s|^$ledger: ||")"
   err="$(printf '%s\n' "$chk" | grep -v '^\$: Additional properties are not allowed' | grep -v '^$' | head -n1 || true)"
   ns_ledger_recover "$ledger" ||
     ns_die "ledger $ledger is corrupt and has no valid committed version: $err; run: ns-ledger validate $ledger"
-  ns_yaml_json "$ledger"
+  ns_ledger_parse "$ledger" || ns_die "ledger $ledger: restored version does not read; run: ns-ledger validate $ledger"
+  ns_ledger_emit "$ledger"
 }

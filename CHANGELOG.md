@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The live-ledger guard checks the running script's own resolved directory, not only `NS_HOME`: a checkout's `bin/ns-ledger` that inherited a run's `NS_HOME` no longer writes the run's ledger. For a run started from a release the home is the release the ledger records (`${NS_OPT:-/opt/nightshift}/<release>`), so setting `NS_HOME`, `NS_RUN_HOME` or `NS_OPT` cannot make a checkout pass; both `NS_HOME` and `NS_OPT` are resolved, so a symlinked `NS_OPT` works. `docs/security.md` lists what the guard trusts (issue #120).
 - `ns new --from-desk` resolves the path and refuses a file outside the desk directory unless `--allow-outside` is given, and refuses a note that looks like it contains a token; the guard blocks agents from running `ns desk` (issue #95).
 
 ### Changed
@@ -31,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ledger reads keep Python's stderr apart from the JSON line, so a warning on stderr no longer breaks a read; after a recovery the `unknown field <k>; kept` warning names the restored version's unknown fields only (documented in `docs/ledger.md`); the drift classification in `nsyaml.py` is commented and tested; ADR 0004 is back to its accepted Decision with a dated note, and the `nsyaml.py` subcommands are listed in `docs/architecture.md` (issue #120).
 - A ledger with an unknown top-level key (schema drift between releases) is read with a warning `ledger has unknown field <k>; kept` instead of being treated as corrupt; missing fields and wrong types stay errors, and the message names the field and points to `ns-ledger validate <ledger>`. A Nightshift command started from a checkout that is not an installed release (`NS_HOME` differs from `NS_RUN_HOME`, the home that launched the run) refuses to write the ledger of the live run marked by `NS_RUN_ID` and `NS_LEDGER`; temp ledgers stay allowed (issue #83).
 
 ## [0.1.5] - 2026-10-05

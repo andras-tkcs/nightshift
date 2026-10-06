@@ -41,7 +41,7 @@ The requirements are in [spec.md](spec.md).
 
 ## Developing Nightshift with Nightshift
 
-A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. Nightshift enforces this for writes: a command whose `NS_HOME` differs from `NS_RUN_HOME` refuses to write the live run's ledger. Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
+A run on this repo executes the installed release while the checkout holds work in progress. New or changed `bin/` commands must only be run against test fixtures or temp ledgers, never with the run's own `$NS_LEDGER`. Nightshift enforces this for writes: a `bin/ns-ledger` that does not run from the run's own release (or, for a run launched from a checkout, from `NS_RUN_HOME`) refuses to write the live run's ledger, even when it inherited the run's `NS_HOME`; setting `NS_HOME`, `NS_RUN_HOME` or `NS_OPT` does not change that for a release run (see `docs/ledger.md` and `docs/security.md`). Unknown ledger fields are read with a warning, so one release of schema drift does not lock a run out (see `docs/ledger.md`).
 
 ## Releasing
 
