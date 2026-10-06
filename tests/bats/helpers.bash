@@ -99,5 +99,6 @@ refute_token_in() {
 # upgrade lock); sets FAKE_BS_PID. Kill it in teardown.
 fake_bootstrap() {
   bash -c "exec -a /opt/nightshift/current/bin/bootstrap.sh sleep 300" 3>&- >/dev/null 2>&1 &
+  # shellcheck disable=SC2034  # read by the test files that load this one
   FAKE_BS_PID=$!
 }

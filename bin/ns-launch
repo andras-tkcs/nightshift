@@ -173,7 +173,10 @@ mkdir -p "$(dirname "$log")"
 # the conductor's pid, for the live-job guard of bootstrap.sh; gone when the session ends
 pidf="$(dirname "$log")/conductor.pid"
 printf '%s\n' "$$" >"$pidf"
-trap 'rm -f "$pidf"' EXIT
+# only our own: a newer launch of this run may have taken the file over
+# shellcheck disable=SC2329  # called by the EXIT trap
+drop_pidf() { [ "$(head -c 32 "$pidf" 2>/dev/null)" != "$$" ] || rm -f "$pidf"; }
+trap drop_pidf EXIT
 
 cd "$wt"
 # an expired usage pause ends now: the budget counts again from here (R-BUD-2)

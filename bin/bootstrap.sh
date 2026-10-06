@@ -653,6 +653,16 @@ ns_tmux() {
   if [ "$(id -u)" = "$(id -u "$NS_USER")" ]; then tmux "$@"; else as_ns tmux "$@"; fi
 }
 
+# read_small <file>: the first bytes of a regular file that is not a symlink, printable only
+# (root reads files under ~ns that an agent could point at /dev/zero or a huge file)
+read_small() {
+  [ -f "$1" ] && [ ! -L "$1" ] || return 0
+  head -c 256 -- "$1" 2>/dev/null | tr -cd '[:print:]\n' || true
+}
+
+# clean <text>: drop control characters (ledger text is written by agents)
+clean() { printf '%s' "$1" | tr -d '[:cntrl:]'; }
+
 pid_alive() { # pid_alive <pid>: running and not a zombie (works for any user's process)
   local st
   [[ $1 =~ ^[0-9]+$ ]] || return 1
@@ -672,7 +682,7 @@ live_pid() {
     printf '%s\n' "$pid"
     return 0
   fi
-  pid="$(head -n 1 "$cfg/logs/$id/conductor.pid" 2>/dev/null || true)"
+  pid="$(read_small "$cfg/logs/$id/conductor.pid" | head -n 1)"
   if pid_alive "$pid" && ps -o args= -p "$pid" 2>/dev/null | grep -q 'ns-launch'; then
     printf '%s\n' "$pid"
     return 0
@@ -681,7 +691,7 @@ live_pid() {
     [ -f "$f" ] || continue
     base="${f%.pid}"
     [ ! -e "$base.exit" ] || continue
-    pid="$(sed -n 's/^pid=//p' "$f" | head -n 1)"
+    pid="$(read_small "$f" | sed -n 's/^pid=//p' | head -n 1)"
     if pid_alive "$pid"; then
       printf '%s\n' "$pid"
       return 0
@@ -707,10 +717,13 @@ job_report() {
       st=-
       rel=-
       l="$wt/.nightshift/runs/$id/ledger.yaml"
-      if [ -f "$l" ]; then
+      if [ -f "$l" ] && [ ! -L "$l" ] && [ "$(stat -c %s -- "$l" 2>/dev/null || echo 0)" -le 1048576 ]; then
         read -r st rel < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$l" 2>/dev/null \
           | jq -r '"\(.state // "-") \(.release // "-")"' 2>/dev/null || echo "unknown -") || true
+        st="$(clean "$st")"
+        rel="$(clean "$rel")"
       fi
+      id="$(clean "$id")"
       pid="$(live_pid "$id" "$sessions")"
       if [ -n "$pid" ]; then
         LIVE="$LIVE$id  $st  $rel  $pid"$'\n'
@@ -761,6 +774,27 @@ print_jobs() {
   return 0
 }
 
+# queue_barrier: after take_lock, wait for the queue lock that ns new, ns resume and ns dequeue
+# hold from their upgrade-lock check to the tmux start, so a start in flight is finished (and
+# seen by job_report) and every later one sees the upgrade lock. Refuses when it stays busy,
+# unless --force.
+queue_barrier() {
+  local q w="${NS_BS_QUEUE_WAIT:-130}"
+  q="$(cfg_dir)/queue.lock"
+  [ -d "$(dirname "$q")" ] || return 0
+  if [ "$(id -u)" = "$(id -u "$NS_USER" 2>/dev/null)" ]; then
+    flock -w "$w" "$q" true && return 0
+  else
+    as_ns flock -w "$w" "$q" true && return 0
+  fi
+  if [ "$force" = true ]; then
+    echo "bootstrap.sh: --force: the queue lock $q stayed busy for ${w}s; going on" >&2
+    return 0
+  fi
+  echo "bootstrap.sh: the queue lock $q stayed busy for ${w}s (a conductor starting?); try again, or pass --force" >&2
+  exit 1
+}
+
 LOCK_MADE_DIR=""
 LOCK_FILE=""
 
@@ -778,8 +812,8 @@ take_lock() {
   mkdir -p "$base"
   LOCK_FILE="$base/.upgrade.lock"
   if [ -e "$LOCK_FILE" ]; then
-    opid="$(sed -n 's/^pid=//p' "$LOCK_FILE" 2>/dev/null | head -n 1 || true)"
-    if pid_alive "$opid"; then
+    opid="$(read_small "$LOCK_FILE" | sed -n 's/^pid=//p' | head -n 1)"
+    if pid_alive "$opid" && ps -o args= -p "$opid" 2>/dev/null | grep -q 'bootstrap\.sh'; then
       echo "bootstrap.sh: another bootstrap.sh (pid $opid) holds $LOCK_FILE; wait for it" >&2
       LOCK_FILE=""
       release_lock
@@ -855,6 +889,7 @@ fi
 # conductor starts after the check, then refuse while a job is live unless --force.
 if [ "$mode" != check ]; then
   take_lock
+  queue_barrier
   job_report
   if [ -n "$LIVE" ]; then
     if [ "$force" != true ]; then

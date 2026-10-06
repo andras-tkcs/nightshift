@@ -325,7 +325,7 @@ $NS_OPT/v0.0.9/plugins/ns-python" ]
   ns-ledger set "$LEDGER" '.state="parked"'
   run ns resume sbx-12
   assert_failure 1
-  assert_output_contains "rm $NS_OPT/.upgrade.lock"
+  assert_output_contains "remove $NS_OPT/.upgrade.lock as root"
   [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
 }
 

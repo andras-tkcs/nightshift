@@ -554,8 +554,11 @@ teardown() {
 
 @test "control characters in ledger fields are not printed (#78 review)" {
   make_active_run
-  ns-ledger set "$BATS_TEST_TMPDIR/wt-act/.nightshift/runs/act-1/ledger.yaml" \
-    '.state="parked" | .release="v0.0.9\u001b]0;pwned\u0007\u001b[2J"'
+  l="$BATS_TEST_TMPDIR/wt-act/.nightshift/runs/act-1/ledger.yaml"
+  ns-ledger set "$l" '.state="parked"'
+  # written by hand: ns-ledger would refuse the value (bootstrap.sh reads ledgers as they are)
+  sed -i 's/^release: .*/release: "v0.0.9\\e]0;pwned\\a\\e[2J"/' "$l"
+  grep -q '^release: "v0.0.9\\e' "$l"
   run bootstrap_apply --upgrade v0.1.0
   assert_success
   assert_output_contains "act-1  parked  v0.0.9]0;pwned[2J"

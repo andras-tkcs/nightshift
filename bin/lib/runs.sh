@@ -136,10 +136,13 @@ ns_run_idle_s() {
 }
 
 # ns_run_checks_busy <id> <pane pid>: true when an "ns-conductor checks <id> ..." process runs
-# under the conductor's tmux pane (a long foreground check writes nothing to the JSONL logs)
+# under the conductor's tmux pane (a long foreground check writes nothing to the JSONL logs) for
+# less than NS_CHECKS_MAX_SECS (default 3600): a check that runs longer may hang, and is silent
 ns_run_checks_busy() {
-  local p q n
+  local p q n et max=${NS_CHECKS_MAX_SECS:-3600}
   for p in $(pgrep -f -- "ns-conductor checks $1( |\$)" 2>/dev/null); do
+    et=$(ps -o etimes= -p "$p" 2>/dev/null | tr -d ' ') || et=""
+    [[ $et =~ ^[0-9]+$ ]] && [ "$et" -lt "$max" ] || continue
     q=$p
     n=0
     while [[ $q =~ ^[0-9]+$ ]] && [ "$q" -gt 1 ] && [ "$n" -lt 64 ]; do
