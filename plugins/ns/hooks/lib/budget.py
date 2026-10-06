@@ -6,9 +6,10 @@ ns-conductor (whose subcommands check the budget themselves). When the run is ru
 gate, and budget.used plus the unpaused time since budget.since reaches budget.limit, it runs
 `ns-conductor budget-check <id>` (which stops the workers, writes RUN/escalation.md and opens
 gate 1.5) and denies the tool call. While the run waits at gate 1.5 over its budget, every tool
-call is denied. Once stack-base has passed (step integrate, stacked_on set) the integrator may
-finish, so the hook allows. Exit 2 denies; anything else allows. An unreadable ledger allows (fails
-open); without PyYAML it says so on stderr and allows.
+call is denied. Once stack-base has passed in this running stretch (step integrate,
+budget.integrate_from set) the integrator may finish, up to max(0.5 h, 25 % of the limit) over the
+limit. Exit 2 denies; anything else allows. An unreadable ledger allows (fails open); without
+PyYAML it says so on stderr and allows.
 """
 import datetime
 import os
@@ -39,12 +40,16 @@ def status(doc, at):
         return "ok", None
     used = float(budget.get("used") or 0)
     state, gate = doc.get("state"), doc.get("gate")
-    if state == "running" and gate is None and doc.get("step") == "integrate" and doc.get("stacked_on"):
-        return "ok", limit
     if state == "running" and gate is None:
         if not budget.get("paused"):
             used += max(0.0, (at - parse_time(budget["since"])).total_seconds()) / 3600
-        return ("over" if used >= float(limit) else "ok"), limit
+        if used < float(limit):
+            return "ok", limit
+        # after stack-base passed in this running stretch the integrator may finish, within a margin
+        margin = max(0.5, float(limit) * 0.25)
+        if doc.get("step") == "integrate" and budget.get("integrate_from") and used < float(limit) + margin:
+            return "ok", limit
+        return "over", limit
     if state == "waiting" and str(gate) == "1.5" and used >= float(limit):
         return "gate", limit
     return "ok", limit

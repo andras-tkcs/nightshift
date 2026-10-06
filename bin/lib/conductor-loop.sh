@@ -144,7 +144,7 @@ conductor_stack_base() {
   fi
   top=$(jq -c 'last // empty' <<<"$others")
   if [ -z "$top" ]; then
-    lg set "$ledger" ".stacked_on = $(jstr "$base")"
+    lg set "$ledger" ".stacked_on = $(jstr "$base") | .budget.integrate_from = \$now"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
     return 0
@@ -171,7 +171,7 @@ conductor_stack_base() {
     fi
     ns_die "could not merge $head into $own in $dir"
   fi
-  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+  lg set "$ledger" ".stacked_on = $(jstr "$stacked") | .budget.integrate_from = \$now"
   lg checkpoint "$ledger"
   printf '%s\n' "$head"
 }
@@ -196,7 +196,12 @@ loop_checks() {
   rm -f "$rcf"
   # subshell: an ns_die (exit) in the body must not skip the marker
   (
-    [ -z "$budget" ] || budget_guard checks || exit
+    # checks feature is the integrator's own call (after a stack-base merge or conflict)
+    if [ -n "$budget" ]; then
+      who=""
+      [ "$target" != feature ] || who=integrator
+      budget_guard checks "$who" || exit
+    fi
     loop_checks_body "$target"
   ) || rc=$?
   tmp="$rcf.tmp.$$"

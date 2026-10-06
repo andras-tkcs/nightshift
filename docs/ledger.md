@@ -34,6 +34,7 @@ pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
 updated: 2026-10-02T21:05:00Z
 budget: {used: 0.0, limit: null, paused: false, since: 2026-10-02T21:00:00Z}   # hours
+                                 # budget.integrate_from: set by ns-conductor stack-base when it passes, cleared when the run leaves running
 phases:
   - {id: p1-x, title: "...", state: pending, branch: null, worktree: null, attempts: 0, review_rounds: 0}
 events:
@@ -158,7 +159,7 @@ ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --
 
 ## The budget clock
 
-The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A write that sets `since` itself is never charged. A crashed run is still `running`, with the old `since`: every command that moves a run with no live conductor out of that state sets `since` to now in the same write (`ns resume`, also when it has to queue the run, `ns drain` and `ns kill`), so the time it was dead is not charged either.
+The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A write that sets `since` itself is never charged. A crashed run is still `running`, with the old `since`: every command that moves a run with no live conductor out of that state sets `since` to now in the same write (`ns resume`, also when it has to queue the run, `ns drain` and `ns kill`), so the time it was dead is not charged either. Any write that leaves the run in a state other than `running` also clears `budget.integrate_from`, which ends the integrator's budget exemption (see `ns-conductor budget-check`).
 
 ## Schema drift and live runs
 

@@ -91,8 +91,10 @@ phase_update() {
 # budget_hours line for the owner's answer), published (which notifies); then it returns 4. A run
 # that already waits at that gate over its budget returns 4 and only completes a missing document
 # or desk copy (a check killed half-way). Any other state over budget returns 4 without escalating.
-# Once stack-base has passed (step integrate, stacked_on set), the integrator may finish: only
-# stack-base itself still escalates. Serialised by a lock in the run's ledger directory.
+# <who> integrator marks the integrator's own calls (checks feature, the hooks' budget-check):
+# after stack-base has passed in this running stretch (budget.integrate_from, cleared when the run
+# leaves running or is resumed) they may go on over budget up to max(0.5 h, 25 % of the limit), so
+# the integrator can open the PR and run finish. Serialised by a lock in the run's ledger directory.
 budget_guard() {
   local rc=0 fd
   exec {fd}>"$(dirname "$ledger")/budget.lock"
@@ -106,14 +108,16 @@ budget_guard() {
 }
 
 budget_guard_locked() {
-  local by="$1" st gate used limit step tier stacked last
+  local by="$1" who="${2:-}" st gate used limit step tier grace last
   lg checkpoint "$ledger"
   lg budget-exceeded "$ledger" || return 0
-  IFS=$'\t' read -r st gate used limit step tier stacked last < <(lg get "$ledger" \
-    '[.state, (.gate // "-"), .budget.used, .budget.limit, .step, (.tier // "-"), (.stacked_on // "-"),
+  IFS=$'\t' read -r st gate used limit step tier grace last < <(lg get "$ledger" \
+    '[.state, (.gate // "-"), .budget.used, .budget.limit, .step, (.tier // "-"),
+      (.state == "running" and .gate == null and .step == "integrate" and (.budget.integrate_from // null) != null
+       and .budget.used < .budget.limit + ([0.5, .budget.limit * 0.25] | max)),
       ([.events[] | select(.type == "state")] | last | .note // "-")] | @tsv')
-  if [ "$by" != stack-base ] && [ "$st" = running ] && [ "$gate" = - ] && [ "$step" = integrate ] && [ "$stacked" != - ]; then
-    printf 'budget exceeded: %s h of %s h; stack-base passed, so the integrator may finish\n' "$used" "$limit" >&2
+  if [ "$who" = integrator ] && [ "$grace" = true ]; then
+    printf 'budget exceeded: %s h of %s h; stack-base passed, so the integrator may finish (within the margin)\n' "$used" "$limit" >&2
     return 0
   fi
   if [ "$st" = waiting ] && [ "$gate" = 1.5 ]; then
@@ -146,10 +150,17 @@ budget_escalation_doc() {
   rel=".nightshift/runs/$id/escalation.md"
   esc="$wt/$rel"
   desk="$(ns_desk_run_dir "$(jq -r .project <<<"$run")" "$id")/escalation.md"
-  if [ -n "$repair" ] && [ -f "$desk" ] && head -n 1 "$esc" 2>/dev/null | grep -qx '# Budget exceeded'; then
+  # a repair keeps the document only when it is this escalation's: the budget heading, the hours
+  # used and the current limit (an older budget document may name a lower budget_hours)
+  local current=0
+  if head -n 1 "$esc" 2>/dev/null | grep -qx '# Budget exceeded' &&
+    grep -qF "used $used h of its $limit h" "$esc" && grep -qx "budget_hours: $limit" "$esc"; then
+    current=1
+  fi
+  if [ -n "$repair" ] && [ "$current" -eq 1 ] && [ -f "$desk" ]; then
     return 0
   fi
-  if ! head -n 1 "$esc" 2>/dev/null | grep -qx '# Budget exceeded' || [ -z "$repair" ]; then
+  if [ "$current" -eq 0 ] || [ -z "$repair" ]; then
     mkdir -p "$(dirname "$esc")"
     cat >"$esc.tmp.$$" <<ESC
 # Budget exceeded
@@ -177,7 +188,8 @@ ESC
 conductor_budget_check() {
   [ $# -eq 1 ] || ns_usage "ns-conductor budget-check <id>"
   load_run "$1"
-  budget_guard budget-check
+  # called by the plugin's hooks: during the integration that includes the integrator's calls
+  budget_guard budget-check integrator
 }
 
 valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }

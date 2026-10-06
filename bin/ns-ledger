@@ -41,6 +41,7 @@ lock() {
 # (if it ran) and since is set to now, so time spent parked, queued, stopped or at a gate is never
 # charged by the next checkpoint (#9). A write that sets since itself (a dead run leaving running:
 # ns resume, ns drain, ns kill set since to now) is not charged: its gap is not budget used.
+# Leaving running also ends the integrator's exemption (budget.integrate_from).
 # shellcheck disable=SC2016 # jq variables, not shell ones
 BUDGET_TX='def budget_tx($old; $now):
   def active: .state == "running" and ((.budget.paused // false) | not);
@@ -49,7 +50,8 @@ BUDGET_TX='def budget_tx($old; $now):
         then .budget.used = (((.budget.used + (($now | fromdateiso8601) - ($old.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100)
         else . end)
     | .budget.since = $now
-  end;'
+  end
+  | if .state != "running" and (.budget.integrate_from // null) != null then .budget.integrate_from = null else . end;'
 
 # event_filter <type> <note>: filter reading JSON on stdin, writing JSON with the event added.
 event_filter() {
