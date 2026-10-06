@@ -278,3 +278,23 @@ $NS_OPT/v0.0.9/plugins/ns-python" ]
   assert_output_contains "stale upgrade lock"
   [ -f "$TMUX_STUB_DIR/sbx-12" ]
 }
+
+@test "a resume that reaches the start while the upgrade lock is held queues the run (#78)" {
+  export NS_OPT="$BATS_TEST_TMPDIR/opt"
+  mkdir -p "$NS_OPT"
+  ns-ledger set "$LEDGER" '.state="parked"'
+  # the lock appears after ns resume's first check: call the start step directly
+  printf 'pid=%s\n' "$$" >"$NS_OPT/.upgrade.lock"
+  run bash -c 'source "$1/bin/lib/common.sh"; source "$1/bin/lib/runs.sh"; source "$1/bin/lib/queue.sh"
+    source "$1/bin/lib/ns-resume.sh"; ns_resume_start sbx-12 "$2" "$3" parked "$1"' _ "$NS_REPO_ROOT" "$WT" "$LEDGER"
+  [ "$status" -eq 10 ]
+  assert_output_contains "upgrade"
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(lget .state)" = queued ]
+  [ "$(lget .queued_for_slot)" = true ]
+  # ns dequeue leaves it queued while the lock is held
+  run bash -c 'source "$1/bin/lib/common.sh"; source "$1/bin/lib/runs.sh"; source "$1/bin/lib/queue.sh"
+    source "$1/bin/lib/ns-resume.sh"; NS_DEQUEUE=1 ns_resume_start sbx-12 "$2" "$3" queued "$1"' _ "$NS_REPO_ROOT" "$WT" "$LEDGER"
+  [ "$status" -eq 10 ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
