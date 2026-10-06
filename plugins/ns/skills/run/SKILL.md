@@ -122,9 +122,11 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 
 ## Usage limits
 
-1. `ns-conductor wait` prints `finished <phase> usage-limit` when a worker's final result is an error caused by a usage or rate limit; it has already paused the budget and reset the phase to `pending`.
-2. Call `ns-conductor wait <id> --timeout 540` repeatedly until `ns-conductor start <id> <phase>` succeeds for that phase, then `ns-conductor unpause <id>`.
-3. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate.
+1. `ns-conductor wait` prints `finished <phase> usage-limit until <time>` when a worker's final result is a usage-limit error; it has already paused the budget until that time and reset the phase to `pending`. `start` exits 8 until then.
+2. Start no more phases. Call `ns-conductor wait <id>` only while other workers still run, then `ns-conductor park <id>` and end the session. `ns health-check` resumes the run after the reset; the resumed session starts the pending phases and, after the first successful `start`, runs `ns-conductor unpause <id>`.
+3. `finished <phase> usage-limit escalate: <reason>` (a limit that does not reset, or the fourth of a phase): Escalate.
+4. `finished <phase> transient retry at <time>` (capacity 429 or 529 overload): call `wait` again; on `retry <phase>` start the phase again.
+5. Exit 3 from `start` (pool full): try again after the next `wait`. Exit 4 (budget) or 5 (auto mode): Escalate. Exit 8: as in step 2.
 
 ## Rules
 

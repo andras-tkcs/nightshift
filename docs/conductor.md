@@ -19,7 +19,7 @@ ns-conductor start <id> <phase> [--feedback <file>]
 Starts a worker for one phase. It checks, in order:
 
 1. The pool: when `ns_pool_count` has reached `ns_pool_max`, the phase becomes `queued`, `start` prints `queued <phase>: pool full (<n>/<max>)` and exits 3.
-2. The budget: when `ns-ledger budget-exceeded` is true, it prints `budget exceeded` and exits 4.
+2. The budget: when `ns-ledger budget-exceeded` is true, it prints `budget exceeded` and exits 4. While `budget.paused` is true and `budget.paused_until` lies in the future (a usage limit, see `wait`) it prints `usage limit: paused until <time>` and exits 8. While the phase's `not_before` lies in the future (a transient error) it prints `<phase>: transient error, retry not before <time>` and exits 8.
 3. Auto mode: with `NS_WORKER_MODE=auto` (the default) and no `auto-mode.ok` file younger than 24 hours, it runs `check-auto`. If that fails, `start` exits 5 with the hint "auto permission mode does not work in headless calls on this machine. Fix it, or set NS_WORKER_MODE=bypassPermissions in ~/.config/ns/env after reading docs/security.md, section "Worker permission mode"." (R-CON-4).
 4. The phase entry, read from the Implementation manifest of the plan document in the run worktree. A phase id of the form `fix-<n>` that is not in the manifest gets a standard entry ("Fix review findings"). Any other missing phase exits 1.
 5. The feature branch: `feature_branch` must be set in the ledger, else exit 1 `no feature branch yet`. The phase branch is the profile's `git.phase_branch`. A missing phase worktree is created from `origin/<phase branch>` if that exists, else from `origin/<feature branch>`; the stack setup runs when the worktree has no `.venv`.
@@ -37,9 +37,14 @@ ns-conductor wait <id> [--timeout <s>]
 Waits for workers of the run to finish; the default timeout is 540 seconds, under the 10-minute limit of the Bash tool. It checks every 5 seconds:
 
 - A stop request in the ledger: prints `stop requested`, exit 6.
-- A worker with an exit file or a dead process is finished. Its code comes from the exit file, else 137, and its pid and exit files move to `logs/<id>/done/`. When the last `result` object of its log is an error (`is_error` true, or a `subtype` other than `success`) and either has `api_error_status` 429 or its text (`result` and `errors`) is a limit message (`usage limit`, `rate limit`, `You've hit your ... limit`, `out of usage`, any case), `wait` prints `finished <phase> usage-limit`, sets `budget.paused` true, adds an event `usage-pause` and puts the phase back to `pending`. The caller restarts it with `start` after the budget is unpaused. A successful result that only mentions a rate limiter, and an error for another reason (for example `error_max_turns` or an API 500), are normal finishes. Otherwise it prints `finished <phase> exit <code>`, sets the phase to `review` and adds an event `phase-end`.
+- A worker with an exit file or a dead process is finished. Its code comes from the exit file, else 137, and its pid and exit files move to `logs/<id>/done/`. `bin/lib/usage_limit.py` classifies the last `result` object of its log. Only an error result counts (`is_error` true, or a `subtype` other than `success`), and only by how its `result` or one of its `errors` *starts*, as Claude Code's own messages do; a successful result that mentions a rate limiter, and an error for another reason (`error_max_turns`, an API 500), are normal finishes.
+  - A usage limit that resets (`You've hit your session limit · resets 3pm (Europe/Budapest)`, `You've reached your ...`, `Claude AI usage limit reached|<epoch>`): the phase goes back to `pending` and its `usage_limits` goes up by one, `budget.paused` becomes true and `budget.paused_until` the reset time plus one minute. Without a reset time Nightshift can read, it is 15 minutes from now, doubling with each limit of the phase, at most 4 hours. It adds an event `usage-pause` and prints `finished <phase> usage-limit until <time>`.
+  - A usage limit that does not reset by itself (monthly spend limit, out of usage credits, org out of usage, team budget, `<model> requires usage credits`), or the fourth usage limit of one phase: the budget is paused without `paused_until`, the phase goes back to `pending` and `wait` prints `finished <phase> usage-limit escalate: <reason>`. The conductor escalates to gate 1.5.
+  - A transient error (`Request rejected (429) · this may be a temporary capacity issue.`, `Repeated 529 Overloaded errors`, any other 429 or 529 without a usage-limit message): the first time since the phase's last normal finish, the phase goes back to `pending` with `not_before` one minute ahead and `transient_retries` 1, and `wait` prints `finished <phase> transient retry at <time>`. The second time it is a normal finish.
+  - Otherwise it prints `finished <phase> exit <code>`, sets the phase to `review` and adds an event `phase-end`.
 - After one or more workers finished: exit 0.
-- No workers at all: prints `no workers`, exit 0.
+- No workers at all and a `pending` phase with a `not_before` time: sleeps until the earliest one and prints `retry <phase>`, exit 0, so the caller starts it; if the timeout comes first it prints `still waiting: retry <phase> at <time>`, exit 124.
+- No workers at all otherwise: prints `no workers`, exit 0.
 - Timeout: prints `still running: <phases>`, exit 124.
 
 ### status
@@ -139,7 +144,7 @@ Appends `N. <text>` to `RUN/notes.md` in the run worktree (N is the next number)
 ns-conductor review-round <id> <phase> <approve|changes>
 ```
 
-Call it after each review with that review's verdict. Adds one to the phase's `review_rounds` and adds an event `review` (`<phase> round <n> <verdict>`). The cap is `budgets.<tier>.review_rounds` of the profile (R-CON-3) and counts the reviews that ran: with the default 3, at most 3 reviews run. `approve` always exits 0, so an approval on the last allowed round merges. `changes` exits 7 when the count reaches the cap, because the next review would exceed it; the conductor then escalates instead of restarting the worker. Exit 2 when the verdict is missing or not `approve` or `changes`.
+Call it after each review with that review's verdict. Adds one to the phase's `review_rounds` and adds an event `review` (`<phase> round <n> <verdict>`). The cap is `budgets.<tier>.review_rounds` of the profile (R-CON-3) and counts the reviews that ran: with the default 3, at most 3 reviews run. `approve` always exits 0, so an approval on the last allowed round merges. `changes` exits 7 when the count reaches the cap, because the next review would exceed it; the conductor then escalates instead of restarting the worker. After the owner lets the run continue past gate 1.5, every further `changes` exits 7 again (escalates again), and an `approve` still exits 0. Exit 2 when the verdict is missing or not `approve` or `changes`.
 
 ### merge
 
@@ -172,7 +177,9 @@ ns-conductor pause <id>
 ns-conductor unpause <id>
 ```
 
-Set `budget.paused` to true or false and add an event `usage-pause` or `usage-resume` (R-BUD-2). `wait` already pauses the budget on a usage-limit finish, so `/ns:implement` calls only `unpause`. Exit 0.
+Set `budget.paused` to true or false and add an event `usage-pause` or `usage-resume` (R-BUD-2); `unpause` also clears `budget.paused_until`. `wait` already pauses the budget on a usage-limit finish, so `/ns:implement` calls only `unpause`. Exit 0.
+
+A run paused on a usage limit does not wait in its session: the conductor parks it (`park`) once no worker is left, which frees its run slot, and `ns health-check` (every 5 minutes) runs `ns resume <id>` for a parked run whose `budget.paused_until` has passed. The resumed session restarts the pending phases and calls `unpause`.
 
 ## Pool files
 

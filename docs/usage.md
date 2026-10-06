@@ -206,7 +206,7 @@ ns dequeue
 ns health-check
 ```
 
-`ns health-check` also runs `ns dequeue`. It is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified`.
+`ns health-check` also runs `ns dequeue`. It is run every 5 minutes by the `ns-health.timer` user unit. For every active run it works out the health shown by `ns ls`. A run that is `dead` or `silent` sends one `ns-notify` message (`ns: <id> is dead (see ns status <id>)`) and the incident is remembered in `~/.config/ns/health/<id>`, so the next tick stays quiet; a change between `dead` and `silent` sends one more message (`silent <N>m` becoming `silent <M>m` does not). When the run is healthy again, or no longer an active run, the file is removed. It also runs `ns resume <id>` for a run that the conductor parked on a usage limit once `budget.paused_until` in its ledger has passed (see docs/conductor.md, `wait`). The last line is a summary: `ns health-check: 3 run(s) checked, 1 unhealthy, 1 notified, 0 resumed after a usage limit`.
 
 ### ns rm
 

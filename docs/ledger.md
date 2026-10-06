@@ -33,9 +33,10 @@ stacked_on: null                 # null | the base branch (git.base_branch) | ru
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
 updated: 2026-10-02T21:05:00Z
-budget: {used: 0.0, limit: null, paused: false, since: 2026-10-02T21:00:00Z}   # hours
+budget: {used: 0.0, limit: null, paused: false, since: 2026-10-02T21:00:00Z}   # hours; paused_until (optional): usage-limit reset time
 phases:
   - {id: p1-x, title: "...", state: pending, branch: null, worktree: null, attempts: 0, review_rounds: 0}
+    # optional: usage_limits (count), transient_retries (0 or 1), not_before (earliest restart after a transient error)
 events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```

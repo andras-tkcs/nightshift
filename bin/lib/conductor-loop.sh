@@ -446,7 +446,7 @@ conductor_pause() {
 conductor_unpause() {
   [ $# -eq 1 ] || ns_usage "ns-conductor unpause <id>"
   load_run "$1"
-  lg set "$ledger" '.budget.paused = false'
+  lg set "$ledger" '.budget.paused = false | .budget.paused_until = null'
   lg event "$ledger" usage-resume "budget resumed"
   lg checkpoint "$ledger"
   printf 'unpaused %s\n' "$id"

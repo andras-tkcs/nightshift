@@ -47,7 +47,8 @@
         "used": { "type": "number", "minimum": 0, "description": "Hours used." },
         "limit": { "type": ["number", "null"], "minimum": 0, "description": "Hours allowed, null until a tier is set." },
         "paused": { "type": "boolean", "description": "True while the clock is paused (usage limit)." },
-        "since": { "$ref": "#/$defs/time", "description": "Start of the interval not yet added to used." }
+        "since": { "$ref": "#/$defs/time", "description": "Start of the interval not yet added to used." },
+        "paused_until": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }], "description": "After a usage limit: when it resets. ns health-check resumes a run parked on it after this time." }
       }
     },
     "phases": {
@@ -64,7 +65,10 @@
           "branch": { "$ref": "#/$defs/nullable_string" },
           "worktree": { "$ref": "#/$defs/nullable_string" },
           "attempts": { "type": "integer", "minimum": 0 },
-          "review_rounds": { "type": "integer", "minimum": 0 }
+          "review_rounds": { "type": "integer", "minimum": 0 },
+          "usage_limits": { "type": "integer", "minimum": 0, "description": "Usage limits the phase hit; past 3 the conductor escalates." },
+          "transient_retries": { "type": "integer", "minimum": 0, "description": "Retries after a capacity 429 or 529 overload since the last normal finish (at most 1)." },
+          "not_before": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }], "description": "Earliest restart after a transient error." }
         }
       }
     },
