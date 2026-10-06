@@ -297,3 +297,24 @@ write_acme_token() {
   run ns gc --bogus
   assert_failure 2
 }
+
+@test "a run of an owner named ntfy gets the real reason, not the mode (re-review 3)" {
+  sed -i 's#andras-tkcs/nightshift-sandbox#ntfy/nightshift-sandbox#' "$NS_CONFIG_DIR/projects.yaml"
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf 'tk_abcdefghijklmnopqrstuvwxyz012\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  chmod 600 "$NS_CONFIG_DIR/tokens/ntfy"
+  run ns gc
+  assert_success
+  assert_output_contains "needs you: sbx-12: token file for ntfy is unusable: token file ntfy is the ntfy token, not a GitHub token"
+  assert_output_not_contains "must be mode 600"
+  assert_output_not_contains "tk_abcdefghijklmnopqrstuvwxyz012"
+  [ -d "$WT" ]
+}
+
+@test "a token file with the wrong mode names the mode as the reason (re-review 3)" {
+  set_owner_acme 104
+  write_acme_token 644
+  run ns gc
+  assert_success
+  assert_output_contains "needs you: sbx-12: token file for acme is unusable: token file $NS_CONFIG_DIR/tokens/acme must be mode 600"
+}

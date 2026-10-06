@@ -178,3 +178,14 @@ ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
   assert_failure 1
   assert_output_contains "desk $NS_DESK_DIR not found: run bootstrap.sh or set NS_DESK_DIR"
 }
+
+@test "ns_token_export refuses the owner name ntfy, so the ntfy token never becomes GH_TOKEN (review 8)" {
+  mkdir -p "$NS_CONFIG_DIR/tokens"
+  printf 'tk_abcdefghijklmnopqrstuvwxyz012\n' >"$NS_CONFIG_DIR/tokens/ntfy"
+  chmod 600 "$NS_CONFIG_DIR/tokens/ntfy"
+  make_remote ntfy/widget "$FIX"
+  run ns project add ntfy/widget --prefix wd
+  assert_failure 1
+  assert_output_contains "token file ntfy is the ntfy token, not a GitHub token"
+  ! grep -qF '[token]' "$GH_STUB_LOG"
+}
