@@ -14,6 +14,7 @@ NS_HOME="${NS_HOME:-$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")
 # its home (used as given, not prefixed) and the templates directory.
 NS_BS_ROOT="${NS_BS_ROOT:-}"
 NS_USER="${NS_USER:-ns}"
+NS_BS_TEMPLATES_GIVEN="${NS_BS_TEMPLATES:-}"
 NS_BS_TEMPLATES="${NS_BS_TEMPLATES:-$NS_HOME/templates}"
 if [ -z "${NS_USER_HOME:-}" ]; then
   _passwd="$(getent passwd "$NS_USER" 2>/dev/null || true)"
@@ -34,15 +35,19 @@ APPLY_MSG=""
 
 usage() {
   cat <<'EOF'
-usage: bootstrap.sh [--check | --upgrade <tag> [--force]]
+usage: bootstrap.sh [--check | --upgrade <tag>] [--force]
 
 Turns a phase-2 server into a Nightshift runtime. Idempotent; run as root.
-  --check          report each step (ok, would change, needs you, unknown); change nothing
-  --upgrade <tag>  install release <tag> under /opt/nightshift and re-pin the plugins
-                   (runs steps 8 and 9 only; earlier releases stay for rollback);
-                   refuses while a run is active unless --force
-  --force          with --upgrade: proceed although runs are active
+  --check          report each step (ok, would change, needs you, unknown) and the runs'
+                   jobs; change nothing
+  --upgrade <tag>  install release <tag> under /opt/nightshift, re-pin the plugins and
+                   reinstall the timers (runs steps 8, 9 and 10 only; earlier releases
+                   stay for rollback)
+  --force          proceed although a job is live
   --help           show this text
+Every mode but --check refuses while a job is live (a run's tmux session, conductor or
+worker process), and holds /opt/nightshift/.upgrade.lock while it runs, so that ns new,
+ns resume and ns approve start no conductor meanwhile.
 Exit status: 0 everything ok, 1 something to do or needs you, 2 usage error.
 EOF
 }
@@ -60,7 +65,7 @@ step_name() {
     7) echo "ntfy topic and desk settings" ;;
     8) echo "Release install /opt/nightshift" ;;
     9) echo "Plugin marketplace and plugins" ;;
-    10) echo "ns-gc timer and Remote Control" ;;
+    10) echo "ns-gc and ns-health timers and Remote Control" ;;
     11) echo "ns doctor" ;;
     *) echo "step $1" ;;
   esac
@@ -584,11 +589,24 @@ check_10() {
   return 1
 }
 
+# templates_dir: an upgrade runs from the old release, so step 10 takes the units of the
+# release it installs (unless NS_BS_TEMPLATES is given)
+templates_dir() {
+  local r
+  r="$(P "/opt/nightshift/$TARGET_TAG")/templates"
+  if [ -z "$NS_BS_TEMPLATES_GIVEN" ] && [ -n "$TARGET_TAG" ] && [ -d "$r/systemd" ]; then
+    printf '%s\n' "$r"
+  else
+    printf '%s\n' "$NS_BS_TEMPLATES"
+  fi
+}
+
 apply_10() {
-  local u
+  local u tpl
+  tpl="$(templates_dir)"
   as_ns mkdir -p "$(ud)"
   for u in ns-gc.service ns-gc.timer ns-health.service ns-health.timer; do
-    as_ns tee "$(ud)/$u" <"$NS_BS_TEMPLATES/systemd/$u" >/dev/null
+    as_ns tee "$(ud)/$u" <"$tpl/systemd/$u" >/dev/null
   done
   as_ns systemctl --user daemon-reload
   as_ns systemctl --user enable --now ns-gc.timer
@@ -623,23 +641,169 @@ apply_11() {
   return 1
 }
 
-# active_runs: "id state release" for each registered run whose ledger is not done, stopped or failed
-active_runs() {
-  local cfg="${NS_CONFIG_DIR:-$NS_USER_HOME/.config/ns}" f wt id l line
-  f="$cfg/runs.yaml"
-  [ -f "$f" ] || return 0
-  while IFS=$'\t' read -r id wt; do
-    l="$wt/.nightshift/runs/$id/ledger.yaml"
-    if [ ! -f "$l" ]; then
-      printf '%s  unknown  -\n' "$id"
-      continue
+# ---- live jobs (#78) ---------------------------------------------------------
+
+RUN_ID_RE='^[a-z][a-z0-9]{0,9}-([0-9]+|x[0-9]+|onboard)$'
+
+cfg_dir() { printf '%s\n' "${NS_CONFIG_DIR:-$NS_USER_HOME/.config/ns}"; }
+
+# ns_tmux <args>: tmux as the service user (its server holds the run sessions)
+ns_tmux() {
+  id -u "$NS_USER" >/dev/null 2>&1 || return 1
+  if [ "$(id -u)" = "$(id -u "$NS_USER")" ]; then tmux "$@"; else as_ns tmux "$@"; fi
+}
+
+pid_alive() { # pid_alive <pid>: running and not a zombie (works for any user's process)
+  local st
+  [[ $1 =~ ^[0-9]+$ ]] || return 1
+  st="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || return 1
+  [ -n "$st" ] && [[ $st != Z* ]]
+}
+
+# live_pid <id> <sessions>: the pid of a live job of run <id>, "-" for a session without a
+# pane pid; nothing when none is live. A tmux session, the conductor pid file ns-launch
+# writes, or a worker pid file in <config>/workers counts.
+live_pid() {
+  local id="$1" sessions="$2" cfg pid f base
+  cfg="$(cfg_dir)"
+  if grep -qxF -- "$id" <<<"$sessions"; then
+    pid="$(ns_tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -n 1 || true)"
+    [[ $pid =~ ^[0-9]+$ ]] || pid=-
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  pid="$(head -n 1 "$cfg/logs/$id/conductor.pid" 2>/dev/null || true)"
+  if pid_alive "$pid" && ps -o args= -p "$pid" 2>/dev/null | grep -q 'ns-launch'; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  for f in "$cfg/workers/$id"--*.pid; do
+    [ -f "$f" ] || continue
+    base="${f%.pid}"
+    [ ! -e "$base.exit" ] || continue
+    pid="$(sed -n 's/^pid=//p' "$f" | head -n 1)"
+    if pid_alive "$pid"; then
+      printf '%s\n' "$pid"
+      return 0
     fi
-    line="$(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$l" \
-      | jq -r 'select((.state // "") as $s | ["done","stopped","failed"] | index($s) | not)
-        | "\(.id)  \(.state)  \(.release // "-")"')" || line="$id  unknown  -"
-    [ -z "$line" ] || printf '%s\n' "$line"
-  done < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$f" \
-    | jq -r '.runs // [] | .[] | select(.archived | not) | [.id, .worktree] | @tsv')
+  done
+  return 0
+}
+
+# job_report: sets LIVE ("id  state  release  pid" for each run with a live job), DEAD (runs
+# that are running in their ledger with nothing alive) and IDLE (other runs not done, stopped
+# or failed: at a gate, queued, parked; they resume on their own release)
+job_report() {
+  local cfg sessions id wt l st rel pid seen=' ' f base
+  LIVE=""
+  DEAD=""
+  IDLE=""
+  cfg="$(cfg_dir)"
+  sessions="$(ns_tmux ls -F '#{session_name}' 2>/dev/null | sed 's/:.*//' | grep -E "$RUN_ID_RE" || true)"
+  if [ -f "$cfg/runs.yaml" ]; then
+    while IFS=$'\t' read -r id wt; do
+      [ -n "$id" ] || continue
+      seen="$seen$id "
+      st=-
+      rel=-
+      l="$wt/.nightshift/runs/$id/ledger.yaml"
+      if [ -f "$l" ]; then
+        read -r st rel < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$l" 2>/dev/null \
+          | jq -r '"\(.state // "-") \(.release // "-")"' 2>/dev/null || echo "unknown -") || true
+      fi
+      pid="$(live_pid "$id" "$sessions")"
+      if [ -n "$pid" ]; then
+        LIVE="$LIVE$id  $st  $rel  $pid"$'\n'
+      elif [ "$st" = running ]; then
+        DEAD="$DEAD$id  $st  $rel"$'\n'
+      else
+        case "$st" in
+          done | stopped | failed) ;;
+          *) IDLE="$IDLE$id  $st  $rel"$'\n' ;;
+        esac
+      fi
+    done < <(python3 "$NS_HOME/bin/lib/nsyaml.py" to-json "$cfg/runs.yaml" \
+      | jq -r '.runs // [] | .[] | select(.archived | not) | [.id, .worktree] | @tsv')
+  fi
+  # live jobs of runs that are not registered (yet): a session or a worker
+  for id in $sessions; do
+    case "$seen" in *" $id "*) continue ;; esac
+    seen="$seen$id "
+    LIVE="$LIVE$id  -  -  $(live_pid "$id" "$sessions")"$'\n'
+  done
+  for f in "$cfg"/workers/*.pid; do
+    [ -f "$f" ] || continue
+    base="${f##*/}"
+    id="${base%%--*}"
+    case "$seen" in *" $id "*) continue ;; esac
+    pid="$(live_pid "$id" "")"
+    [ -z "$pid" ] || { seen="$seen$id "; LIVE="$LIVE$id  -  -  $pid"$'\n'; }
+  done
+  return 0
+}
+
+# print_jobs [<show live>]: the warning and information lines of job_report
+print_jobs() {
+  if [ "${1:-}" = live ] && [ -n "$LIVE" ]; then
+    echo "Live jobs (id, state, release, pid); an install change refuses while they run:"
+    printf '%s' "$LIVE" | sed 's/^/  /'
+  fi
+  if [ -n "$DEAD" ]; then
+    echo "Warning: running in the ledger but nothing is alive (id, state, release):"
+    printf '%s' "$DEAD" | while read -r id st rel; do
+      printf '  %s  %s  %s  looks dead: ns kill %s or ns stop %s\n' "$id" "$st" "$rel" "$id" "$id"
+    done
+  fi
+  if [ -n "$IDLE" ]; then
+    echo "Not running now (id, state, release); each resumes on its own release:"
+    printf '%s' "$IDLE" | sed 's/^/  /'
+  fi
+  return 0
+}
+
+LOCK_MADE_DIR=""
+LOCK_FILE=""
+
+# take_lock: create /opt/nightshift/.upgrade.lock (ns new, ns resume and ns approve refuse while
+# it exists); refuse while another live bootstrap holds it. Removed on exit.
+take_lock() {
+  local base opid d
+  base="$(P /opt/nightshift)"
+  # remember the topmost directory made here, so a refusal leaves the tree as it was
+  d="$base"
+  while [ ! -d "$d" ]; do
+    LOCK_MADE_DIR="$d"
+    d="$(dirname "$d")"
+  done
+  mkdir -p "$base"
+  LOCK_FILE="$base/.upgrade.lock"
+  if [ -e "$LOCK_FILE" ]; then
+    opid="$(sed -n 's/^pid=//p' "$LOCK_FILE" 2>/dev/null | head -n 1 || true)"
+    if pid_alive "$opid"; then
+      echo "bootstrap.sh: another bootstrap.sh (pid $opid) holds $LOCK_FILE; wait for it" >&2
+      LOCK_FILE=""
+      release_lock
+      exit 1
+    fi
+    rm -f "$LOCK_FILE"
+  fi
+  if ! (set -C && printf 'pid=%s\nstarted=%s\nmode=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" >"$LOCK_FILE") 2>/dev/null; then
+    echo "bootstrap.sh: cannot create $LOCK_FILE (another bootstrap.sh?)" >&2
+    LOCK_FILE=""
+    release_lock
+    exit 1
+  fi
+  chmod 644 "$LOCK_FILE"
+  trap release_lock EXIT
+}
+
+release_lock() {
+  [ -z "$LOCK_FILE" ] || rm -f "$LOCK_FILE"
+  # only directories that are still empty: a step that installed something keeps them
+  if [ -n "$LOCK_MADE_DIR" ]; then
+    find "$LOCK_MADE_DIR" -depth -type d -empty -delete 2>/dev/null || true
+  fi
+  return 0
 }
 
 # ---- main ------------------------------------------------------------------
@@ -683,19 +847,28 @@ if [ "$mode" = upgrade ]; then
     echo "bootstrap.sh: tag $upgrade_tag not found in $NS_REPO_URL" >&2
     exit 1
   fi
-  if [ "$force" != true ]; then
-    active="$(active_runs)"
-    if [ -n "$active" ]; then
+  TARGET_TAG="$upgrade_tag"
+  STEPS="8 9 10"
+fi
+
+# One guard for every mode that changes the install (#78): take the lock first, so no
+# conductor starts after the check, then refuse while a job is live unless --force.
+if [ "$mode" != check ]; then
+  take_lock
+  job_report
+  if [ -n "$LIVE" ]; then
+    if [ "$force" != true ]; then
       {
-        echo "bootstrap.sh: refusing to upgrade while runs are active (id, state, release):"
-        printf '%s\n' "$active" | sed 's/^/  /'
-        echo "Runs resume on the release they started on. Wait for them, or pass --force."
+        echo "bootstrap.sh: refusing to change the install while jobs are live (id, state, release, pid):"
+        printf '%s' "$LIVE" | sed 's/^/  /'
+        echo "Wait for them (ns drain parks running runs), or pass --force."
       } >&2
       exit 1
     fi
+    echo "bootstrap.sh: --force: changing the install although jobs are live (id, state, release, pid):" >&2
+    printf '%s' "$LIVE" | sed 's/^/  /' >&2
   fi
-  TARGET_TAG="$upgrade_tag"
-  STEPS="8 9"
+  print_jobs
 fi
 
 rc=0
@@ -744,4 +917,8 @@ for n in $STEPS; do
   printf '[%s/%s] %s: %s\n' "$n" "$N" "$name" "$APPLY_MSG"
   if [ "$step_rc" -ne 0 ]; then rc=1; fi
 done
+if [ "$mode" = check ]; then
+  job_report
+  print_jobs live
+fi
 exit "$rc"

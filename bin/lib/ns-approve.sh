@@ -109,6 +109,8 @@ ns_approve_main() {
     esac
   done
   [ -n "$id" ] || ns_usage "$u"
+  # before anything changes: releasing the gate starts the conductor
+  ns_upgrade_guard
   local entry wt ledger gate pname project rdir name src item onboard=false
   local -a changed=() srcs=()
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"

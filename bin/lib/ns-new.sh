@@ -119,6 +119,9 @@ ns_new_main() {
   fi
   [ -z "$tier" ] || [ "$onboard" = false ] || ns_usage "$NS_NEW_USAGE"
 
+  # no run starts while bootstrap.sh changes the install
+  ns_upgrade_guard
+
   # 1. parse; find the project
   if [[ $arg =~ ^[a-z][a-z0-9]{0,9}$ ]]; then
     [ -n "$text" ] && [ "$onboard" = false ] || ns_usage "$NS_NEW_USAGE"

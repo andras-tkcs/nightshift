@@ -112,6 +112,7 @@ ns_resume_start() {
 # ns_resume_one <id>: returns 10 when the run had to wait in the queue
 ns_resume_one() {
   local id="$1" entry wt ledger state gate rhome
+  ns_upgrade_guard
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")

@@ -57,7 +57,7 @@ git_retry() {
 }
 
 cmd_init() {
-  local ledger="$1" id="" project="" issue="" text="" branch="" dir now release
+  local ledger="$1" id="" project="" issue="" text="" branch="" dir now release cand rel
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -78,11 +78,15 @@ cmd_init() {
   lock "$ledger"
   [ ! -e "$ledger" ] || ns_die "ledger exists: $ledger"
   now="$(ns_now)"
-  release="$(basename "${NS_HOME:-}")"
-  if ! [[ $release =~ ^v[0-9] ]]; then
-    release="$(basename "$(readlink -f "${NS_HOME:-/}" 2>/dev/null || true)")"
-    [[ $release =~ ^v[0-9] ]] || release=""
-  fi
+  # a release only for an installed one: ${NS_OPT:-/opt/nightshift}/<tag>, as ns_release_home reads it
+  release=""
+  for cand in "${NS_HOME:-}" "$(readlink -f "${NS_HOME:-/}" 2>/dev/null || true)"; do
+    rel="$(basename "$cand")"
+    if [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]] && [ "$(dirname "$cand")" -ef "${NS_OPT:-/opt/nightshift}" ]; then
+      release="$rel"
+      break
+    fi
+  done
   if jq -n -c --arg release "$release" --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
     --arg branch "$branch" --arg now "$now" '{
       version: 1, id: $id, project: $project,

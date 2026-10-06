@@ -84,6 +84,23 @@ after_conductor() {
   esac
 }
 
+# ns_release_plugin_dirs <release home> <project json>: "<home>/plugins/ns" plus the release's
+# plugin of each stack the project's profile names, colon-separated (NS_PLUGIN_DIRS)
+ns_release_plugin_dirs() {
+  local home="$1" proj="$2" dirs prof name rc=0
+  # a release without its plugin directory keeps the marketplace plugins
+  [ -d "$home/plugins/ns" ] || return 0
+  dirs="$home/plugins/ns"
+  prof=$(ns_profile_json "$(jq -r .path <<<"$proj")" "$(jq -r .prefix <<<"$proj")" "$(jq -r '.branch // ""' <<<"$proj")" 2>/dev/null) || rc=$?
+  if [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; then
+    while IFS= read -r name; do
+      [[ $name =~ ^[a-z][a-z0-9-]*$ ]] && [ -d "$home/plugins/ns-$name" ] || continue
+      dirs="$dirs:$home/plugins/ns-$name"
+    done < <(jq -r '.stacks[]? | if type == "object" then .name else . end' <<<"$prof")
+  fi
+  printf '%s\n' "$dirs"
+}
+
 id=""
 mode=""
 while [ $# -gt 0 ]; do
@@ -115,6 +132,13 @@ repo=$(jq -r .repo <<<"$project")
 ledger=$(ns_run_ledger "$id")
 if [ -f "$ledger" ] && [ -z "${NS_LAUNCH_PINNED:-}" ]; then
   rhome=$(ns_release_home "$ledger") || exit 1
+  # the plugins (agents, skills, guard) come with the release too: the marketplace plugins are
+  # pinned to current, so a run on another release loads its own with --plugin-dir. An explicit
+  # NS_PLUGIN_DIRS (a dev checkout, the e2e harness) wins.
+  if [ -n "$rhome" ] && [ -z "${NS_PLUGIN_DIRS:-}" ] && ! [ "$rhome" -ef "${NS_OPT:-/opt/nightshift}/current" ]; then
+    NS_PLUGIN_DIRS=$(ns_release_plugin_dirs "$rhome" "$project")
+    export NS_PLUGIN_DIRS
+  fi
   if [ -n "$rhome" ] && ! [ "$rhome" -ef "$NS_HOME" ]; then
     NS_HOME="$rhome" NS_LAUNCH_PINNED=1 exec "$rhome/bin/ns-launch" "$id" ${mode:+"$mode"}
   fi
@@ -146,6 +170,10 @@ mapfile -t plugin_args < <(ns_plugin_args)
 
 log="$(ns_config_dir)/logs/$id/conductor.jsonl"
 mkdir -p "$(dirname "$log")"
+# the conductor's pid, for the live-job guard of bootstrap.sh; gone when the session ends
+pidf="$(dirname "$log")/conductor.pid"
+printf '%s\n' "$$" >"$pidf"
+trap 'rm -f "$pidf"' EXIT
 
 cd "$wt"
 # an expired usage pause ends now: the budget counts again from here (R-BUD-2)
