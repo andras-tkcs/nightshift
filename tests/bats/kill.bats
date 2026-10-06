@@ -95,6 +95,17 @@ alive() {
   assert_success
 }
 
+@test "ns kill leaves a committed and pushed RUN/run-report.md of the stopped run (#118)" {
+  : >"$TMUX_STUB_DIR/sbx-12"
+  ns-ledger set "$LEDGER" '.state="running"'
+  run ns kill sbx-12
+  assert_success
+  rel=.nightshift/runs/sbx-12/run-report.md
+  git -C "$WT" ls-files --error-unmatch "$rel" >/dev/null
+  [ -z "$(git -C "$WT" status --porcelain -- "$rel")" ]
+  git -C "$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git" show "plan/sbx-12:$rel" | grep -q '^- State: stopped$'
+}
+
 @test "ns kill on an already stopped run is a no-op" {
   ns-ledger set "$LEDGER" '.state="stopped"'
   run ns kill sbx-12
