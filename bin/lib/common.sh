@@ -105,16 +105,22 @@ ns_plugin_args() {
   done
 }
 
-# ns_upgrade_guard: refuse (exit 1) to start a conductor while bootstrap.sh holds the upgrade lock
-# ${NS_OPT:-/opt/nightshift}/.upgrade.lock. A lock whose bootstrap pid is gone is stale: warn, go on.
-ns_upgrade_guard() {
+# ns_upgrade_locked [quiet]: true while bootstrap.sh holds the upgrade lock
+# ${NS_OPT:-/opt/nightshift}/.upgrade.lock. A lock whose bootstrap pid is gone is stale: warn
+# (unless quiet) and return false.
+ns_upgrade_locked() {
   local f pid
   f="${NS_OPT:-/opt/nightshift}/.upgrade.lock"
-  [ -e "$f" ] || return 0
+  [ -e "$f" ] || return 1
   pid=$(sed -n 's/^pid=//p' "$f" 2>/dev/null | head -n1) || pid=""
   if [[ $pid =~ ^[0-9]+$ ]] && ! ps -p "$pid" >/dev/null 2>&1; then
-    ns_warn "ignoring a stale upgrade lock $f (bootstrap pid $pid is gone)"
-    return 0
+    [ "${1:-}" = quiet ] || ns_warn "ignoring a stale upgrade lock $f (bootstrap pid $pid is gone)"
+    return 1
   fi
-  ns_die "an upgrade is in progress (bootstrap.sh holds $f): no conductor starts until it ends; try again then"
+  return 0
+}
+
+# ns_upgrade_guard: refuse (exit 1) to start a conductor while bootstrap.sh holds the upgrade lock
+ns_upgrade_guard() {
+  ! ns_upgrade_locked || ns_die "an upgrade is in progress (bootstrap.sh holds ${NS_OPT:-/opt/nightshift}/.upgrade.lock): no conductor starts until it ends; try again then"
 }

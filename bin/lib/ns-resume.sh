@@ -83,6 +83,12 @@ ns_resume_start() {
     printf '%s is already running\n' "$id"
     return 0
   fi
+  # the upgrade lock taken after ns_resume_one's check: the run waits in the queue
+  if ns_upgrade_locked quiet; then
+    [ "${NS_DEQUEUE:-}" != 1 ] || return 10
+    ns_queue_for_upgrade "$id" "$ledger" "$state"
+    return
+  fi
   [ "${NS_DEQUEUE:-}" = 1 ] || live=$(ns_queue_live_count)
   if [ "$live" -ge "$(ns_queue_max)" ]; then
     if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then

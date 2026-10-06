@@ -58,3 +58,17 @@ ns_queue_list() {
 ns_queue_msg() {
   printf 'queued %s: %s of %s runs active (starts when one finishes)\n' "$1" "$2" "$(ns_queue_max)"
 }
+
+# ns_queue_for_upgrade <id> <ledger> <state>: under the queue lock, when the upgrade lock was
+# taken after the caller's first check: queue the run (ns dequeue starts it once the lock is gone)
+ns_queue_for_upgrade() {
+  local id="$1" ledger="$2" state="$3"
+  if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
+    "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+    "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for the upgrade to end" || return 1
+    "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for the upgrade to end" || return 1
+    "$NS_HOME/bin/ns-ledger" checkpoint "$ledger" --push 9>&- || return 1
+  fi
+  printf 'queued %s: an upgrade is in progress (starts with ns dequeue when it ends)\n' "$id"
+  return 10
+}

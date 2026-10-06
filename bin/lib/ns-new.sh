@@ -34,6 +34,11 @@ ns_new_start() {
     printf 'started %s in tmux session %s: ns attach %s\n' "$id" "$id" "$id"
     return 0
   fi
+  # bootstrap.sh may have taken the upgrade lock while triage ran
+  if ns_upgrade_locked quiet; then
+    ns_queue_for_upgrade "$id" "$ledger" "$("$NS_HOME/bin/ns-ledger" get "$ledger" .state)"
+    return
+  fi
   live=$(ns_queue_live_count)
   if [ "$now" = false ] && [ "$live" -ge "$(ns_queue_max)" ]; then
     "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
