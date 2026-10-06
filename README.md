@@ -8,7 +8,7 @@ Status: v0.1.0 (Build A)
 
 ## What it needs
 
-- A server running Ubuntu 24.04 with root for the one-time setup and a normal user `ns` (no sudo) for the agents; 4 GB RAM is enough for 2 workers.
+- A server running Ubuntu 24.04 with root for the one-time setup and a normal user `ns` (no sudo) for the agents; 4 GB RAM is the minimum and carries 2 workers; ns-main itself has 8 vCPU and 16 GB and runs 3 runs and 4 workers ([docs/server.md](docs/server.md)).
 - The Claude Code CLI signed in with a subscription.
 - Tailscale for private access; Cloudflare with a domain if you want the review desk from a laptop without Tailscale.
 - A GitHub account and a fine-grained token per repo owner for the agents.

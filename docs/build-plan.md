@@ -4,7 +4,7 @@ Input for `/make-plan`. It turns this into a plan document with an implementatio
 
 ## Constraints for both builds
 
-- Runs on ns-main as user `ns`: no sudo, 4 GB RAM, 2 workers at most at once.
+- Runs on ns-main as user `ns`: no sudo. Build A was sized for 4 GB RAM and 2 workers at most at once; ns-main now has 16 GB (see docs/server.md).
 - Phases must fit the seed planner's sizing rules: S (≤3 files, ≤150 lines) or M (≤8 files, ≤400 lines). Phases in the same wave have disjoint `touches`.
 - No phase may touch the `privacyfence` repo. End-to-end tests use `nightshift-sandbox` only.
 - Every phase ends with its docs: a phase that adds a command or profile key updates `docs/usage.md` or the schema in the same phase.

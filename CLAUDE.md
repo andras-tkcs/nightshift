@@ -5,7 +5,7 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 ## Where this runs
 
 - The Claude Code CLI on `ns-main` (Ubuntu 24.04, user `ns`, no sudo). There are no claude.ai cloud sessions and no claude.ai artifacts: anything you'd publish as an artifact is a file in the repo (Markdown or a self-contained HTML file).
-- 4 GB RAM. Never run more than 2 workers or parallel subagents that run tests at once.
+- 8 vCPU, 16 GB RAM, 4 GB swap. Nightshift runs at most 3 runs (`max_runs`) and 4 workers (`max_workers`) at once. In this repo, run at most 3 parallel subagents, and at most 2 of them may run the full bats suite at the same time. `tests/e2e/run.sh preflight` needs 1200 MB of available memory.
 - `gh` is logged in with a fine-grained token for `andras-tkcs/nightshift` and `andras-tkcs/nightshift-sandbox` only.
 
 ## Dev tooling in `.claude/`
@@ -27,7 +27,7 @@ This repo *is* Nightshift: a Claude Code plugin marketplace plus server tooling.
 
 ```bash
 tests/lint
-bats --jobs 2 tests/bats      # needs GNU `parallel`; 2 jobs because of the 4 GB RAM cap
+bats --jobs "$(nproc)" tests/bats   # needs GNU `parallel` (installed on ns-main)
 claude plugin validate --strict .
 claude plugin validate --strict plugins/ns
 claude plugin validate --strict plugins/ns-python
