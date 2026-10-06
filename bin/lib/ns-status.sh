@@ -62,7 +62,11 @@ ns_status_main() {
     (if .stacked_on then "stacked  \(.stacked_on)" else empty end),
     "branches \(.branch) · \(.feature_branch // "-") · pr \(.pr // "-")",
     "phases",
-    (.phases[] | "  \(.id | pad(8))  \(.state | pad(9)) \(.branch // "-")  attempts \(.attempts)  rounds \(.review_rounds)"),
+    (.events as $ev
+      | .phases[] | . as $p
+      | "  \(.id | pad(8))  \(.state | pad(9)) \(.branch // "-")  attempts \(.attempts)  rounds \(.review_rounds)"
+        + (if .review_verdict then "  review \(.review_verdict) \(.reviewed_head // "-" | .[0:12])" else "" end)
+        + (if any($ev[]; .type == "report-rerun" and (.note | split(" ")[0]) == $p.id) then "  report regenerated" else "" end)),
     "events (last 5)",
     (.events[-5:][] | "  \(.time)  \(.type)  \(.note)")' <<<"$led"
 }
