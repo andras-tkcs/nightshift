@@ -362,7 +362,11 @@ checks_running() {
   run ns status sbx-12
   assert_output_contains "health   ok"
   # etimes has 1s granularity: poll until the checks process is 1s old
-  until [ "$(ps -o etimes= -p "$CHECKS_PID" | tr -d ' ')" -ge 1 ]; do sleep 0.1; done
+  local tries=0
+  until [ "$(ps -o etimes= -p "$CHECKS_PID" | tr -d ' ')" -ge 1 ] || [ "$tries" -ge 50 ]; do
+    sleep 0.1
+    tries=$((tries + 1))
+  done
   NS_CHECKS_MAX_SECS=1 run ns status sbx-12
   assert_output_contains "health   silent 34m"
 }

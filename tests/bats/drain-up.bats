@@ -67,7 +67,13 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
 @test "drain returns once a background loop parks the run" {
   ns-ledger set "$LEDGER" '.state="running"'
   : >"$TMUX_STUB_DIR/sbx-12"
-  (sleep 0.5 && ns-ledger set "$LEDGER" '.state="parked"') &
+  (
+    for _ in $(seq 100); do
+      [ -z "$(ns-ledger get "$LEDGER" '.stop_requested // empty')" ] || break
+      sleep 0.1
+    done
+    ns-ledger set "$LEDGER" '.state="parked"'
+  ) &
   run ns drain --timeout 30
   wait
   assert_success

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Shared helpers for every bats file. Written in full by p01; never edited afterwards.
+# Shared helpers for every bats file. Written in full by p01; later phases only add helpers.
 
 NS_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export NS_REPO_ROOT
