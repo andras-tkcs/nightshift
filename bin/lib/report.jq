@@ -154,6 +154,10 @@ def minus($waits):
       + [$rerun[] | (.note | split(" ")) as $w
          | "- \(.t | stamp): \($w[0] | esc) at \(($w[1] // "unknown")[0:12] | esc)"]
     else [] end)
+  + (if ((.owner_notes // []) | length) > 0 then
+      ["", "## Owner notes", "", "| Time | Note | Read |", "|---|---|---|"]
+      + [.owner_notes[] | "| \(.time | ep | stamp) | \(.text | esc) | \(if .read then "yes" else "no" end) |"]
+    else [] end)
   + ["", "## Timeline", "", "| Step | Start | Wall | Active | Waiting | Tokens | Cost |", "|---|---|---|---|---|---|---|"]
   + [$rows[] | "| \(.label | esc) | \(.s | stamp) | \(.wall | dur) | \(.active | dur) | \(.wait | dur) | \(.tok | tok) | \(rowcost) |"]
   + (if $unplaced != null then

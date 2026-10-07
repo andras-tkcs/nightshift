@@ -80,6 +80,14 @@ ns-conductor should-stop <id>
 
 Exit 0 when `stop_requested` is set in the ledger (`ns stop` sets it). Otherwise it runs the budget check: exit 4 when the budget is used up (the run now waits at gate 1.5; the conductor ends its session), else exit 1. The conductor calls it after every step on every tier, so this is the budget check T0 and T1 always pass.
 
+### owner-notes
+
+```
+ns-conductor owner-notes <id>
+```
+
+Prints each unread owner note (`ns note`) as `owner note <time>: <text>`, newlines folded to spaces, then sets exactly those notes `read: true`, adds the ledger event `owner-note` with `read <n> note(s)` and checkpoints the ledger (no push). With no unread notes it prints nothing and changes nothing. Exit 0. The conductor calls it after `should-stop` exits 1, and once at the start of every session after it sets the state running. It is not `note` below, which writes the conductor's own `RUN/notes.md`.
+
 ### park
 
 ```

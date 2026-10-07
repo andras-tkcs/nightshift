@@ -36,6 +36,7 @@ usage() {
   printf '  stop          <id> [<phase>]\n'
   printf '  check-auto\n'
   printf '  should-stop   <id>\n'
+  printf '  owner-notes   <id>\n'
   printf '  park          <id>\n'
   printf '  budget-check  <id>\n'
   if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ] && declare -F conductor_loop_usage >/dev/null; then
@@ -686,6 +687,22 @@ conductor_should_stop() {
   return 1
 }
 
+# conductor_owner_notes <id>: print the unread owner notes and mark exactly those read
+conductor_owner_notes() {
+  [ $# -eq 1 ] || ns_usage "ns-conductor owner-notes <id>"
+  local sel idx n
+  load_run "$1"
+  sel=$(lg get "$ledger" '[.owner_notes // [] | to_entries[] | select(.value.read | not)
+    | {k: .key, line: "owner note \(.value.time): \(.value.text | gsub("[\r\n]+"; " "))"}] | tostring')
+  [ "$sel" != "[]" ] || return 0
+  jq -r '.[].line' <<<"$sel"
+  idx=$(jq -c 'map(.k)' <<<"$sel")
+  n=$(jq length <<<"$sel")
+  lg set "$ledger" ".owner_notes |= (to_entries | map(if (.key | IN(${idx}[])) then .value.read = true else . end) | map(.value))"
+  lg event "$ledger" owner-note "read $n note(s)"
+  lg checkpoint "$ledger"
+}
+
 conductor_park() {
   [ $# -eq 1 ] || ns_usage "ns-conductor park <id>"
   local sr
@@ -722,6 +739,7 @@ main() {
       conductor_check_auto
       ;;
     should-stop) conductor_should_stop "$@" ;;
+    owner-notes) conductor_owner_notes "$@" ;;
     park) conductor_park "$@" ;;
     budget-check) conductor_budget_check "$@" ;;
     *)
