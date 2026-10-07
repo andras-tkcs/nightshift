@@ -11,8 +11,8 @@ tags:
 - caddy
 - docs
 - adr
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: phases
 stop_requested: null
 branch: plan/ns-144
@@ -20,12 +20,12 @@ feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T13:29:28Z'
+updated: '2026-10-07T13:34:04Z'
 budget:
   used: 6.88
   limit: 8
   paused: false
-  since: '2026-10-07T13:29:28Z'
+  since: '2026-10-07T13:34:04Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
@@ -139,4 +139,7 @@ events:
   note: 'gate 1.5: waiting for the owner: How shall I proceed with the kill.bats #58
     timing flake: (a) you merge p2 yourself / tell me to merge it with the failing
     check accepted and I note the flake, or (b) fix the case (loosen the 5 s bound'
+- time: '2026-10-07T13:34:03Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
