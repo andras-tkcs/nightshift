@@ -41,19 +41,19 @@ tags:
 - conductor
 state: running
 gate: null
-step: phases
+step: board
 stop_requested: null
 branch: plan/ns-x5
 feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T17:19:43Z'
+updated: '2026-10-07T17:40:15Z'
 budget:
-  used: 5.89
+  used: 6.23
   limit: 8
   paused: false
-  since: '2026-10-07T17:19:38Z'
+  since: '2026-10-07T17:40:02Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -71,7 +71,7 @@ phases:
 - id: p2-stack-base-flow
   title: stack-base merges the base and pushes; Sync before review; touched-tests-only
     guidance; integrator and /ns:dod use ns-conductor checks
-  state: review
+  state: merged
   branch: feature/x5--p2-stack-base-flow
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p2-stack-base-flow
   attempts: 1
@@ -163,4 +163,7 @@ events:
 - time: '2026-10-07T17:19:42Z'
   type: dequeued
   note: started from the queue
+- time: '2026-10-07T17:19:56Z'
+  type: state
+  note: running
 queued_for_slot: false
