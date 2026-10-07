@@ -40,12 +40,12 @@ feature_branch: fix/ns-x6
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:17:14Z'
-updated: '2026-10-07T10:24:49Z'
+updated: '2026-10-07T10:52:12Z'
 budget:
-  used: 1.12
+  used: 1.57
   limit: 2
   paused: false
-  since: '2026-10-07T10:24:42Z'
+  since: '2026-10-07T10:51:42Z'
 phases:
 - id: fix
   title: fix
@@ -72,4 +72,8 @@ events:
 - time: '2026-10-07T10:24:47Z'
   type: review
   note: fix round 2 approve
+- time: '2026-10-07T10:52:11Z'
+  type: note
+  note: 'note 1: bootstrap.bats ''step 1 with a failing apt-get'' fails on origin/main
+    on ns-main t'
 queued_for_slot: false
