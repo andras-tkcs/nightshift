@@ -17,8 +17,8 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: phases
 stop_requested: null
 branch: plan/ns-x7
@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T13:30:11Z'
+updated: '2026-10-07T13:35:18Z'
 budget:
   used: 2.56
   limit: 8
   paused: false
-  since: '2026-10-07T13:30:11Z'
+  since: '2026-10-07T13:35:18Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -118,4 +118,7 @@ events:
   note: 'gate 1.5: waiting for the owner: How should the push-failed clean-tree assertion
     be settled: (a) drop the requirement for the push-failed case (AC-1 does not need
     it) and accept the dirty tree, or (b) allow p1 to edit `bin/ns-ledger`'
+- time: '2026-10-07T13:35:17Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
