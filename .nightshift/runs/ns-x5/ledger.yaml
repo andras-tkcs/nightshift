@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T13:19:33Z'
+updated: '2026-10-07T13:19:37Z'
 budget:
-  used: 3.55
+  used: 3.56
   limit: 8
   paused: false
-  since: '2026-10-07T13:18:59Z'
+  since: '2026-10-07T13:19:35Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -63,9 +63,11 @@ phases:
   branch: feature/x5--p1-checks-cache
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p1-checks-cache
   attempts: 2
-  review_rounds: 0
+  review_rounds: 1
   not_before: null
   transient_retries: 0
+  review_verdict: approve
+  reviewed_head: 14c5db4c0d9544e651e7be874fdee6655cd2ee8b
 events:
 - time: '2026-10-07T09:16:50Z'
   type: created
@@ -113,4 +115,7 @@ events:
   type: note
   note: 'note 1: bootstrap.bats ''step 1 with a failing apt-get...'' fails on origin/main
     too (no s'
+- time: '2026-10-07T13:19:36Z'
+  type: review
+  note: p1-checks-cache round 1 approve
 queued_for_slot: false
