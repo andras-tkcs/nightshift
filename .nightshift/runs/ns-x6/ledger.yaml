@@ -1,0 +1,52 @@
+version: 1
+id: ns-x6
+project: nightshift
+request:
+  text: 'Fix run-report and log gaps seen in run ns-x4:
+
+    1. `ns log <run>` showed the same timestamp (09:08) on every line. Show each event''s
+    real time.
+
+    2. The run report timeline showed "planning 1h 17m" even though the ledger step
+    moved to triage, then implement, then integrate. Derive the timeline from step
+    changes in the ledger.
+
+    3. Tokens and cost showed "no data" because the conductor session had "no result
+    event (cut off)". Sum the usage from assistant messages when the final result
+    event is missing, and mark the totals as partial.
+
+    4. Subagent time for ns:integrator showed "no data". Fill it in.
+
+    5. Add a "Checks" breakdown that shows how many times each check ran during the
+    run, with total time per check, so repeated test runs are visible.
+
+
+    Acceptance: bats or python tests with a fixture log reproducing each case. Docs
+    for the run report updated.'
+tier: T1
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-x6
+feature_branch: null
+pr: null
+release: v0.1.8
+created: '2026-10-07T09:17:14Z'
+updated: '2026-10-07T09:17:15Z'
+budget:
+  used: 0
+  limit: 2
+  paused: false
+  since: '2026-10-07T09:17:15Z'
+phases: []
+events:
+- time: '2026-10-07T09:17:14Z'
+  type: created
+  note: run ns-x6 created
+- time: '2026-10-07T09:17:14Z'
+  type: tier
+  note: T1 (owner, 2 h)
