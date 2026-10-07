@@ -4,18 +4,28 @@
 load helpers
 load stack-gh
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  REMOTE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cp "$NS_REPO_ROOT/tests/fixtures/profiles/stack-pr.yaml" "$FIX/.claude/project-profile.yaml"
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
-  REMOTE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T1 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
   export GH_STUB_RESPONSES="$BATS_TEST_TMPDIR/gh-responses"
   mkdir -p "$GH_STUB_RESPONSES"
   : >"$GH_STUB_RESPONSES/map"

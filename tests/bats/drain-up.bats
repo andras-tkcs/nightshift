@@ -2,10 +2,15 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
-  export NS_DRAIN_POLL=1
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
 project: nightshift-sandbox
@@ -19,10 +24,15 @@ EOF
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T1 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
-  PROJ="$(dirname "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)")"
   rm -f "$TMUX_STUB_DIR/sbx-12"
+}
+
+setup() {
+  ns_test_setup
+  export NS_DRAIN_POLL=1
+  ns_cached_fixture fixture_build
+  fixture_vars
+  PROJ="$(dirname "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)")"
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
@@ -57,7 +67,13 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
 @test "drain returns once a background loop parks the run" {
   ns-ledger set "$LEDGER" '.state="running"'
   : >"$TMUX_STUB_DIR/sbx-12"
-  (sleep 2 && ns-ledger set "$LEDGER" '.state="parked"') &
+  (
+    for _ in $(seq 100); do
+      [ -z "$(ns-ledger get "$LEDGER" '.stop_requested // empty')" ] || break
+      sleep 0.1
+    done
+    ns-ledger set "$LEDGER" '.state="parked"'
+  ) &
   run ns drain --timeout 30
   wait
   assert_success

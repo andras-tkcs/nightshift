@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The desk's HTML listeners (`:8443` and `http://127.0.0.1:8080`) send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`, so a desk page cannot run scripts or load anything from outside, also when it did not go through `ns publish`; directory listings lose their inline JavaScript. ADR 0010 (issue #5).
+- `*.md` files on those listeners are served as `text/plain; charset=utf-8` and never render as HTML (issue #27).
+
+### Added
+
+- Local Caddy additions go in `/etc/caddy/Caddyfile.d/*.caddy`, imported at the end of the rendered Caddyfile. `bootstrap.sh` step 1 creates the directory, `--check` lists the snippet names (`ok (local: <names>)`), and a rerun never touches them. After installing this release, run `bootstrap.sh` once as root to rewrite the Caddyfile (`--upgrade` leaves it alone) (issue #26).
+
 ### Changed
 
 - `ns health-check` is now `ns check` (the `ns-health.*` systemd units keep their names and run `ns check`). `ns health-check` still works as a deprecated alias (ns-x4).

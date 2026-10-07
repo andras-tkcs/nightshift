@@ -2,22 +2,32 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+  RUNDIR="$SBX-sbx-12/.nightshift/runs/sbx-12"
+  LOGS="$NS_CONFIG_DIR/logs/sbx-12"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cp "$NS_REPO_ROOT/tests/fixtures/report/project-profile.yaml" "$FIX/.claude/project-profile.yaml"
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
-  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T2 --yes >/dev/null
-  RUNDIR="$SBX-sbx-12/.nightshift/runs/sbx-12"
   cp "$NS_REPO_ROOT/tests/fixtures/report/ledger.yaml" "$RUNDIR/ledger.yaml"
   cp "$NS_REPO_ROOT/tests/fixtures/report/escalation.md" "$RUNDIR/escalation.md"
-  LOGS="$NS_CONFIG_DIR/logs/sbx-12"
   mkdir -p "$LOGS"
   cp "$NS_REPO_ROOT"/tests/fixtures/report/logs/* "$LOGS/"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }

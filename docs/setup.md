@@ -73,7 +73,7 @@ Skip this unless you want a terminal in the browser. In Cloudflare, turn on brow
 
 ### 1. Caddy and desk certificates
 
-Caddy from its apt repository, `TS_PERMIT_CERT_UID=caddy`, and `/etc/caddy/Caddyfile` rendered from `templates/caddy/Caddyfile.tmpl`: the desk on `:443` to `127.0.0.1:3000`, the HTML view on `:8443`, ntfy on `:8444` to `127.0.0.1:2586`, and `http://127.0.0.1:8080` for the tunnel. Needs Tailscale connected (otherwise `needs you: tailscale is not connected`). The manual way:
+Caddy from its apt repository, `TS_PERMIT_CERT_UID=caddy`, and `/etc/caddy/Caddyfile` rendered from `templates/caddy/Caddyfile.tmpl`: the desk on `:443` to `127.0.0.1:3000`, the HTML view on `:8443`, ntfy on `:8444` to `127.0.0.1:2586`, and `http://127.0.0.1:8080` for the tunnel. The `:8443` and `:8080` listeners send the header `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` and serve `*.md` as `text/plain` ([ADR 0010](adr/0010-desk-content-policy.md)). The Caddyfile imports `/etc/caddy/Caddyfile.d/*.caddy` last: local additions go there, and bootstrap creates the directory, lists the files in `--check` and never touches them. Needs Tailscale connected (otherwise `needs you: tailscale is not connected`). The manual way:
 
 ```bash
 apt -y install debian-keyring debian-archive-keyring apt-transport-https
@@ -84,12 +84,13 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
 apt update && apt -y install caddy
 echo 'TS_PERMIT_CERT_UID=caddy' >> /etc/default/tailscaled
 systemctl restart tailscaled
+install -d -m 755 /etc/caddy/Caddyfile.d
 sed "s/@TS_HOST@/$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')/g" \
   ~ns/Coding/nightshift/templates/caddy/Caddyfile.tmpl > /etc/caddy/Caddyfile
 systemctl reload caddy
 ```
 
-The explicit `get_certificate tailscale` matters: recent Caddy versions otherwise try Let's Encrypt for `.ts.net` names and fail.
+The explicit `get_certificate tailscale` matters: recent Caddy versions otherwise try Let's Encrypt for `.ts.net` names and fail. A snippet in Caddyfile.d with an error makes the reload fail, and bootstrap's restart fallback then leaves Caddy stopped until the snippet is fixed; check with `caddy validate --config /etc/caddy/Caddyfile` before `systemctl reload caddy`.
 
 ### 2. Desk folder /srv/ns-space
 

@@ -2,10 +2,17 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
-  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/desk"
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+  RUNDIR="$WT/.nightshift/runs/sbx-12"
+  DESK="$NS_DESK_DIR/nightshift-sandbox"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
 project: nightshift-sandbox
@@ -19,11 +26,14 @@ EOF
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T1 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
-  RUNDIR="$WT/.nightshift/runs/sbx-12"
-  DESK="$NS_DESK_DIR/nightshift-sandbox"
   printf '# Plan\n\nDo the thing.\n' >"$RUNDIR/plan.md"
+}
+
+setup() {
+  ns_test_setup
+  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/desk"
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
