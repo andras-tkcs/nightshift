@@ -32,8 +32,8 @@ tags:
 - bats
 - tests
 - perf
-state: running
-gate: null
+state: waiting
+gate: '1.5'
 step: implement
 stop_requested: null
 branch: plan/ns-x8
@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:32:22Z'
+updated: '2026-10-07T15:32:38Z'
 budget:
-  used: 2.04
+  used: 2.05
   limit: 2
   paused: false
-  since: '2026-10-07T15:31:59Z'
+  since: '2026-10-07T15:32:38Z'
   integrate_from: null
 phases: []
 events:
@@ -71,4 +71,13 @@ events:
 - time: '2026-10-07T15:11:08Z'
   type: push-failed
   note: 'remote: Internal Server Error        '
+- time: '2026-10-07T15:32:30Z'
+  type: budget
+  note: 'budget used up: 2.04 h of 2 h (ns-conductor should-stop)'
+- time: '2026-10-07T15:32:32Z'
+  type: state
+  note: 'waiting gate 1.5: budget used up'
+- time: '2026-10-07T15:32:35Z'
+  type: gate
+  note: 'gate 1.5: waiting for the owner: budget used up: 2.04 h of 2 h'
 queued_for_slot: false
