@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T12:55:07Z'
+updated: '2026-10-07T12:55:10Z'
 budget:
   used: 1.98
   limit: 8
@@ -96,4 +96,7 @@ events:
 - time: '2026-10-07T12:34:53Z'
   type: phase-end
   note: p1-note-cli exit 0
+- time: '2026-10-07T12:55:09Z'
+  type: report-rerun
+  note: p1-note-cli 6cc724233a708aab7ce3b42797d7c4010b1970e8
 queued_for_slot: false
