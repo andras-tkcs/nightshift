@@ -17,12 +17,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T13:54:57Z'
+updated: '2026-10-07T13:55:02Z'
 budget:
   used: 0
   limit: 2
   paused: false
-  since: '2026-10-07T13:54:57Z'
+  since: '2026-10-07T13:55:02Z'
 phases: []
 events:
 - time: '2026-10-07T13:54:56Z'
@@ -31,3 +31,10 @@ events:
 - time: '2026-10-07T13:54:56Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-07T13:55:01Z'
+  type: state
+  note: 'queued: waiting for a free run slot'
+- time: '2026-10-07T13:55:01Z'
+  type: queued
+  note: waiting for a free run slot
+queued_for_slot: true
