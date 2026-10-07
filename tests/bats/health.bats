@@ -355,3 +355,25 @@ checks_running() {
   NS_CHECKS_MAX_SECS=1 run ns status sbx-12
   assert_output_contains "health   silent 34m"
 }
+
+@test "ns check runs the health check and prints an ns check summary line" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  rm -f "$TMUX_STUB_DIR/sbx-12"
+  run ns check
+  assert_success
+  [[ "$output" == *"ns check: "* ]]
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
+}
+
+@test "ns health-check still works as an alias of ns check" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  rm -f "$TMUX_STUB_DIR/sbx-12"
+  run ns health-check
+  assert_success
+  [[ "$output" == *"ns check: "* ]]
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
+}
