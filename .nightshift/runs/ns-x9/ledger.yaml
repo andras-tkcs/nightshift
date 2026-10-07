@@ -19,13 +19,13 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T17:09:31Z'
+updated: '2026-10-07T17:09:36Z'
 budget:
   used: 1.55
   limit: 2
   paused: false
   since: '2026-10-07T17:09:04Z'
-  integrate_from: null
+  integrate_from: '2026-10-07T17:09:35Z'
 phases:
 - id: fix
   title: fix
@@ -63,3 +63,5 @@ events:
   note: 'note 1: bootstrap.bats test 32 (step 1 with a failing apt-get) fails on main
     too in this'
 queued_for_slot: false
+stack_skipped: []
+stacked_on: ns-144
