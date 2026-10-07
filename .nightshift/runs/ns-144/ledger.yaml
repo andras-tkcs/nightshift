@@ -11,22 +11,22 @@ tags:
 - caddy
 - docs
 - adr
-state: running
-gate: null
-step: integrate
+state: done
+gate: '2'
+step: done
 stop_requested: null
 branch: plan/ns-144
 feature_branch: feature/144
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/164
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T14:40:30Z'
+updated: '2026-10-07T15:17:39Z'
 budget:
-  used: 7.98
+  used: 8.6
   limit: 8
   paused: false
-  since: '2026-10-07T14:40:10Z'
-  integrate_from: '2026-10-07T14:19:49Z'
+  since: '2026-10-07T15:17:39Z'
+  integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
   title: CSP and Markdown rules in the Caddy template, Caddyfile.d import, bootstrap
@@ -151,6 +151,12 @@ events:
 - time: '2026-10-07T14:19:26Z'
   type: review
   note: review board
+- time: '2026-10-07T15:17:37Z'
+  type: state
+  note: 'done gate 2: pull request https://github.com/andras-tkcs/nightshift/pull/164'
+- time: '2026-10-07T15:17:37Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/164'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
