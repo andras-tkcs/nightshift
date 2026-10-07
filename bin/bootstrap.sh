@@ -100,7 +100,7 @@ render_caddyfile() { # render_caddyfile <host>
 # ---- step 1: Caddy -------------------------------------------------------
 
 check_1() {
-  local todo=() host f
+  local todo=() host f d names="" suffix=""
   if ! command -v caddy >/dev/null 2>&1; then
     todo+=("install caddy")
   fi
@@ -126,11 +126,28 @@ check_1() {
   if ! grep -qs '^TS_PERMIT_CERT_UID=caddy$' "$f"; then
     todo+=("set TS_PERMIT_CERT_UID=caddy")
   fi
+  d="$(P /etc/caddy/Caddyfile.d)"
+  if [ -e "$d" ] && [ ! -d "$d" ]; then
+    CHECK_MSG="needs you: /etc/caddy/Caddyfile.d is not a directory"
+    return 1
+  fi
+  if [ -d "$d" ] && [ ! -r "$d" ]; then
+    CHECK_MSG="unknown: /etc/caddy/Caddyfile.d is not readable"
+    return 1
+  fi
+  if [ ! -d "$d" ]; then
+    todo+=("create /etc/caddy/Caddyfile.d")
+  else
+    # local additions are listed, never opened: names only, control characters dropped
+    names="$(find "$d" -mindepth 1 -maxdepth 1 -name '*.caddy' -printf '%f\n' 2>/dev/null \
+      | LC_ALL=C sort | while IFS= read -r x; do clean "$x"; printf ', '; done | sed 's/, $//')"
+  fi
+  [ -z "$names" ] || suffix=" (local: $names)"
   if [ "${#todo[@]}" -eq 0 ]; then
-    CHECK_MSG="ok"
+    CHECK_MSG="ok$suffix"
     return 0
   fi
-  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')"
+  CHECK_MSG="would change: $(printf '%s, ' "${todo[@]}" | sed 's/, $//')$suffix"
   return 1
 }
 
@@ -153,6 +170,11 @@ apply_1() {
   fi
   dir="$(P /etc/caddy)"
   mkdir -p "$dir"
+  if [ -e "$dir/Caddyfile.d" ] && [ ! -d "$dir/Caddyfile.d" ]; then
+    APPLY_MSG="needs you: /etc/caddy/Caddyfile.d is not a directory"
+    return 1
+  fi
+  [ -d "$dir/Caddyfile.d" ] || install -d -m 755 "$dir/Caddyfile.d"
   render_caddyfile "$host" >"$dir/Caddyfile.new"
   chmod 644 "$dir/Caddyfile.new"
   mv "$dir/Caddyfile.new" "$dir/Caddyfile"

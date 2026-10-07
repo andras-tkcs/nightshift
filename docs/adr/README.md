@@ -13,3 +13,4 @@ Write an ADR when a decision is hard to reverse, moves a trust boundary, changes
 | [0007](0007-owner-tags-release.md) | The owner tags v0.1.0 after the PR merges | Accepted |
 | [0008](0008-detached-phase-workers.md) | Phase workers run detached | Accepted |
 | [0009](0009-e2e-keep-in-build-a.md) | Build A's end-to-end scenarios keep their PRs | Accepted |
+| [0010](0010-desk-content-policy.md) | The desk serves only self-contained pages | Accepted |

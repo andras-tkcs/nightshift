@@ -12,6 +12,12 @@
     root * /srv/ns-space
     file_server browse
     header X-Robots-Tag "noindex"
+    header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+    @md path *.md
+    header @md {
+        Content-Type "text/plain; charset=utf-8"
+        defer
+    }
 }
 
 @TS_HOST@:8444 {
@@ -24,4 +30,12 @@
 http://127.0.0.1:8080 {
     root * /srv/ns-space
     file_server browse
+    header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+    @md path *.md
+    header @md {
+        Content-Type "text/plain; charset=utf-8"
+        defer
+    }
 }
+
+import /etc/caddy/Caddyfile.d/*.caddy
