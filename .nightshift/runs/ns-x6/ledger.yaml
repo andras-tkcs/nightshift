@@ -25,23 +25,27 @@ request:
     for the run report updated.'
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
-state: queued
+tier_recommended: T2
+tags:
+- python
+- jq
+- bash
+- docs
+state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-x6
 feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:17:14Z'
-updated: '2026-10-07T09:17:15Z'
+updated: '2026-10-07T09:17:55Z'
 budget:
   used: 0
   limit: 2
   paused: false
-  since: '2026-10-07T09:17:15Z'
+  since: '2026-10-07T09:17:30Z'
 phases: []
 events:
 - time: '2026-10-07T09:17:14Z'
@@ -50,3 +54,7 @@ events:
 - time: '2026-10-07T09:17:14Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-07T09:17:30Z'
+  type: state
+  note: running
+queued_for_slot: false
