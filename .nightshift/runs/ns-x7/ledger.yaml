@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T15:18:15Z'
+updated: '2026-10-07T15:18:19Z'
 budget:
   used: 2.56
   limit: 8
@@ -130,4 +130,7 @@ events:
 - time: '2026-10-07T15:18:14Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T15:18:17Z'
+  type: dequeued
+  note: started from the queue
 queued_for_slot: false
