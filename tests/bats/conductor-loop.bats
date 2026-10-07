@@ -887,22 +887,6 @@ PY2
 
 # ---- ns-x5 acceptance tests (RUN/test-strategy.md of ns-x5) ----
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p1-checks-cache deletes the
-# `ns_xfail "ns:ns-x5 acceptance" ` prefixes in the commit that implements them, then this helper
-# (unless another file of the phase still needs it).
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 # x5_count: how often the counting check command ran (0 when never)
 x5_count() {
   if [ -f "$BATS_TEST_TMPDIR/count" ]; then
@@ -957,7 +941,7 @@ x5_lock_pass() {
 }
 
 @test "checks: a concurrent second call waits and reports the first call's PASS (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_lock_pass
+  x5_lock_pass
 }
 
 # AC-1: the same with a failing check: both exit 1, the check ran once
@@ -977,7 +961,7 @@ x5_lock_fail() {
 }
 
 @test "checks: a concurrent second call reports the first call's FAIL and exit code (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_lock_fail
+  x5_lock_fail
 }
 
 # AC-1 (D4): a process a check leaves running does not hold the lock
@@ -994,7 +978,7 @@ x5_no_lock_leak() {
 }
 
 @test "checks: a process a check leaves running does not hold the checks lock (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_no_lock_leak
+  x5_no_lock_leak
 }
 
 # AC-1: a lock file left by a killed holder does not block a later call
@@ -1024,7 +1008,7 @@ x5_stale_lock() {
 }
 
 @test "checks: a lock left by a killed process does not block a later call (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_stale_lock
+  x5_stale_lock
 }
 
 # AC-2: a second call on the same tree is a cache hit
@@ -1043,7 +1027,7 @@ x5_cache_hit() {
 }
 
 @test "checks: a second call on the same clean tree is a cache hit and writes rc 0 (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_cache_hit
+  x5_cache_hit
 }
 
 # x5_pass_then_hit: one pass and one cache hit (count 1), so a later rerun is caused by the change
@@ -1070,7 +1054,7 @@ x5_miss_commit() {
 }
 
 @test "checks: a new commit reruns the checks (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_miss_commit
+  x5_miss_commit
 }
 
 # AC-3 (c): a failure is never a cache hit, but it is recorded (for replay)
@@ -1087,7 +1071,7 @@ x5_miss_failure() {
 }
 
 @test "checks: an earlier failure reruns the checks and is never reported as a pass (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_miss_failure
+  x5_miss_failure
 }
 
 # AC-3 (d): --force reruns
@@ -1101,7 +1085,7 @@ x5_miss_force() {
 }
 
 @test "checks: --force reruns the checks after a pass (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_miss_force
+  x5_miss_force
 }
 
 # AC-3 (e): an untracked non-ignored file makes the worktree dirty
@@ -1116,7 +1100,7 @@ x5_miss_untracked() {
 }
 
 @test "checks: an untracked file in the worktree reruns the checks (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_miss_untracked
+  x5_miss_untracked
 }
 
 # AC-3 (e): a modified tracked file makes the worktree dirty
@@ -1131,7 +1115,7 @@ x5_miss_modified() {
 }
 
 @test "checks: a modified tracked file reruns the checks (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_miss_modified
+  x5_miss_modified
 }
 
 # AC-3 (e), D6: a pass made on a dirty tree is not cacheable; the next clean pass is
@@ -1153,7 +1137,7 @@ x5_dirty_pass_not_cached() {
 }
 
 @test "checks: a pass made while an untracked file was present is not cached (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_dirty_pass_not_cached
+  x5_dirty_pass_not_cached
 }
 
 # D1: for T1, checks <id> fix is checks <id> feature (same lock, cache and log)
@@ -1172,7 +1156,7 @@ x5_canon_fix() {
 }
 
 @test "checks: for a T1 run, checks fix is a cache hit of checks feature (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_canon_fix
+  x5_canon_fix
 }
 
 # D1: the code worktree follows feature_branch, not a tier changed after fix-branch
@@ -1185,7 +1169,7 @@ x5_code_wt_after_retier() {
 }
 
 @test "checks: a run retiered after fix-branch still checks its --fix worktree (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_code_wt_after_retier
+  x5_code_wt_after_retier
 }
 
 # AC-4: a warning when the worktree lacks the pushed code branch; none when nothing is pushed
@@ -1208,7 +1192,7 @@ x5_wrong_target() {
 }
 
 @test "checks: warns when the worktree lacks the run's pushed code branch, and not before (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_wrong_target
+  x5_wrong_target
 }
 
 # AC-4, D2/D5: merge's internal checks never warn, while an explicit call on the same tree
@@ -1233,7 +1217,7 @@ x5_merge_no_warning() {
 }
 
 @test "checks: merge's internal checks print no warning; an explicit call does (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_merge_no_warning
+  x5_merge_no_warning
 }
 
 # D2: --force is the only accepted third argument
@@ -1248,5 +1232,5 @@ x5_usage() {
 }
 
 @test "checks: accepts --force as the third argument and rejects anything else with exit 2 (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_usage
+  x5_usage
 }
