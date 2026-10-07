@@ -20,13 +20,22 @@ feature_branch: fix/ns-x4
 pr: null
 release: v0.1.8
 created: '2026-10-07T07:09:33Z'
-updated: '2026-10-07T08:27:04Z'
+updated: '2026-10-07T08:27:08Z'
 budget:
   used: 1.28
   limit: 2
   paused: false
   since: '2026-10-07T08:26:37Z'
-phases: []
+phases:
+- id: fix
+  title: fix
+  state: pending
+  branch: null
+  worktree: null
+  attempts: 0
+  review_rounds: 1
+  review_verdict: changes
+  reviewed_head: 14cd2611725947da0eeb001186d3829d2cb7c985
 events:
 - time: '2026-10-07T07:09:33Z'
   type: created
@@ -45,4 +54,7 @@ events:
   type: note
   note: 'note 2: tests/lint was not run by the implementer (guard hook blocked it);
     only shellche'
+- time: '2026-10-07T08:27:07Z'
+  type: review
+  note: fix round 1 changes
 queued_for_slot: false
