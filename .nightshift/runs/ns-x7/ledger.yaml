@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T18:45:16Z'
+updated: '2026-10-07T18:45:26Z'
 budget:
   used: 6.01
   limit: 8
@@ -46,6 +46,14 @@ phases:
   transient_retries: 0
   review_verdict: approve
   reviewed_head: 138176270a2190ade7d8115d9a0827b70cc3a18c
+- id: p2-guard-skill
+  title: Block ns note for agents and make the conductor read owner notes
+  state: running
+  branch: feature/x7--p2-guard-skill
+  worktree: /home/ns/Coding/worktrees/nightshift-ns-x7--p2-guard-skill
+  attempts: 1
+  review_rounds: 0
+  not_before: null
 events:
 - time: '2026-10-07T10:06:18Z'
   type: created
@@ -151,4 +159,7 @@ events:
 - time: '2026-10-07T18:14:20Z'
   type: review
   note: p1-note-cli round 3 approve
+- time: '2026-10-07T18:45:24Z'
+  type: phase-start
+  note: 'p2-guard-skill attempt: pid 2924656'
 queued_for_slot: false
