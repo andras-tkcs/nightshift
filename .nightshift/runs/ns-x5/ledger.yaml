@@ -1,0 +1,60 @@
+version: 1
+id: ns-x5
+project: nightshift
+request:
+  text: 'Stop running the full bats suite (about 15 min, 835 tests) several times
+    per run. Evidence: run ns-x4, a T1 rename, took 1h49m. The full suite ran 5-6
+    times, sometimes two copies at once in the same worktree, and `ns-conductor checks
+    ns-x4 feature` ran against the feature target while the change was on fix.
+
+
+    Changes:
+
+    1. Skills (implement, run/integrate, implementer agent): during implementation,
+    run only the test files the change touches. Run the full suite only through `ns-conductor
+    checks`. The integrator never calls bats directly.
+
+    2. ns-conductor checks: add a per-worktree lock. A second invocation in the same
+    worktree waits for the first run''s result instead of starting another.
+
+    3. ns-conductor checks: cache the result by tree SHA (git rev-parse HEAD^{tree})
+    and target. If an earlier run passed on the same tree, report it and skip the
+    re-run (add --force to override).
+
+    4. Check why the conductor chose the `feature` target in ns-x4 when the fix branch
+    held the change. Make the run skill pick the target holding the change, or have
+    checks warn when the target''s HEAD lacks the run''s latest commit.
+
+    5. Move "merge origin/main if behind" (stack-base) to the end of implement, before
+    review, so integrate doesn''t invalidate checks that have already passed.
+
+
+    Acceptance: bats tests for the lock, the cache hit/miss and the wrong-target warning.
+    Skill docs updated. CHANGELOG entry.'
+tier: T2
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-x5
+feature_branch: null
+pr: null
+release: v0.1.8
+created: '2026-10-07T09:16:50Z'
+updated: '2026-10-07T09:16:52Z'
+budget:
+  used: 0
+  limit: 8
+  paused: false
+  since: '2026-10-07T09:16:52Z'
+phases: []
+events:
+- time: '2026-10-07T09:16:50Z'
+  type: created
+  note: run ns-x5 created
+- time: '2026-10-07T09:16:51Z'
+  type: tier
+  note: T2 (owner, 8 h)
