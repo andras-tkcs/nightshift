@@ -20,12 +20,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T05:38:26Z'
+updated: '2026-10-07T05:38:47Z'
 budget:
   used: 0.86
   limit: 8
   paused: false
-  since: '2026-10-07T05:38:26Z'
+  since: '2026-10-07T05:38:47Z'
 phases: []
 events:
 - time: '2026-10-07T04:46:33Z'
@@ -41,6 +41,12 @@ events:
   type: state
   note: waiting gate 1
 - time: '2026-10-07T05:38:25Z'
+  type: gate
+  note: 'gate 1: waiting for the owner'
+- time: '2026-10-07T05:38:45Z'
+  type: state
+  note: waiting gate 1
+- time: '2026-10-07T05:38:46Z'
   type: gate
   note: 'gate 1: waiting for the owner'
 queued_for_slot: false
