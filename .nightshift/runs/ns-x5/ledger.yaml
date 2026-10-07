@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T19:12:39Z'
+updated: '2026-10-07T19:33:04Z'
 budget:
-  used: 7.59
+  used: 7.93
   limit: 8
   paused: false
-  since: '2026-10-07T19:12:38Z'
+  since: '2026-10-07T19:33:02Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -83,7 +83,7 @@ phases:
 - id: p3-retire
   title: Reference docs for stack-base, the worker prompt and the flow; changelog;
     retire the plan
-  state: review
+  state: merged
   branch: feature/x5--p3-retire
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p3-retire
   attempts: 1
@@ -222,4 +222,7 @@ events:
 - time: '2026-10-07T19:12:38Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T19:12:55Z'
+  type: state
+  note: running
 queued_for_slot: false
