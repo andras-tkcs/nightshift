@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T19:30:46Z'
+updated: '2026-10-07T19:30:58Z'
 budget:
-  used: 6.76
+  used: 6.77
   limit: 8
   paused: false
-  since: '2026-10-07T19:30:13Z'
+  since: '2026-10-07T19:30:49Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -52,9 +52,11 @@ phases:
   branch: feature/x7--p2-guard-skill
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x7--p2-guard-skill
   attempts: 1
-  review_rounds: 0
+  review_rounds: 1
   not_before: null
   transient_retries: 0
+  review_verdict: changes
+  reviewed_head: b8999877ea270964c775db37a39d4d89c7c33d6f
 events:
 - time: '2026-10-07T10:06:18Z'
   type: created
@@ -166,4 +168,7 @@ events:
 - time: '2026-10-07T19:28:55Z'
   type: phase-end
   note: p2-guard-skill exit 0
+- time: '2026-10-07T19:30:55Z'
+  type: review
+  note: p2-guard-skill round 1 changes
 queued_for_slot: false
