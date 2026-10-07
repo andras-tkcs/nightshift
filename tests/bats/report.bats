@@ -219,3 +219,16 @@ X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
   assert_success
   grep -qE '^\| claude-opus-5-5 \|.*\| no data \|$' "$RUNDIR/run-report.md"
 }
+
+@test "ns report: the Checks table lists only the last run of a checks log, the breakdown counts every run (ns-x6)" {
+  rm -f "$LOGS"/*.checks.log
+  cp "$X6/two-runs.checks.log" "$LOGS/feature.checks.log"
+  run ns report sbx-12
+  assert_success
+  sec="$(sed -n '/^## Checks/,/^### Checks breakdown/p' "$RUNDIR/run-report.md")"
+  # only the second block (python test passed, 10s) is in the table
+  grep -qF 'PASS' <<<"$sec"
+  ! grep -qF 'FAIL' <<<"$sec"
+  grep -qF '| python test | 2 | 15s |' "$RUNDIR/run-report.md"
+  grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
+}
