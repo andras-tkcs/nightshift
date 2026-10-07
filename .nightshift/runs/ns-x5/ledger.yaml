@@ -39,8 +39,8 @@ tags:
 - bats
 - skills
 - conductor
-state: running
-gate: null
+state: waiting
+gate: '1'
 step: gate1
 stop_requested: null
 branch: plan/ns-x5
@@ -48,12 +48,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T10:09:34Z'
+updated: '2026-10-07T10:09:42Z'
 budget:
-  used: 0.87
+  used: 0.88
   limit: 8
   paused: false
-  since: '2026-10-07T10:09:20Z'
+  since: '2026-10-07T10:09:42Z'
 phases: []
 events:
 - time: '2026-10-07T09:16:50Z'
@@ -65,4 +65,10 @@ events:
 - time: '2026-10-07T09:17:08Z'
   type: state
   note: running
+- time: '2026-10-07T10:09:41Z'
+  type: state
+  note: waiting gate 1
+- time: '2026-10-07T10:09:41Z'
+  type: gate
+  note: 'gate 1: waiting for the owner'
 queued_for_slot: false
