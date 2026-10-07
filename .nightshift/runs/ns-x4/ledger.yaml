@@ -20,12 +20,12 @@ feature_branch: fix/ns-x4
 pr: null
 release: v0.1.8
 created: '2026-10-07T07:09:33Z'
-updated: '2026-10-07T08:08:29Z'
+updated: '2026-10-07T08:26:10Z'
 budget:
-  used: 0.97
+  used: 1.27
   limit: 2
   paused: false
-  since: '2026-10-07T08:08:01Z'
+  since: '2026-10-07T08:26:01Z'
 phases: []
 events:
 - time: '2026-10-07T07:09:33Z'
@@ -37,4 +37,8 @@ events:
 - time: '2026-10-07T07:09:49Z'
   type: state
   note: running
+- time: '2026-10-07T08:26:09Z'
+  type: note
+  note: 'note 1: bootstrap.bats test ''step 1 with a failing apt-get...'' fails on
+    base and fix bra'
 queued_for_slot: false
