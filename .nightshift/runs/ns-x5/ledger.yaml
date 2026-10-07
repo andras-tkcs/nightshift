@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T17:55:51Z'
+updated: '2026-10-07T18:06:39Z'
 budget:
-  used: 6.49
+  used: 6.67
   limit: 8
   paused: false
-  since: '2026-10-07T17:55:38Z'
+  since: '2026-10-07T18:06:26Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -83,12 +83,13 @@ phases:
 - id: p3-retire
   title: Reference docs for stack-base, the worker prompt and the flow; changelog;
     retire the plan
-  state: running
+  state: review
   branch: feature/x5--p3-retire
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p3-retire
   attempts: 1
   review_rounds: 0
   not_before: null
+  transient_retries: 0
 events:
 - time: '2026-10-07T09:16:50Z'
   type: created
@@ -182,4 +183,7 @@ events:
   type: note
   note: 'note 2: ns-x4 cause: tier T1 so ''checks ns-x4 feature'' already resolved
     to the fix workt'
+- time: '2026-10-07T18:06:39Z'
+  type: phase-end
+  note: p3-retire exit 0
 queued_for_slot: false
