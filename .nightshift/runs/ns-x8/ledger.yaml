@@ -32,8 +32,8 @@ tags:
 - bats
 - tests
 - perf
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: implement
 stop_requested: null
 branch: plan/ns-x8
@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:33:39Z'
+updated: '2026-10-07T15:34:11Z'
 budget:
   used: 2.05
   limit: 2
   paused: false
-  since: '2026-10-07T15:33:39Z'
+  since: '2026-10-07T15:34:11Z'
   integrate_from: null
 phases: []
 events:
@@ -80,4 +80,7 @@ events:
 - time: '2026-10-07T15:32:35Z'
   type: gate
   note: 'gate 1.5: waiting for the owner: budget used up: 2.04 h of 2 h'
+- time: '2026-10-07T15:34:10Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
