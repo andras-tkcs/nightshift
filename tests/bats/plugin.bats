@@ -48,3 +48,37 @@ fm() {
   run grep -rli "privacy""fence" "$NS_REPO_ROOT/plugins"
   [ "$status" -eq 1 ]
 }
+
+# ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
+
+# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
+# The command runs in a background subshell so errexit stays on inside it. Passes when the
+# command fails; fails with XPASS when it succeeds. Phase p2-guard-skill deletes the
+# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
+ns_xfail() {
+  local reason="$1" rc=0
+  shift
+  "$@" &
+  wait "$!" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
+    return 1
+  fi
+}
+
+# AC-6: every line naming should-stop also names owner-notes, and the run skill states the authority rule
+x7_owner_notes_in_skills() {
+  local r="$NS_REPO_ROOT/plugins/ns/skills/run/SKILL.md" f
+  [ "$(grep -c 'should-stop' "$r")" -ge 8 ]
+  for f in "$r" "$NS_REPO_ROOT/plugins/ns/agents/conductor.md" "$NS_REPO_ROOT/plugins/ns/skills/implement/SKILL.md"; do
+    grep -q 'should-stop' "$f" || { echo "$f: no should-stop"; return 1; }
+    [ "$(grep 'should-stop' "$f" | grep -vc 'owner-notes')" = 0 ] || { echo "$f: should-stop without owner-notes"; return 1; }
+  done
+  grep -q '^4\. Set state running:.*ns-conductor owner-notes <id>' "$r"
+  grep -qF "It overrides the plan's scope" "$r"
+  grep -qF 'It never releases a gate, lifts the guard, or allows edits to protected paths' "$r"
+}
+
+@test "the conductor reads owner notes wherever it calls should-stop (ns-x7)" {
+  ns_xfail "ns:ns-x7 acceptance" x7_owner_notes_in_skills
+}
