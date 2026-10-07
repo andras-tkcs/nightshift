@@ -1,18 +1,10 @@
-# Escalation: ns-x5, p2-stack-base-flow cannot merge
+# Escalation: p3-retire cannot merge (known failure)
 
-## What is stuck
-p1-checks-cache is merged. p2-stack-base-flow is approved (review round 1, head 027f77c) but `ns-conductor merge` exits 1: the merge-time full-suite check fails on 2 tests, neither related to this run:
-- `bootstrap.bats` "step 1 with a failing apt-get does not report changed and exits non-zero": fails on a clean `origin/main` too (ns-main has no sudo).
-- `kill.bats` "ns_kill_group gives up after about 2 s ...": timing flake under full-suite load; passes when the file runs alone.
-
-All other tests pass, including every new ns-x5 test. The same two failures appeared on the p1 and p2 phase checks.
-
-## What was tried
-Reran kill.bats alone (passes); ran bootstrap.bats on a clean main worktree (same failure). Recorded a follow-up note with `ns-conductor note`.
+p1 and p2 are merged and pushed (p2 was merged on the earlier waiver; the first board run found them unpushed, I pushed `feature/x5` and ran p3-retire: docs, CHANGELOG, plan removal). p3 was approved in review (round 1, head 86efdfb). `ns-conductor merge ns-x5 p3-retire` exits 1 because the full checks fail on the known `bootstrap.bats` #32 (apt-get, no sudo on ns-main), which you accepted earlier. `ns-conductor` has no way to record a waiver, so every merge, and `ns-conductor finish`, will hit it.
 
 ## Question
-May the run treat these two pre-existing failures as known (e.g. by you fixing or skipping them on main, or telling me to merge p2 despite them), so p2 can be merged and the run can continue to the review board and integrate?
+
+Do you want to fix or skip `bootstrap.bats` #32 on main (then I re-run the merge), or should I merge `feature/x5--p3-retire` into `feature/x5` by hand (docs-only change) and continue to the review board and PR with #32 listed as a known failure?
 
 ## Owner's answer
 
-known bugs and fix is in progress. accept these failures and go ahead
