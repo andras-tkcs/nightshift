@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handoff ns-x5</title>
+<style>
+:root { --bg:#fbfbfa; --fg:#1d1d1b; --muted:#5f5f5a; --line:#d9d9d4; --card:#fff; --ok:#1a7f37; --bad:#b42318; --link:#0b5cad; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16161a; --fg:#e8e8e4; --muted:#a0a09a; --line:#34343a; --card:#1e1e23; --ok:#4cc26b; --bad:#ff7b72; --link:#79b8ff; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+main { max-width:52rem; margin:0 auto; padding:16px; }
+h1 { font-size:1.4rem; margin:0 0 4px; overflow-wrap:anywhere; }
+h2 { font-size:1.1rem; margin:1rem 0 .5rem; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.meta { color:var(--muted); font-size:.9rem; margin:0 0 1rem; }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px 14px 12px; margin:12px 0; }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:.92rem; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+th { color:var(--muted); font-weight:600; }
+ul { padding-left:1.2rem; margin:.4rem 0; }
+li { margin:.25rem 0; overflow-wrap:anywhere; }
+a { color:var(--link); overflow-wrap:anywhere; }
+.ok { color:var(--ok); font-weight:600; }
+.bad { color:var(--bad); font-weight:600; }
+</style>
+</head>
+<body>
+<main>
+<h1>ns-x5: checks lock and cache, stack-base merges the base</h1>
+<p class="meta">Run ns-x5</p>
+
+<section>
+<h2>Summary</h2>
+<p>ns-conductor checks now has a per-target lock, a tree-keyed result cache, --force, a canonical target and a wrong-worktree warning. stack-base fetches, merges the top run PR's branch and pushes; workers run only touched tests and the full suite runs once through ns-conductor checks.</p><p>Tier T2, one review round per phase. The PR is stacked on ns-x9; merge conflicts with fix/ns-x9 were resolved by hand (see the PR body).</p>
+</section>
+
+<section>
+<h2>Pull request</h2>
+<p><a href="https://github.com/andras-tkcs/nightshift/pull/171">https://github.com/andras-tkcs/nightshift/pull/171</a></p>
+</section>
+
+<section>
+<h2>Phases</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Phase</th><th>Title</th><th>Merge</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>p1-checks-cache</td><td>Lock, cache, --force, canonical target, warning</td><td>ad83b35</td><td>merged</td></tr><tr><td>p2-stack-base-flow</td><td>stack-base merges and pushes; Sync before review</td><td>8d6c04d</td><td>merged</td></tr><tr><td>p3-retire</td><td>Reference docs, changelog, retire the plan</td><td>852727e</td><td>merged</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section>
+<h2>Checks</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Check</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>python lint</td><td><span class="ok">pass</span></td></tr><tr><td>python test (full bats suite)</td><td><span class="ok">pass</span></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section>
+<h2>Open findings</h2>
+<ul><li>board-code.md bin/lib/conductor-loop.sh:387: key=$(loop_checks_key) needs || exit</li><li>board-code.md bin/lib/conductor-loop.sh:161: overlong comment</li><li>board-code.md plugins/ns/skills/run/SKILL.md:44: T0 step 4 wording</li><li>board-code.md docs/agents.md:85: Stacking sentence</li><li>board-code.md docs/conductor.md:145: name ns stack merge</li><li>board-code.md CHANGELOG.md:18: Changed after Fixed</li></ul>
+</section>
+
+<section>
+<h2>Manual steps after merge</h2>
+<p>None.</p>
+</section>
+
+<section>
+<h2>Files on the desk</h2>
+<ul><li>design.md</li><li>acceptance.md</li><li>test-strategy.md</li><li>board-code.md</li><li>board-acceptance.md</li><li>dod.md</li><li>pr-body.md</li></ul>
+</section>
+</main>
+</body>
+</html>

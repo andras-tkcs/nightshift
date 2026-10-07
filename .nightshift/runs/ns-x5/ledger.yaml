@@ -39,22 +39,22 @@ tags:
 - bats
 - skills
 - conductor
-state: running
-gate: null
-step: integrate
+state: done
+gate: '2'
+step: done
 stop_requested: null
 branch: plan/ns-x5
 feature_branch: feature/x5
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/171
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T21:43:21Z'
+updated: '2026-10-07T21:54:26Z'
 budget:
-  used: 9.66
+  used: 9.85
   limit: 10
   paused: false
-  since: '2026-10-07T21:42:57Z'
-  integrate_from: '2026-10-07T20:10:41Z'
+  since: '2026-10-07T21:54:26Z'
+  integrate_from: null
 phases:
 - id: p1-checks-cache
   title: Lock, cache, --force, canonical target and wrong-target warning for ns-conductor
@@ -250,6 +250,12 @@ events:
   type: note
   note: 'note 3: board non-blocking: conductor-loop.sh:387 key=$(loop_checks_key)
     || exit; wrap l'
+- time: '2026-10-07T21:54:23Z'
+  type: state
+  note: 'done gate 2: pull request https://github.com/andras-tkcs/nightshift/pull/171'
+- time: '2026-10-07T21:54:24Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/171'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-x9
