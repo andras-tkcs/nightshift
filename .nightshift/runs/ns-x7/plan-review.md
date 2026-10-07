@@ -29,3 +29,17 @@ Reviewed `docs/ns-x7-plan.md` on `plan/ns-x7` (working tree at 4a4ad99f11581e837
 
 Verdict: changes, because of findings 1 (a p1/p2 wave conflict that breaks p2's own acceptance) and 2 (the implement skill and the conductor agent never read notes).
 REVIEW verdict=changes head=4a4ad99f11581e837901835844a9197c4fb7fdc4
+
+## Planner's response
+
+All findings were accepted and fixed in docs/ns-x7-plan.md:
+
+1. p2 now has `depends_on: [p1-note-cli]`, and "Risks" explains why (plugin-complete.bats). The phases run one after another.
+2. D5 now gives the exact text for `plugins/ns/agents/conductor.md:27` and `plugins/ns/skills/implement/SKILL.md:11`. Both files are in p2's `touches`, and the plugin.bats test covers all three files.
+3. Q2 now states that AC-4 holds under the default only with the owner's answer, recorded at gate 1.
+4. D1 declares `local id ledger text t n`.
+5. The 5c literal is spelled out.
+6. The AC-3 cases are four separate @test blocks.
+7. The conductor.md insertion point is "before `### park` (line 83)".
+8. Start step 4 (SKILL.md line 19) now also calls `owner-notes`, and the usage, conductor and ADR texts say "at the start of its resumed session".
+9. Both docs/spec.md edits moved to p2.
