@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:39:44Z'
+updated: '2026-10-07T15:40:18Z'
 budget:
-  used: 2.06
+  used: 2.07
   limit: 5
   paused: false
-  since: '2026-10-07T15:39:38Z'
+  since: '2026-10-07T15:40:14Z'
   integrate_from: null
 phases: []
 events:
@@ -113,4 +113,10 @@ events:
 - time: '2026-10-07T15:39:43Z'
   type: dequeued
   note: started from the queue
+- time: '2026-10-07T15:39:52Z'
+  type: push-failed
+  note: 'remote: fatal error in commit_refs        '
+- time: '2026-10-07T15:40:06Z'
+  type: state
+  note: running
 queued_for_slot: false
