@@ -834,3 +834,108 @@ skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sor
   run ns stack sbx
   [ "$(grep -c "could not search the closed PRs" <<<"$output")" -eq 1 ]
 }
+
+# ---- ns-x5 acceptance tests (RUN/test-strategy.md of ns-x5) ----
+
+# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
+# The command runs in a background subshell so errexit stays on inside it. Passes when the
+# command fails; fails with XPASS when it succeeds. Phase p2-stack-base-flow deletes the
+# `ns_xfail "ns:ns-x5 acceptance" ` prefixes in the commit that implements them, then this helper.
+ns_xfail() {
+  local reason="$1" rc=0
+  shift
+  "$@" &
+  wait "$!" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
+    return 1
+  fi
+}
+
+# x5_main_ahead <file> <content>: one more commit on origin/main
+x5_main_ahead() {
+  local w
+  w=$(mktemp -d "$BATS_TEST_TMPDIR/m.XXXXXX")
+  git clone -q "$REMOTE" "$w"
+  printf '%s\n' "$2" >"$w/$1"
+  git -C "$w" add "$1"
+  git -C "$w" commit -q -m "main: $1"
+  git -C "$w" push -q origin HEAD:main
+  rm -rf "$w"
+}
+
+# AC-6, D8: with no open run PR, stack-base merges origin/main when behind and pushes
+x5_stack_merges_base() {
+  pr_list '[]'
+  x5_main_ahead new.txt x
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  git -C "$CODE_WT" merge-base --is-ancestor origin/main HEAD
+  [ "$(git -C "$CODE_WT" rev-list --merges --count HEAD~1..HEAD)" = 1 ]
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
+  [ "$(ns-ledger get "$LEDGER" .budget.integrate_from)" = "$NS_NOW" ]
+}
+
+@test "stack-base with no open run PR merges origin/main when behind and pushes the code branch (ns-x5)" {
+  ns_xfail "ns:ns-x5 acceptance" x5_stack_merges_base
+}
+
+# D8: up to date: no merge, nothing pushed; without a code worktree it dies
+x5_stack_up_to_date() {
+  pr_list '[]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ "$(git -C "$CODE_WT" rev-list --merges --count origin/main..HEAD)" = 0 ]
+  ! git -C "$REMOTE" rev-parse -q --verify refs/heads/fix/sbx-12
+  git -C "$WT" worktree remove --force "$CODE_WT"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "no code worktree"
+}
+
+@test "stack-base on an up-to-date code branch makes no merge and pushes nothing; it dies without a code worktree (ns-x5)" {
+  ns_xfail "ns:ns-x5 acceptance" x5_stack_up_to_date
+}
+
+# D8: a conflict with origin/main exits 6 and sets no integrate_from
+x5_stack_base_conflict() {
+  pr_list '[]'
+  printf 'mine\n' >"$CODE_WT/README.md"
+  git -C "$CODE_WT" commit -q -am "mine"
+  x5_main_ahead README.md theirs
+  run ns-conductor stack-base sbx-12
+  assert_failure 6
+  [ -f "$(git -C "$CODE_WT" rev-parse --absolute-git-dir)/MERGE_HEAD" ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  [ "$(ns-ledger get "$LEDGER" '.budget.integrate_from // "none"')" = none ]
+}
+
+@test "stack-base exits 6 on a conflict with origin/main and sets no integrate_from (ns-x5)" {
+  ns_xfail "ns:ns-x5 acceptance" x5_stack_base_conflict
+}
+
+# D8: a refused push undoes the merge; a retry merges and pushes
+x5_stack_push_refused() {
+  local pre
+  pr_list '[]'
+  x5_main_ahead new.txt x
+  pre=$(git -C "$CODE_WT" rev-parse HEAD)
+  printf '#!/bin/sh\nexit 1\n' >"$REMOTE/hooks/pre-receive"
+  chmod +x "$REMOTE/hooks/pre-receive"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "could not push"
+  [ "$(git -C "$CODE_WT" rev-parse HEAD)" = "$pre" ]
+  [ "$(ns-ledger get "$LEDGER" '.budget.integrate_from // "none"')" = none ]
+  rm -f "$REMOTE/hooks/pre-receive"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
+  git -C "$CODE_WT" merge-base --is-ancestor origin/main HEAD
+}
+
+@test "stack-base undoes its merge when the push is refused, and a retry pushes (ns-x5)" {
+  ns_xfail "ns:ns-x5 acceptance" x5_stack_push_refused
+}
