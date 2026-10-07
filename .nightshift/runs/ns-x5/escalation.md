@@ -15,3 +15,4 @@ May the run treat these two pre-existing failures as known (e.g. by you fixing o
 
 ## Owner's answer
 
+known bugs and fix is in progress. accept these failures and go ahead
