@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T13:35:18Z'
+updated: '2026-10-07T13:35:28Z'
 budget:
   used: 2.56
   limit: 8
   paused: false
-  since: '2026-10-07T13:35:18Z'
+  since: '2026-10-07T13:35:28Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -121,4 +121,10 @@ events:
 - time: '2026-10-07T13:35:17Z'
   type: approved
   note: gate 1.5
-queued_for_slot: false
+- time: '2026-10-07T13:35:25Z'
+  type: state
+  note: 'queued: waiting for a free run slot'
+- time: '2026-10-07T13:35:26Z'
+  type: queued
+  note: waiting for a free run slot
+queued_for_slot: true
