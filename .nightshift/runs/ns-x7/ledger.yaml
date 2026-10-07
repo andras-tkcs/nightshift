@@ -26,12 +26,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T10:43:45Z'
+updated: '2026-10-07T10:43:53Z'
 budget:
   used: 0.47
   limit: 8
   paused: false
-  since: '2026-10-07T10:43:45Z'
+  since: '2026-10-07T10:43:53Z'
   integrate_from: null
 phases: []
 events:
@@ -65,4 +65,10 @@ events:
 - time: '2026-10-07T10:43:44Z'
   type: approved
   note: gate 1
-queued_for_slot: false
+- time: '2026-10-07T10:43:51Z'
+  type: state
+  note: 'queued: waiting for a free run slot'
+- time: '2026-10-07T10:43:52Z'
+  type: queued
+  note: waiting for a free run slot
+queued_for_slot: true
