@@ -32,7 +32,7 @@ tags:
 - bats
 - tests
 - perf
-state: queued
+state: running
 gate: null
 step: implement
 stop_requested: null
@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:36:44Z'
+updated: '2026-10-07T15:39:40Z'
 budget:
   used: 2.06
   limit: 5
   paused: false
-  since: '2026-10-07T15:36:44Z'
+  since: '2026-10-07T15:39:38Z'
   integrate_from: null
 phases: []
 events:
@@ -107,4 +107,7 @@ events:
 - time: '2026-10-07T15:36:43Z'
   type: queued
   note: waiting for a free run slot
-queued_for_slot: true
+- time: '2026-10-07T15:39:38Z'
+  type: resumed
+  note: resumed from queued
+queued_for_slot: false
