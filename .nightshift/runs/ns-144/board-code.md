@@ -1,21 +1,37 @@
-# Board code review: ns-144
+# Review board (code): ns-144
 
-Range: `git diff origin/main...origin/feature/144`, head 747ce0742ea2e602e227216f21b86d8d84afa586.
-Inputs: docs/ns-144-plan.md (on the branch), CLAUDE.md, docs/spec.md, review-checklist skill. No worker log or reasoning was read.
+Range: `git diff origin/main...origin/feature/144`, head `e15bbe7f025a252d9f350c62df4771e53ef76b22` (p1-caddy-bootstrap and p2-docs-retire merged). Judged against `docs/ns-144-plan.md` (plan/ns-144), `RUN/design.md`, `RUN/acceptance.md` and CLAUDE.md. No worker log was offered or read. kill.bats #58 flake ignored as instructed. Project checks were not run (not asked).
 
 ## Findings
 
-- blocking · docs/ (whole branch) · Phase p2-docs-retire is not merged into feature/144. The diff touches only bin/bootstrap.sh, templates/caddy/Caddyfile.tmpl, tests/bats/bootstrap.bats and the plan. None of the docs the change affects are updated: no docs/adr/0010-desk-content-policy.md, no row in docs/adr/README.md, nothing in docs/security.md, docs/setup.md step 1 (its manual block still lacks `install -d -m 755 /etc/caddy/Caddyfile.d`), docs/operations.md "Updates", docs/spec.md step 1 or docs/architecture.html (which still tells the owner to add the CSP by hand with nano), and no CHANGELOG [Unreleased] entries for #5, #27, #26. This breaks CLAUDE.md "every phase updates the docs it affects (spec §15)" and the plan's final_checks. · Run p2-docs-retire as the plan's D5/D6 describe, merge it with `--no-ff` and a `Plan-Phase: p2-docs-retire` trailer, then ask for a new board review.
-- blocking · docs/ns-144-plan.md:1 · The plan file is still on the feature branch. The final_checks require "docs/ns-144-plan.md is deleted" before the PR. · Delete it with `git rm` as the last change of p2.
-- non-blocking · tests/bats/bootstrap.bats:90 · The empty-tree assertion `grep -E '^\[1/11\].*create /etc/caddy/Caddyfile\.d'` was added in the implementation commit 43d03d1, not in the test-first commit 6a21abd, so it never failed first. The plan (D4) asked for it, and the behaviour is simple. · In future runs, put this assertion in the acceptance-test commit too.
-- non-blocking · tests/bats/bootstrap.bats:286,295,322,339,353,367,382 · When the `ns_xfail` prefixes were removed, the helper calls inside the seven new `@test` bodies were left at column 0. Every other case in the file indents its body. · Indent them by two spaces.
-- non-blocking · bin/bootstrap.sh:173-176 · In apply_1 the "Caddyfile.d is not a directory" guard runs after caddy may already have been installed and TS_PERMIT_CERT_UID written, so a needs-you leaves step 1 half applied. This is harmless, because both steps are idempotent, and it is the placement D3 specifies. · You could move the guard to the top of apply_1 in a follow-up.
-- non-blocking · tests/bats/bootstrap.bats:418-420 · The failing-apt-get case now also links tests/fixtures/bin/* (the tmux stub) into its PATH. This is in scope (only an allowed file is touched), no assertion was weakened, and the order keeps the bootstrap stubs winning. · None needed. Mention it in the PR body as a test robustness fix.
+- non-blocking · tests/bats/bootstrap.bats:90 · The empty-tree assertion `grep -E '^\[1/11\].*create /etc/caddy/Caddyfile\.d'` was added in the fix commit 43d03d1, not in the test-first commit 6a21abd, so it never failed first. The plan (D4) asks for this line and the behaviour is also covered by the AC-4 case, which did fail first, so this is not blocking. · In future runs, put every new assertion in the test-first commit.
+- non-blocking · tests/bats/bootstrap.bats:286,296,323,339,352,366,381 · The new `@test` bodies are not indented (`csp_and_md_per_block` sits at column 0). This happened when the `ns_xfail` prefixes were removed. · Indent them two spaces like the other cases.
+- non-blocking · tests/bats/bootstrap.bats:416-427 · Commit bc5fdc4 edits an existing case outside D4: it adds `tests/fixtures/bin/*` (the tmux stub) to the "failing apt-get" PATH. No assertion is weakened. The `bootstrap/bin` stubs are still linked last, so `systemctl` keeps its bootstrap stub. This makes the test more robust while a live run exists. The case's last `! printf ... | grep` is still a vacuous negation (already in the plan's Risks). · Mention it in the PR body. Open the follow-up issue for the vacuous `!` negations (lines ~200, 201, 279, 427).
+- non-blocking · bin/bootstrap.sh:142 · `--check` lists snippet names even when it returns `would change`. That is intended (design D2). The `while` loop variable `x` is not declared `local`, which is fine because it runs in a subshell, as the plan says. · None.
+- non-blocking · templates/caddy/Caddyfile.tmpl:15-20,33-38 · `.md` is served as `text/plain` without `X-Content-Type-Options: nosniff`. Browsers do not sniff `text/plain` up to HTML in practice, and the open owner question already covers this. · Leave it to the owner question. Do not change it in this run.
+- non-blocking · docs/architecture.html (~1907-1917, ~2091-2109) · The historical hand-setup Caddyfile snippets still lack the CSP, `@md` and `import` lines. The plan records this as a known leftover that p2 must not touch. · Track it as a follow-up.
+- non-blocking · (branch) · The manifest names `feature_branch: feature/ns-144`, but the run uses `feature/144` and `feature/144--<phase>`. · Make sure the PR and the manual step use the real branch name.
 
 ## Summary
 
-Phase p1 matches the plan exactly. The D1 template lines sit in the :8443 and :8080 blocks only, and the import is the last line. The D2 check_1 lists snippet names through `find -printf '%f'` and `clean`, and never opens the files. D3 adds the apply_1 guard and creates the directory with `install -d -m 755`. The seven D4 cases were committed as strict expected failures before the fix, and the fix commit removed only the xfail wrappers. No existing assertion was weakened. Nothing in the diff was copied from untrusted text (R-SEC-3), there are no secrets, and no `.nightshift/` files are on the branch.
+- **Correctness:** The template, `check_1` and `apply_1` match plan D1 to D3 line for line.
+  - The CSP and `@md`/`defer` rules are only in the `:8443` and `http://127.0.0.1:8080` blocks. `:443` and `:8444` are unchanged.
+  - `import /etc/caddy/Caddyfile.d/*.caddy` is the last line.
+  - `check_1` reports `needs you` for a non-directory and `unknown` for an unreadable directory. It adds `create` to the todo list and lists snippet names through `clean`, without opening any file.
+  - `apply_1` guards against a non-directory before writing the Caddyfile and creates the directory with 755 only when it is missing. Nothing writes, chmods or deletes inside `Caddyfile.d`.
+  - Steps 2 to 11 and the step loop are untouched.
+- **Tests:** All seven D4 cases are in the test-first commit 6a21abd behind a strict `ns_xfail`. The fix commit removes only the prefixes and the helper. No existing assertion is weakened. The negative checks use the `grep -c ... -eq 0` form, not vacuous `!`.
+- **Acceptance:**
+  - AC-1 to AC-6 are each covered by a bats case.
+  - AC-7: ADR 0010 is Accepted, covers what a page may serve and why there are two layers, and is listed in the ADR README. `security.md`, `setup.md`, `operations.md`, `spec.md`, `architecture.html` and the CHANGELOG `[Unreleased]` (#5, #27, #26) are updated as D5/D6 say. `docs/ns-144-plan.md` is absent at head.
+  - AC-8 was not re-run by this reviewer.
+- **Hygiene:**
+  - No `.nightshift/` files on the feature branch.
+  - No secrets.
+  - Only files listed in the phase touches.
+  - The cloudsmith URLs in `setup.md` and `bootstrap.sh` were already there, not copied from issue text.
+  - No R-SEC-3 issue.
 
-The branch is not ready for the PR. Phase p2 (ADR 0010, the security, setup, operations, spec and architecture docs, the CHANGELOG and deleting the plan) is missing. Those are a missing doc update and an unmet final check, both blocking.
+No blocking findings.
 
-REVIEW verdict=changes head=747ce0742ea2e602e227216f21b86d8d84afa586
+REVIEW verdict=approve head=e15bbe7f025a252d9f350c62df4771e53ef76b22

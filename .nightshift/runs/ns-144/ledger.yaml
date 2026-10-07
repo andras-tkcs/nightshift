@@ -13,19 +13,19 @@ tags:
 - adr
 state: running
 gate: null
-step: board
+step: integrate
 stop_requested: null
 branch: plan/ns-144
 feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T13:55:04Z'
+updated: '2026-10-07T14:19:28Z'
 budget:
-  used: 7.22
+  used: 7.63
   limit: 8
   paused: false
-  since: '2026-10-07T13:54:34Z'
+  since: '2026-10-07T14:19:10Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
@@ -148,4 +148,7 @@ events:
 - time: '2026-10-07T13:34:35Z'
   type: state
   note: running
+- time: '2026-10-07T14:19:26Z'
+  type: review
+  note: review board
 queued_for_slot: false
