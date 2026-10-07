@@ -26,23 +26,27 @@ request:
     no assertions removed. Target: the full suite under 5 minutes at --jobs 8 on ns-main.'
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
+tier_recommended: T2
+tags:
+- bash
+- bats
+- tests
+- perf
 state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-x8
 feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T13:29:40Z'
+updated: '2026-10-07T13:30:17Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-07T13:29:35Z'
+  since: '2026-10-07T13:30:11Z'
   integrate_from: null
 phases: []
 events:
