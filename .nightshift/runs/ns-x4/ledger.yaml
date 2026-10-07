@@ -20,12 +20,12 @@ feature_branch: fix/ns-x4
 pr: null
 release: v0.1.8
 created: '2026-10-07T07:09:33Z'
-updated: '2026-10-07T08:31:51Z'
+updated: '2026-10-07T08:42:29Z'
 budget:
-  used: 1.36
+  used: 1.54
   limit: 2
   paused: false
-  since: '2026-10-07T08:31:25Z'
+  since: '2026-10-07T08:42:13Z'
   integrate_from: '2026-10-07T08:31:50Z'
 phases:
 - id: fix
