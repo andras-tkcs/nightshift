@@ -11,7 +11,7 @@ source "$NS_HOME/bin/lib/queue.sh"
 ns_status_help() {
   printf 'usage: ns status <id> [--json]\n\n'
   printf "Show a run's tier, state, budget, branches, phases and last events.\n"
-  printf '--json prints the whole ledger.\n'
+  printf -- '--json prints the whole ledger.\n'
 }
 
 ns_status_main() {
