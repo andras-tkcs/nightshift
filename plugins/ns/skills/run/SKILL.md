@@ -17,7 +17,7 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 2. Continue at `step`; never repeat a finished step. Map: `intake` or `triage` to Triage; `discovery` and `gate1` to T2 or T3; `implement` to T0 or T1; `phases` to the T2 phases loop; `board` to Review board; `integrate` to Integrate; `onboard` to Onboarding; `done` means print a one-line summary and end.
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
 4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
-   Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end.
+   Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end. The full suite runs only through `ns-conductor checks`; implementers run only the tests covering their files.
 5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 
@@ -40,8 +40,9 @@ Ledger step: `implement`, then `integrate`.
 
 1. `ns-conductor fix-branch <id>` (prints the fix worktree path; idempotent).
 2. Launch subagent `ns:implementer` in the fix worktree with the request.
-3. `ns-conductor checks <id> feature`. On failure launch `ns:implementer` again with the check output, up to `budgets.T0.review_rounds` times, then Escalate.
-4. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
+3. Sync (see Sync below).
+4. `ns-conductor checks <id> feature`; the checks of Sync are its first run. On failure launch `ns:implementer` again with the check output and rerun the checks, up to `budgets.T0.review_rounds` times, then Escalate.
+5. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T1
 
@@ -49,11 +50,12 @@ Ledger step: `implement`, then `integrate`.
 
 1. Write `RUN/mini-plan.md` yourself, 10 to 30 lines: cause hypothesis, the failing test to add, the fix, files.
 2. `ns-conductor fix-branch <id>`.
-3. Implementer step A: launch `ns:implementer` to add a test that reproduces the bug, run the checks and see it fail, commit `test: failing test for <id>` and push.
-4. Implementer step B: launch `ns:implementer` to fix, make the checks green and push.
-5. Launch subagent `ns:code-reviewer` with `git diff origin/<base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-fix-<round>.md`, `<round>` being the `review_rounds` of phase `fix` in the ledger plus one (1 at first), last line `REVIEW verdict=approve|changes head=<sha>`.
-6. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve` or `changes`), right after the review. Exit 7 (`changes` on the last allowed round): Escalate. Exit 9 (the review file of this round is missing, has no verdict line, says the other verdict, or approved another head than `origin/<fix branch>`): run the review again from step 5; never edit the review file. A second exit 9 on the same round: Escalate. Verdict `changes`: launch `ns:implementer` with the review, then repeat from step 5.
-7. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
+3. Implementer step A: launch `ns:implementer` to add a test that reproduces the bug, run only that test and see it fail, commit `test: failing test for <id>` and push.
+4. Implementer step B: launch `ns:implementer` to fix, make the tests covering the change pass and push.
+5. Sync (see Sync below). When its checks fail: launch `ns:implementer` with the output and rerun `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate.
+6. Launch subagent `ns:code-reviewer` with `git diff origin/<pr-base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-fix-<round>.md`, `<round>` being the `review_rounds` of phase `fix` in the ledger plus one (1 at first), last line `REVIEW verdict=approve|changes head=<sha>`.
+7. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve` or `changes`), right after the review. Exit 7 (`changes` on the last allowed round): Escalate. Exit 9 (the review file of this round is missing, has no verdict line, says the other verdict, or approved another head than `origin/<fix branch>`): run the review again from step 6; never edit the review file. A second exit 9 on the same round: Escalate. Verdict `changes`: launch `ns:implementer` with the review, run `ns-conductor checks <id> feature`, then repeat from step 6.
+8. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T2
 
@@ -67,7 +69,7 @@ Ledger step: `discovery`, `gate1`, `phases`, `board`, `integrate`.
 6. Checkpoint. `ns-ledger set "$NS_LEDGER" '.step="gate1"'`, then `ns-conductor gate <id> 1 <plan_doc>:plan.md RUN/acceptance.md RUN/design.md RUN/test-strategy.md [RUN/manual-steps.md]` and end the session.
 7. After approval (resumed with `--resume`, gate null, step `gate1`): `ns-conductor feature <id>`, then `ns-ledger set "$NS_LEDGER" '.step="phases"'`.
 8. Run the phases as `/ns:implement` describes: ready phases are `pending` with every `depends_on` merged; start up to `max_parallel` (manifest, default 2) with `ns-conductor start`; loop on `ns-conductor wait`. For each finished phase: `ns-conductor report` (exit 1: restart once with the reason as feedback, then Escalate); `ns-conductor checks <id> <phase>`; subagent `ns:code-reviewer` with `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, writing `RUN/review-<phase>-<round>.md`; `ns-conductor review-round <id> <phase> <verdict>` right after the review (it records the verdict and the reviewed head; exit 7: Escalate; exit 9: the review file does not back the verdict or names another head, run the review again and never edit the review file; a second exit 9 on the same round: Escalate); verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`; verdict `approve`: `ns-conductor merge <id> <phase>` (exit 1: restart the phase with the conflict or check output as feedback; exit 8: no approved review of the current head, review again). A phase with `platform_paths` for a CI platform is dispatched through the `ci-dispatch` skill before review.
-9. When every phase is `merged`: checkpoint and `should-stop`, `ns-ledger set "$NS_LEDGER" '.step="board"'`, then Review board, then Integrate.
+9. When every phase is `merged`: checkpoint and `should-stop`, `ns-ledger set "$NS_LEDGER" '.step="board"'`, run Sync, then Review board, then Integrate.
 
 ## T3
 
@@ -78,11 +80,20 @@ Ledger step: as T2.
 3. Subagent `ns:sec-compliance` writes the pre-review `RUN/sec-pre.md` before gate 1.
 4. Gate 1 is `ns-conductor gate <id> 1 <plan_doc>:plan.md RUN/acceptance.md RUN/design.md RUN/test-strategy.md RUN/research.md RUN/adr-<slug>.md RUN/sec-pre.md [RUN/manual-steps.md]`. Then continue as T2 from step 7.
 
+## Sync
+
+Run by the conductor in its own session, not by a subagent. Where: T0 step 3, T1 step 5, and T2/T3 when every phase is merged (after `step=board`, before the board). On a resumed session that does not know `<pr-base>`, run `stack-base` again; it is idempotent.
+
+1. `ns-conductor stack-base <id>`. Exit 0: keep the printed branch as `<pr-base>`. Exit 6: `git -C <code worktree> merge --abort`, `ns-conductor note <id> "stack-base conflict before review; the integrator resolves it"`, and use `<pr-base>` = `<base>`. Exit 7: Escalate. Exit 4: end the session (the run waits at gate 1.5). Any other non-zero exit (for example `could not push`): Escalate with its output.
+2. `ns-conductor checks <id> feature`, following the waiting rule of Start step 4: in the foreground only when the Bash timeout bounds it; otherwise remove `logs/<id>/feature.checks.rc`, run it in the background and wait for that file.
+3. A `warning:` line in its output means the checked worktree lacks pushed code: Escalate with the line, even when the checks passed.
+4. Failing checks: T0 follows the loop of its checks step; T1 launches `ns:implementer` with the output and reruns `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate; T2/T3 turn the failing output into a blocking board finding (`RUN/board-fix-<n>.md`).
+
 ## Review board
 
 Ledger step: set `board` before (T2 and T3 only); set `integrate` after.
 
-1. Subagent `ns:code-reviewer` on `git diff origin/<base>...origin/<feature>` writes `RUN/board-code.md`.
+1. Subagent `ns:code-reviewer` on `git diff origin/<pr-base>...origin/<feature>` writes `RUN/board-code.md`.
 2. Subagent `ns:sec-compliance` writes `RUN/board-sec.md`: always for T3, for T2 when triage tagged `sec-compliance`.
 3. Subagent `ns:product-analyst` checks `RUN/acceptance.md` against the branch and writes `RUN/board-acceptance.md`.
 4. `ns-ledger event "$NS_LEDGER" review "review board"`.
@@ -94,7 +105,7 @@ Ledger step: set `board` before (T2 and T3 only); set `integrate` after.
 Ledger step: `integrate` before; `ns-conductor finish` sets `done`.
 
 1. Launch subagent `ns:integrator` in the feature (T2/T3) or fix (T0/T1) worktree.
-2. It runs `ns-conductor stack-base <id>` first (exit 4: the run waits at gate 1.5 for its budget, no PR; exit 6: it resolves the conflicts and reruns the checks, or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. It then merges `origin/<base>` if behind, runs `/ns:dod` to write `RUN/dod.md`, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
+2. It runs `ns-conductor stack-base <id>` first (exit 4: the run waits at gate 1.5 for its budget, no PR; exit 6: it resolves the conflicts, commits and pushes (the checks then run in `/ns:dod`), or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. stack-base merges the base branch when the code branch is behind it and pushes it. It then runs `/ns:dod` to write `RUN/dod.md` (inside a run `/ns:dod` takes the profile checks from `ns-conductor checks <id> feature`, a cache hit when nothing changed); it never runs the test command directly, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
 3. T2 and T3: it writes `RUN/handoff.html` from the `handoff-report` template.
 4. It opens the PR (reusing an open PR of the branch on a rerun, `gh pr view` first): `gh pr create --base <pr-base> --head <branch> --title "<id>: <summary>" --body-file RUN/pr-body.md`. The body holds the summary, phase table, checks, non-blocking findings, `manual_after` items as unchecked boxes, a Stack section, a Run report line (from `ns report <id>`) and the desk link.
 5. `ns-conductor finish <id> --pr <url>` (for T2/T3 this also sets gate 2; it writes and commits `RUN/run-report.md` with `ns report` and publishes it, and the handoff report, to the desk; a failed run report is only a warning, a failed handoff publish exits 1: fix `RUN/handoff.html` and run `ns publish <id> RUN/handoff.html`). A run that ends `stopped` or `failed` any other way gets its report from `ns report <id>`. End the session with a one-line summary.
