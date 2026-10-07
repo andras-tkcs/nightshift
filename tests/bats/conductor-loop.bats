@@ -926,7 +926,7 @@ x5_sbx13() {
 # AC-1: a concurrent second call waits and reports the first call's PASS
 x5_lock_pass() {
   local pid ra=0
-  x5_sbx12 "; sleep 3"
+  x5_sbx12 "; sleep 10"
   ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
   pid=$!
   x5_wait_count
@@ -947,7 +947,7 @@ x5_lock_pass() {
 # AC-1: the same with a failing check: both exit 1, the check ran once
 x5_lock_fail() {
   local pid ra=0
-  x5_sbx12 "; sleep 3; false"
+  x5_sbx12 "; sleep 10; false"
   ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
   pid=$!
   x5_wait_count
