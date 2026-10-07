@@ -11,8 +11,8 @@ tags:
 - caddy
 - docs
 - adr
-state: waiting
-gate: '1'
+state: queued
+gate: null
 step: gate1
 stop_requested: null
 branch: plan/ns-144
@@ -20,12 +20,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T05:39:02Z'
+updated: '2026-10-07T06:35:36Z'
 budget:
   used: 0.86
   limit: 8
   paused: false
-  since: '2026-10-07T05:39:02Z'
+  since: '2026-10-07T06:35:36Z'
 phases: []
 events:
 - time: '2026-10-07T04:46:33Z'
@@ -49,4 +49,7 @@ events:
 - time: '2026-10-07T05:38:46Z'
   type: gate
   note: 'gate 1: waiting for the owner'
+- time: '2026-10-07T06:35:36Z'
+  type: approved
+  note: gate 1
 queued_for_slot: false
