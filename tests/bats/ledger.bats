@@ -157,6 +157,7 @@ init_ledger() {
   assert_success
   run ns-ledger get "$L" '.events[-1].type'
   [ "$output" = "push-failed" ]
+  [ -z "$(git -C "$CLONE" status --porcelain -- .nightshift)" ]
 }
 
 @test "a truncated file is restored from HEAD with a recovered event" {

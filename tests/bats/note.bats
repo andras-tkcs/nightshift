@@ -62,6 +62,7 @@ x7_note_push_fails() {
   assert_success
   [ "$(ns-ledger get "$LEDGER" '.owner_notes | length')" = 1 ]
   [ "$(ns-ledger get "$LEDGER" '.events[-1].type')" = push-failed ]
+  [ -z "$(git -C "$WT" status --porcelain -- .nightshift)" ]
 }
 
 @test "ns note exits 0 and records push-failed when the push fails (ns-x7)" {
