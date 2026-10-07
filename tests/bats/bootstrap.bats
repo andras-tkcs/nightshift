@@ -294,10 +294,13 @@ git_clone_fails() {
 
 @test "step 1 with a failing apt-get does not report changed and exits non-zero" {
   mkdir -p "$BATS_TEST_TMPDIR/nocaddy"
-  # The host may have a real caddy: build a PATH of the stubs and every other tool but caddy.
-  for s in /usr/bin/* "$NS_REPO_ROOT"/tests/fixtures/bootstrap/bin/*; do
-    [ "$(basename "$s")" = caddy ] || ln -sf "$s" "$BATS_TEST_TMPDIR/nocaddy/$(basename "$s")"
-  done
+  # The host may have a real caddy or tmux (a live run's session would block the step): build a
+  # PATH of every other tool but caddy, with the stubs (incl. the tmux stub) linked last so they win.
+  # two batched ln calls (one fork each), not one per tool; the stubs are linked last and win
+  find /usr/bin -mindepth 1 -maxdepth 1 ! -name caddy -exec ln -sf -t "$BATS_TEST_TMPDIR/nocaddy" {} +
+  ln -sf -t "$BATS_TEST_TMPDIR/nocaddy" "$NS_REPO_ROOT"/tests/fixtures/bin/*
+  ln -sf -t "$BATS_TEST_TMPDIR/nocaddy" "$NS_REPO_ROOT"/tests/fixtures/bootstrap/bin/*
+  rm -f "$BATS_TEST_TMPDIR/nocaddy/caddy"
   PATH="$BATS_TEST_TMPDIR/nocaddy:/nonexistent" \
     APT_STUB_FAIL=1 NS_BS_STEPS=1 run bootstrap_apply
   assert_failure 1
@@ -494,7 +497,7 @@ teardown() {
   (
     flock 9
     : >"$BATS_TEST_TMPDIR/held"
-    sleep 2
+    sleep 0.5
     printf 'DIR x\n' >"$TMUX_STUB_DIR/act-1"
   ) 9>>"$NS_CONFIG_DIR/queue.lock" 3>&- >/dev/null 2>&1 &
   until [ -e "$BATS_TEST_TMPDIR/held" ]; do sleep 0.1; done
@@ -510,7 +513,8 @@ teardown() {
   (
     flock 9
     : >"$BATS_TEST_TMPDIR/held"
-    sleep 6
+    # hold the lock until the test is done with both attempts (bounded: 30s)
+    for _ in $(seq 300); do [ -e "$BATS_TEST_TMPDIR/release" ] && break; sleep 0.1; done
   ) 9>>"$NS_CONFIG_DIR/queue.lock" 3>&- >/dev/null 2>&1 &
   until [ -e "$BATS_TEST_TMPDIR/held" ]; do sleep 0.1; done
   NS_BS_QUEUE_WAIT=1 run bootstrap_apply --upgrade v0.1.0
@@ -521,6 +525,7 @@ teardown() {
   NS_BS_QUEUE_WAIT=1 run bootstrap_apply --upgrade v0.1.0 --force
   assert_success
   [ -d "$NS_BS_ROOT/opt/nightshift/v0.1.0" ]
+  : >"$BATS_TEST_TMPDIR/release"
 }
 
 @test "pid files that are symlinks or huge are not read (#78 review)" {

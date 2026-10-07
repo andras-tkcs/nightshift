@@ -2,9 +2,14 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOP'
 project: nightshift-sandbox
@@ -17,7 +22,12 @@ EOP
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
-  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
   # A live pid for the stub tmux pane (the stub default 999999 is dead).
   export TMUX_STUB_PANE_PID=$$
 }
@@ -351,7 +361,8 @@ checks_running() {
   checks_running sbx-12
   run ns status sbx-12
   assert_output_contains "health   ok"
-  sleep 2
+  # etimes has 1s granularity: poll until the checks process is 1s old
+  until [ "$(ps -o etimes= -p "$CHECKS_PID" | tr -d ' ')" -ge 1 ]; do sleep 0.1; done
   NS_CHECKS_MAX_SECS=1 run ns status sbx-12
   assert_output_contains "health   silent 34m"
 }
