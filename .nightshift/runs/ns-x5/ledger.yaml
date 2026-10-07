@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: https://github.com/andras-tkcs/nightshift/pull/171
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T21:54:26Z'
+updated: '2026-10-07T21:54:50Z'
 budget:
   used: 9.85
   limit: 10
   paused: false
-  since: '2026-10-07T21:54:26Z'
+  since: '2026-10-07T21:54:50Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
