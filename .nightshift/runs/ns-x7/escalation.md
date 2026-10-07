@@ -13,3 +13,5 @@ How should the push-failed clean-tree assertion be settled: (a) drop the require
 
 ## Owner's answer
 
+allow it and let it commit it
+
