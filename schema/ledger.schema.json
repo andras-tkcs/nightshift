@@ -30,6 +30,7 @@
     "gate": { "enum": [null, "1", "1.5", "2"], "description": "Gate the run is waiting at." },
     "step": { "enum": ["intake", "triage", "discovery", "gate1", "implement", "phases", "board", "integrate", "onboard", "done"], "description": "Current step." },
     "stop_requested": { "enum": [null, "stopped", "parked"], "description": "Pending stop request." },
+    "owner_notes": { "type": "array", "description": "Owner instructions sent with ns note, append-only; the conductor sets read when it has read one (ns-conductor owner-notes).", "items": { "type": "object", "additionalProperties": false, "required": ["time", "text", "read"], "properties": { "time": { "$ref": "#/$defs/time" }, "text": { "type": "string", "minLength": 1 }, "read": { "type": "boolean" } } } },
     "branch": { "type": "string", "minLength": 1, "description": "Run branch holding the ledger." },
     "release": { "type": ["string", "null"], "pattern": "^v[0-9][0-9A-Za-z._-]*$", "description": "Nightshift release tag the run started on (basename of NS_HOME); null for a dev checkout. Resume and workers use this release." },
     "feature_branch": { "$ref": "#/$defs/nullable_string", "description": "Code branch, set when created." },

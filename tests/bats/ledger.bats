@@ -334,21 +334,6 @@ SHIM
 
 # ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p1-note-cli deletes the
-# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 # x7_one_note: a valid owner note, read back without a drift warning (owner_notes is in the schema)
 x7_one_note() {
   ns-ledger set "$L" '.owner_notes = [{time: $now, text: "x", read: false}]'
@@ -370,7 +355,7 @@ x7_schema_valid() {
 }
 
 @test "owner_notes is a schema field: a ledger with or without notes validates without drift warnings (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_schema_valid
+  x7_schema_valid
 }
 
 # AC-3: a note missing text is refused by set and the file stays byte-identical
@@ -385,7 +370,7 @@ x7_schema_missing_text() {
 }
 
 @test "set with an owner note missing text exits 1 and leaves the file byte-identical (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_schema_missing_text
+  x7_schema_missing_text
 }
 
 # AC-3: a note with an extra key is refused by set and the file stays byte-identical
@@ -400,7 +385,7 @@ x7_schema_extra_key() {
 }
 
 @test "set with an owner note with an extra key exits 1 and leaves the file byte-identical (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_schema_extra_key
+  x7_schema_extra_key
 }
 
 # AC-3: validate on a file whose note lacks text fails and names owner_notes
@@ -417,5 +402,5 @@ x7_schema_validate_missing_text() {
 }
 
 @test "validate fails for a ledger whose owner note has no text (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_schema_validate_missing_text
+  x7_schema_validate_missing_text
 }

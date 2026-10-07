@@ -25,6 +25,7 @@ state: running                   # queued|running|waiting|parked|stopped|done|fa
 gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
 stop_requested: null             # null | stopped | parked
+owner_notes: []                  # optional; ns note appends {time, text, read: false}, ns-conductor owner-notes sets read: true
 branch: plan/sbx-12
 release: v0.1.0                 # Nightshift release the run started on (set only when NS_HOME is ${NS_OPT:-/opt/nightshift}/<tag>); null for a dev checkout. Resume and workers use it, scripts and plugins
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
@@ -43,7 +44,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence).
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, owner-note, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 

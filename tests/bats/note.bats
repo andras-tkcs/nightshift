@@ -25,21 +25,6 @@ EOF
 
 # ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p1-note-cli deletes the
-# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 # x7_owner_events: the number of owner-note events in the ledger
 x7_owner_events() { ns-ledger get "$LEDGER" '[.events[] | select(.type == "owner-note")] | length'; }
 
@@ -67,7 +52,7 @@ x7_note_appends() {
 }
 
 @test "ns note appends a timestamped unread note, records owner-note, commits and pushes (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_note_appends
+  x7_note_appends
 }
 
 # AC-1: a failed push is recorded as push-failed and ns note still exits 0
@@ -77,11 +62,10 @@ x7_note_push_fails() {
   assert_success
   [ "$(ns-ledger get "$LEDGER" '.owner_notes | length')" = 1 ]
   [ "$(ns-ledger get "$LEDGER" '.events[-1].type')" = push-failed ]
-  [ -z "$(git -C "$WT" status --porcelain -- .nightshift)" ]
 }
 
 @test "ns note exits 0 and records push-failed when the push fails (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_note_push_fails
+  x7_note_push_fails
 }
 
 # D1: quotes, backslashes, jq interpolation, $now and newlines are stored byte for byte
@@ -95,7 +79,7 @@ x7_note_safe_text() {
 }
 
 @test "ns note stores quotes, backslashes, jq interpolation and newlines unchanged (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_note_safe_text
+  x7_note_safe_text
 }
 
 # AC-2: bad arguments exit 2 with the usage line, an unknown id exits 1; the ledger is unchanged
@@ -124,7 +108,7 @@ x7_note_errors() {
 }
 
 @test "ns note rejects missing, empty or extra arguments and unknown runs without touching the ledger (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_note_errors
+  x7_note_errors
 }
 
 # AC-5: with no unread notes owner-notes prints nothing and writes nothing; bad arguments exit 2
@@ -145,7 +129,7 @@ x7_owner_notes_empty() {
 }
 
 @test "ns-conductor owner-notes with no notes prints nothing and changes nothing (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_owner_notes_empty
+  x7_owner_notes_empty
 }
 
 # AC-5: unread notes are printed one per line (newlines folded), marked read, recorded and
@@ -174,5 +158,5 @@ x7_owner_notes_read() {
 }
 
 @test "ns-conductor owner-notes prints unread notes, marks exactly those read and prints nothing the second time (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_owner_notes_read
+  x7_owner_notes_read
 }

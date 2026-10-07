@@ -161,21 +161,6 @@ ev() { printf -- '"""- time: '"'"'%s'"'"'\n  type: %s\n  note: '"'"'%s'"'"'\n"""
 
 # ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p1-note-cli deletes the
-# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 # AC-7: no section without notes; with notes, a table of time, escaped text and read status
 # before the timeline
 x7_report_owner_notes() {
@@ -196,5 +181,5 @@ x7_report_owner_notes() {
 }
 
 @test "ns report lists owner notes with escaped text and read status, and has no section without notes (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_report_owner_notes
+  x7_report_owner_notes
 }
