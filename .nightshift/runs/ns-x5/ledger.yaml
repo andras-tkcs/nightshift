@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T12:34:41Z'
+updated: '2026-10-07T13:18:07Z'
 budget:
-  used: 2.81
+  used: 3.53
   limit: 8
   paused: false
-  since: '2026-10-07T12:34:35Z'
+  since: '2026-10-07T13:17:47Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -109,4 +109,8 @@ events:
 - time: '2026-10-07T12:14:29Z'
   type: phase-end
   note: p1-checks-cache exit 0
+- time: '2026-10-07T13:18:06Z'
+  type: note
+  note: 'note 1: bootstrap.bats ''step 1 with a failing apt-get...'' fails on origin/main
+    too (no s'
 queued_for_slot: false

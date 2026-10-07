@@ -1,0 +1,1 @@
+1. bootstrap.bats 'step 1 with a failing apt-get...' fails on origin/main too (no sudo on ns-main); kill.bats 'ns_kill_group gives up after about 2 s' is flaky under full-suite load. Both block a green full checks run.
