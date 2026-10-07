@@ -11,7 +11,13 @@ from datetime import datetime, timezone
 def hhmm(ev=None):
     ts = ev.get("timestamp") if isinstance(ev, dict) else None
     if isinstance(ts, str) and re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d", ts):
-        return ts[11:16]
+        try:
+            d = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            return d.astimezone(timezone.utc).strftime("%H:%M")
+        except ValueError:
+            return ts[11:16]
     now = os.environ.get("NS_NOW")
     if now and len(now) >= 16:
         return now[11:16]

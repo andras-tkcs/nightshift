@@ -43,7 +43,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence).
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack, step` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence; `step`: the note is the new step).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 

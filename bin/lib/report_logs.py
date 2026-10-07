@@ -113,6 +113,7 @@ def read_session_log(path):
     subs = {}  # tool use id (or a counter) -> subagent run
     agent_types = {}  # Agent tool use id -> subagent_type
     durations = {}  # tool use id -> seconds, from task_notification
+    last_asst = 0  # epoch of the latest assistant message
     use_t = {}  # Agent tool use id -> epoch of the call
     result_t = {}  # tool use id -> epoch of its tool_result
     launched = set()  # tool use ids of background launches (their result comes at once)
@@ -161,6 +162,8 @@ def read_session_log(path):
                     if ut is not None:
                         use_t[c["id"]] = ut
             t = epoch(e.get("timestamp"))
+            if t is not None and t > last_asst:
+                last_asst = t
             tok = tokens(m.get("usage"), 1)
             if t is None or tok is None:
                 continue
@@ -219,6 +222,10 @@ def read_session_log(path):
               and result_t[tid] >= use_t[tid]):
             # no task notification: the time from the Agent call to its result
             x["s"] = int(result_t[tid] - use_t[tid])
+        elif (x["s"] is None and tid in use_t and tid not in result_t and tid not in launched
+              and last_asst >= use_t[tid]):
+            # cut off, no result: to the latest assistant message
+            x["s"] = int(last_asst - use_t[tid])
         sub_list.append(x)
 
     # per session and model: tokens and cost of the last result
@@ -238,7 +245,7 @@ def read_session_log(path):
                 c = num(d.get("costUSD"))
                 m = models.setdefault(str(name), {"tok": {k: 0 for k in KEYS}, "cost": 0.0})
                 m["tok"] = add(m["tok"], tk)
-                m["cost"] += float(c) if c is not None else 0.0
+                m["cost"] = (m["cost"] or 0.0) + (float(c) if c is not None else 0.0)
                 tot = add(tot, tk)
                 session_model_cost[(sid, str(name))] = float(c) if c is not None else 0.0
                 session_model_tok[(sid, str(name))] = tk
@@ -278,7 +285,7 @@ def read_session_log(path):
         if m["key"] not in session_model_cost and not sessions:
             partial = True
             partial_tok = add(partial_tok, m["tok"])
-            pm = models.setdefault(m["model"], {"tok": {k: 0 for k in KEYS}, "cost": 0.0})
+            pm = models.setdefault(m["model"], {"tok": {k: 0 for k in KEYS}, "cost": None})
             pm["tok"] = add(pm["tok"], m["tok"])
     out_msgs = []
     for mid in order:
@@ -376,9 +383,10 @@ def main():
     models = {}
     for a in agents:
         for name, m in a["models"].items():
-            x = models.setdefault(name, {"model": name, "tok": {k: 0 for k in KEYS}, "cost": 0.0})
+            x = models.setdefault(name, {"model": name, "tok": {k: 0 for k in KEYS}, "cost": None})
             x["tok"] = add(x["tok"], m["tok"])
-            x["cost"] += m["cost"]
+            if m["cost"] is not None:
+                x["cost"] = (x["cost"] or 0.0) + m["cost"]
         del a["models"]
     withtok = [a for a in agents if a["tok"] is not None]
     total = None

@@ -183,7 +183,7 @@ def minus($waits):
             (select(.open > 0) | "- \(.log | esc): \(.open) \(if .open == 1 then "session has" else "sessions have" end) no result event (cut off); \(if .open == 1 then "its" else "their" end) \(if .partial then "cost is not in the totals; the tokens are summed from the assistant messages (partial)" else "tokens and cost are not in the totals" end).")]
          | if length > 0 then [""] + . else . end)
       + ["", "By model:", "", "| Model | Input | Output | Cache read | Cache write | Cost |", "|---|---|---|---|---|---|"]
-      + [$L.models[] | "| \(.model | esc) | \(.tok.in | tok) | \(.tok.out | tok) | \(.tok.cr | tok) | \(.tok.cw | tok) | \(.cost | money) |"]
+      + [$L.models[] | "| \(.model | esc) | \(.tok.in | tok) | \(.tok.out | tok) | \(.tok.cr | tok) | \(.tok.cw | tok) | \(if .cost == null then "no data" else (.cost | money) end) |"]
       + (if $total == null then ["| Total | no data | no data | no data | no data | no data |"] else
           ["| Total | \($total.tok.in | tok) | \($total.tok.out | tok) | \($total.tok.cr | tok) | \($total.tok.cw | tok) | \($total.cost | money) |"] end)
       + (if ($L.subagents | length) > 0 then
