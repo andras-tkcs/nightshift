@@ -39,7 +39,7 @@ tags:
 - bats
 - skills
 - conductor
-state: queued
+state: running
 gate: null
 step: board
 stop_requested: null
@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T20:09:50Z'
+updated: '2026-10-07T20:09:59Z'
 budget:
   used: 8.11
   limit: 10
   paused: false
-  since: '2026-10-07T20:09:50Z'
+  since: '2026-10-07T20:09:57Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -240,6 +240,9 @@ events:
 - time: '2026-10-07T20:09:50Z'
   type: approved
   note: gate 1.5
+- time: '2026-10-07T20:09:58Z'
+  type: resumed
+  note: resumed from queued
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
