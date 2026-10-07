@@ -13,3 +13,5 @@ How shall I proceed with the kill.bats #58 timing flake: (a) you merge p2 yourse
 
 ## Owner's answer
 
+I already have a fix for this in a separate job. skip it for now and let the other job to cover it
+
