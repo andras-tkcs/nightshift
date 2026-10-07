@@ -8,4 +8,6 @@ Give the run more time, or stop it? To continue, raise `budget_hours` below to t
 
 ## Owner's answer
 
-budget_hours: 2
+budget_hours: 4
+
+Also I merged to main the fix for a bootstrap issue which exists on main and will fail merge to main. If you pull in main it should be ok now. Pull in main.
