@@ -17,8 +17,8 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: waiting
-gate: '1'
+state: queued
+gate: null
 step: gate1
 stop_requested: null
 branch: plan/ns-x7
@@ -26,12 +26,12 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T10:38:41Z'
+updated: '2026-10-07T10:43:45Z'
 budget:
   used: 0.47
   limit: 8
   paused: false
-  since: '2026-10-07T10:38:41Z'
+  since: '2026-10-07T10:43:45Z'
   integrate_from: null
 phases: []
 events:
@@ -62,4 +62,7 @@ events:
 - time: '2026-10-07T10:38:16Z'
   type: gate
   note: 'gate 1: waiting for the owner'
+- time: '2026-10-07T10:43:44Z'
+  type: approved
+  note: gate 1
 queued_for_slot: false
