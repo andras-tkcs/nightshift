@@ -1,0 +1,3 @@
+{"type": "assistant", "timestamp": "2026-10-02T08:01:12.500Z", "message": {"content": [{"type": "text", "text": "first"}]}}
+{"type": "user", "timestamp": "2026-10-02T09:15:00.000Z", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "is_error": false, "content": "ok"}]}}
+{"type": "assistant", "timestamp": "2026-10-02T10:42:59Z", "message": {"content": [{"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "ls"}}]}}

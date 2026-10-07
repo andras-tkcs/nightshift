@@ -111,3 +111,21 @@ mklogs() {
   assert_success
   assert_output_contains "text: after"
 }
+
+@test "stream-view stamps each line with the event's own timestamp, not the current time (ns-x6)" {
+  run view timestamps
+  assert_success
+  [[ ${lines[0]} == "08:01 text: first" ]]
+  [[ ${lines[1]} == "09:15 result: ok" ]]
+  [[ ${lines[2]} == "10:42 tool: Bash ls" ]]
+}
+
+@test "ns log shows each event's real time (ns-x6)" {
+  mkdir -p "$LOGS/sbx-1"
+  cp "$FX/timestamps.jsonl" "$LOGS/sbx-1/intake.jsonl"
+  run ns log sbx-1
+  assert_success
+  assert_output_contains "08:01 text: first"
+  assert_output_contains "10:42 tool: Bash ls"
+  assert_output_not_contains "21:00"
+}

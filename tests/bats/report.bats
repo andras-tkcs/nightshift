@@ -158,3 +158,47 @@ ev() { printf -- '"""- time: '"'"'%s'"'"'\n  type: %s\n  note: '"'"'%s'"'"'\n"""
   ! grep -q 'ghp_' "$RUNDIR/run-report.md"
   grep -qF '| [redacted] | 4 | 40 |' "$RUNDIR/run-report.md"
 }
+
+# ns-x6: gaps seen in the report of run ns-x4
+X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
+
+@test "ns report: the timeline follows the ledger's step events when there is no gate or phase (ns-x6)" {
+  cp "$X6/ledger-steps.yaml" "$RUNDIR/ledger.yaml"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| planning | 2026-10-02 10:00 | 5m | 5m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| triage | 2026-10-02 10:05 | 15m | 15m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| implement | 2026-10-02 10:20 | 40m | 40m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| integrate | 2026-10-02 11:00 | 10m | 10m | 0s |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a session without a result event gives partial tokens from its assistant messages (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # messages are deduplicated by id: the last usage of m1 plus m2
+  grep -qF 'input 15, output 150, cache read 1.5k, cache write 200' "$RUNDIR/run-report.md"
+  grep '^| Tokens |' "$RUNDIR/run-report.md" | grep -qF 'partial'
+  ! grep -qF '| Tokens | no data |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a subagent with no task notification takes its time from its tool use and tool result (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # 10:05:02 to 11:06:30 is 1h 01m
+  grep -qE '^\| ns:integrator \| conductor \| [^|]+ \| 1 \| 1h 01m \|$' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: Checks breakdown counts the runs of each check and their total time (ns-x6)" {
+  rm -f "$LOGS"/*.checks.log
+  cp "$X6/feature.checks.log" "$X6/p1-core.checks.log" "$LOGS/"
+  run ns report sbx-12
+  assert_success
+  grep -qF 'Checks breakdown' "$RUNDIR/run-report.md"
+  # python test: 5s + 10s + 15s on feature, 30s on p1-core; python lint: 4s twice
+  grep -qF '| python test | 4 | 1m |' "$RUNDIR/run-report.md"
+  grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
+}
