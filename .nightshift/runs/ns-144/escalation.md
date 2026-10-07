@@ -17,3 +17,5 @@ The base already fails "step 1 with a failing apt-get ..." on ns-main. Shall I r
 
 ## Owner's answer
 
+Fix it. It is up to you which phase it fits the most
+
