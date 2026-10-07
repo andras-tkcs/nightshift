@@ -32,21 +32,21 @@ tags:
 - bats
 - tests
 - perf
-state: running
+state: done
 gate: null
-step: integrate
+step: done
 stop_requested: null
 branch: plan/ns-x8
 feature_branch: fix/ns-x8
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/165
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T17:20:52Z'
+updated: '2026-10-07T17:34:45Z'
 budget:
-  used: 3.74
+  used: 3.98
   limit: 5
   paused: false
-  since: '2026-10-07T17:20:26Z'
+  since: '2026-10-07T17:34:45Z'
   integrate_from: null
 phases:
 - id: fix
@@ -134,6 +134,12 @@ events:
 - time: '2026-10-07T17:20:34Z'
   type: review
   note: fix round 2 approve
+- time: '2026-10-07T17:34:37Z'
+  type: state
+  note: 'done: pull request https://github.com/andras-tkcs/nightshift/pull/165'
+- time: '2026-10-07T17:34:39Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/165'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-144
