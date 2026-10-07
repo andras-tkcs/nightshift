@@ -19,14 +19,23 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T15:49:41Z'
+updated: '2026-10-07T15:49:56Z'
 budget:
-  used: 0.22
+  used: 0.23
   limit: 2
   paused: false
-  since: '2026-10-07T15:49:16Z'
+  since: '2026-10-07T15:49:52Z'
   integrate_from: null
-phases: []
+phases:
+- id: fix
+  title: fix
+  state: pending
+  branch: null
+  worktree: null
+  attempts: 0
+  review_rounds: 1
+  review_verdict: approve
+  reviewed_head: 622b409b727bc48c01da1d9747202a03f36f27a3
 events:
 - time: '2026-10-07T13:54:56Z'
   type: created
@@ -46,4 +55,7 @@ events:
 - time: '2026-10-07T15:36:09Z'
   type: dequeued
   note: started from the queue
+- time: '2026-10-07T15:49:53Z'
+  type: review
+  note: fix round 1 approve
 queued_for_slot: false
