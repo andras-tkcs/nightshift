@@ -27,7 +27,7 @@ The edge of the boundary is the token scopes and the branch rulesets. The guard 
 | Run logs (session streams, prompts, check output, `dequeue.log`) | `~/.config/ns/logs/` and `logs/<id>/`, mode 700; `dequeue.log` mode 600 | `ns` |
 | Cloudflare tunnel token | the `cloudflared` service on ns-main | root |
 | The release | `/opt/nightshift/<tag>`, owned by root | read-only for `ns` |
-| The desk | `/srv/ns-space` (owner `ns`, group `caddy`, mode 2750) | `ns`, the web server; reached through Access |
+| The desk | `/srv/ns-space` (owner `ns`, group `caddy`, mode 2750) | `ns`, the web server; reached through Access. Only SilverBullet's static client files (`/service_worker.js`, `/.client/*`) bypass the login, so the service worker can register; they hold no desk content |
 | Ledgers | the run's branch `plan/<id>` in git | whoever can read the repository |
 | QA test credentials | only on the self-hosted QA runner, never on ns-main | not ns-main |
 

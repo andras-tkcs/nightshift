@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ns health-check` is now `ns check` (the `ns-health.*` systemd units keep their names and run `ns check`). `ns health-check` still works as a deprecated alias (ns-x4).
 
+### Fixed
+
+- The desk through Cloudflare Access no longer fails with "Failed to register a ServiceWorker ... The script resource is behind a redirect": `docs/accounts.md` adds a `Nightshift desk static` Access application with a Bypass policy for SilverBullet's `/service_worker.js` and `/.client/*`, as SilverBullet's authentication proxy notes require. `docs/setup.md` gets a curl check for it, and `docs/security.md` and `docs/operations.md` list the bypass and its teardown.
+
 ## [0.1.8] - 2026-10-06
 
 ### Security
