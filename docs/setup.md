@@ -47,6 +47,14 @@ Cloudflare creates the DNS records. Never add a record that points at ns-main's 
 2. The wizard asks for an admin account, then for the first space: name it `nightshift` and point its folder at `/srv/ns-space`.
 3. In Space settings add `ns-desk.<domain>` as an extra hostname.
 4. Check the HTML side: `https://ns-main.<tailnet>.ts.net:8443` shows the folder listing.
+5. Check the Access bypass for the desk's static files ([accounts.md](accounts.md), part 4, step 7) from a machine that is not logged in to Access:
+
+   ```bash
+   curl -sI https://ns-desk.<domain>/service_worker.js | head -1   # 200, not 302
+   curl -sI https://ns-desk.<domain>/ | head -1                    # 302 to <team>.cloudflareaccess.com
+   ```
+
+   If the desk shows "Failed to register a ServiceWorker ... The script resource is behind a redirect", the bypass is missing. After adding it, clear the site data for `ns-desk.<domain>` in the browser once.
 
 Upgrading SilverBullet later:
 

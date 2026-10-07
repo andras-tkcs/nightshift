@@ -286,6 +286,6 @@ To remove Nightshift completely:
 1. `ns drain`, then `ns stop <id>` for anything left, and let `ns gc` finish old runs.
 2. Delete the Hetzner servers (and any lab snapshots) in the `nightshift` and `nightshift-lab` projects.
 3. Revoke the tokens: the agent tokens and any admin token on GitHub (Developer settings), the Hetzner API tokens.
-4. In Cloudflare: delete the tunnel `ns-main` and the three Access applications (`Nightshift desk`, `Nightshift reports`, and `Nightshift terminal` if you made it); delete the Google OAuth client in the Google Cloud project `nightshift-access`.
+4. In Cloudflare: delete the tunnel `ns-main`, the Access applications (`Nightshift desk`, `Nightshift desk static`, `Nightshift reports`, and `Nightshift terminal` if you made it) and the `public static` policy; delete the Google OAuth client in the Google Cloud project `nightshift-access`.
 5. In Tailscale: remove the machine `ns-main` in the admin console.
 6. On GitHub: the repositories `nightshift` and `nightshift-sandbox` can stay or be archived; nothing in the `privacyfence` org needs undoing except the token.
