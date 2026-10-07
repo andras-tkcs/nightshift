@@ -48,7 +48,7 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T18:18:09Z'
+updated: '2026-10-07T18:18:22Z'
 budget:
   used: 6.86
   limit: 8
@@ -87,9 +87,11 @@ phases:
   branch: feature/x5--p3-retire
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p3-retire
   attempts: 1
-  review_rounds: 0
+  review_rounds: 1
   not_before: null
   transient_retries: 0
+  review_verdict: approve
+  reviewed_head: 86efdfb2228585c7fcaa10818013e0fd1ab7d108
 events:
 - time: '2026-10-07T09:16:50Z'
   type: created
@@ -186,4 +188,7 @@ events:
 - time: '2026-10-07T18:06:39Z'
   type: phase-end
   note: p3-retire exit 0
+- time: '2026-10-07T18:18:20Z'
+  type: review
+  note: p3-retire round 1 approve
 queued_for_slot: false
