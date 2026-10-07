@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T17:48:59Z'
+updated: '2026-10-07T17:49:02Z'
 budget:
   used: 5.07
   limit: 8
@@ -41,11 +41,11 @@ phases:
   branch: feature/x7--p1-note-cli
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x7--p1-note-cli
   attempts: 3
-  review_rounds: 1
+  review_rounds: 2
   not_before: null
   transient_retries: 0
   review_verdict: changes
-  reviewed_head: 6cc724233a708aab7ce3b42797d7c4010b1970e8
+  reviewed_head: dee0cb03c79a2622cc29557f191a6be6df29dc4c
 events:
 - time: '2026-10-07T10:06:18Z'
   type: created
@@ -139,4 +139,7 @@ events:
 - time: '2026-10-07T16:14:28Z'
   type: phase-end
   note: p1-note-cli exit 0
+- time: '2026-10-07T17:49:02Z'
+  type: review
+  note: p1-note-cli round 2 changes
 queued_for_slot: false
