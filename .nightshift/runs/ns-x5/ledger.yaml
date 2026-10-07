@@ -48,18 +48,18 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T10:50:40Z'
+updated: '2026-10-07T12:14:29Z'
 budget:
-  used: 1.07
+  used: 2.47
   limit: 8
   paused: false
-  since: '2026-10-07T10:50:11Z'
+  since: '2026-10-07T12:14:11Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
   title: Lock, cache, --force, canonical target and wrong-target warning for ns-conductor
     checks
-  state: running
+  state: review
   branch: feature/x5--p1-checks-cache
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p1-checks-cache
   attempts: 2
@@ -106,4 +106,7 @@ events:
 - time: '2026-10-07T10:50:34Z'
   type: phase-start
   note: 'p1-checks-cache attempt: pid 886762'
+- time: '2026-10-07T12:14:29Z'
+  type: phase-end
+  note: p1-checks-cache exit 0
 queued_for_slot: false
