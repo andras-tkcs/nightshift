@@ -10,8 +10,8 @@ tier_recommended: T1
 tags:
 - bash
 - bats
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: integrate
 stop_requested: null
 branch: plan/ns-x9
@@ -19,12 +19,12 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T19:07:08Z'
+updated: '2026-10-07T19:15:09Z'
 budget:
   used: 2.52
-  limit: 2
+  limit: 4
   paused: false
-  since: '2026-10-07T19:07:08Z'
+  since: '2026-10-07T19:15:09Z'
   integrate_from: null
 phases:
 - id: fix
@@ -74,6 +74,12 @@ events:
 - time: '2026-10-07T19:05:54Z'
   type: gate
   note: 'gate 1.5: waiting for the owner: budget used up: 2.51 h of 2 h'
+- time: '2026-10-07T19:15:07Z'
+  type: budget
+  note: owner set the budget to 4 h
+- time: '2026-10-07T19:15:08Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-x8
