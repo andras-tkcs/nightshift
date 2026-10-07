@@ -51,7 +51,7 @@ make_release_remote() {
 # A tree on which all eleven steps are ok.
 prepare_tree() {
   local r="$NS_BS_ROOT" h="$NS_USER_HOME"
-  mkdir -p "$r/etc/caddy" "$r/etc/default" "$r/srv/ns-space" "$r/etc/systemd/system" \
+  mkdir -p "$r/etc/caddy" "$r/etc/caddy/Caddyfile.d" "$r/etc/default" "$r/srv/ns-space" "$r/etc/systemd/system" \
     "$r/etc/ssh" "$r/var/lib/systemd/linger" "$h/opt/silverbullet" "$h/sb-data" \
     "$h/.config/systemd/user/default.target.wants" "$h/.config/systemd/user/timers.target.wants" \
     "$h/.config/hcloud" "$h/.config/ns" "$h/.local/bin"
@@ -258,6 +258,141 @@ EOF
   grep -q 'reverse_proxy 127.0.0.1:3000' "$out"
   [ "$(grep -c 'get_certificate tailscale' "$out")" -eq 3 ]
   ! grep -q '@TS_HOST@' "$out"
+}
+
+# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
+# The command runs in a background subshell so errexit stays on inside it. Passes when the
+# command fails; fails with XPASS when it succeeds. Phase p1-caddy-bootstrap deletes the
+# `ns_xfail "ns:ns-144 acceptance" ` prefixes in the commit that implements them, then this helper.
+ns_xfail() {
+  local reason="$1" rc=0
+  shift
+  "$@" &
+  wait "$!" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
+    return 1
+  fi
+}
+
+LOCAL_SNIPPET='localhost:9999 {\n    respond "hi"\n}\n'
+
+# AC-1, AC-2: CSP and @md per HTML block; none on :443 and :8444 (non-goal guard).
+csp_and_md_per_block() {
+  local out block h
+  out="$BATS_TEST_TMPDIR/Caddyfile"
+  sed 's/@TS_HOST@/ns-main.example.ts.net/g' "$NS_REPO_ROOT/templates/caddy/Caddyfile.tmpl" >"$out"
+  for h in '^ns-main\.example\.ts\.net:8443 \{' '^http:\/\/127\.0\.0\.1:8080 \{'; do
+    block="$(awk "/$h/,/^\\}/" "$out")"
+    [ -n "$block" ]
+    printf '%s\n' "$block" |
+      grep -F "header Content-Security-Policy \"default-src 'none'; style-src 'unsafe-inline'; img-src data:\""
+    printf '%s\n' "$block" | grep -F '@md path *.md'
+    printf '%s\n' "$block" | grep -F 'Content-Type "text/plain; charset=utf-8"'
+  done
+  for h in '^ns-main\.example\.ts\.net \{' '^ns-main\.example\.ts\.net:8444 \{'; do
+    block="$(awk "/$h/,/^\\}/" "$out")"
+    [ -n "$block" ]
+    [ "$(printf '%s\n' "$block" | grep -c -e 'Content-Security-Policy' -e '@md')" -eq 0 ]
+  done
+}
+
+@test "the HTML listeners send the CSP header and serve Markdown as text, per block (#5, #27)" {
+  ns_xfail "ns:ns-144 acceptance" csp_and_md_per_block
+}
+
+# AC-3
+import_is_last() {
+  [ "$(grep -v '^[[:space:]]*$' "$NS_REPO_ROOT/templates/caddy/Caddyfile.tmpl" | tail -n1)" = 'import /etc/caddy/Caddyfile.d/*.caddy' ]
+}
+
+@test "the Caddyfile template imports Caddyfile.d last (#26)" {
+  ns_xfail "ns:ns-144 acceptance" import_is_last
+}
+
+# AC-4
+local_snippet_survives_apply() {
+  local d="$NS_BS_ROOT/etc/caddy/Caddyfile.d" sum
+  NS_BS_STEPS=1 run bootstrap_apply
+  assert_success
+  [ -d "$d" ]
+  [ "$(stat -c %a "$d")" = 755 ]
+  printf '%b' "$LOCAL_SNIPPET" >"$d/local.caddy"
+  sum="$(sha256sum <"$d/local.caddy")"
+  NS_BS_STEPS=1 run bootstrap_apply
+  assert_success
+  [ -f "$d/local.caddy" ]
+  [ "$(sha256sum <"$d/local.caddy")" = "$sum" ]
+  [ "$(ls -A "$d")" = local.caddy ]
+  echo '# edited' >>"$NS_BS_ROOT/etc/caddy/Caddyfile"
+  NS_BS_STEPS=1 run bootstrap_apply
+  assert_success
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*changed'
+  [ -f "$d/local.caddy" ]
+  [ "$(sha256sum <"$d/local.caddy")" = "$sum" ]
+  [ "$(ls -A "$d")" = local.caddy ]
+}
+
+@test "step 1 apply creates Caddyfile.d and a rerun keeps a local snippet byte-identical (#26)" {
+  ns_xfail "ns:ns-144 acceptance" local_snippet_survives_apply
+}
+
+# AC-5
+check_lists_local_snippets() {
+  local before
+  prepare_tree
+  printf '%b' "$LOCAL_SNIPPET" >"$NS_BS_ROOT/etc/caddy/Caddyfile.d/local.caddy"
+  before="$(snapshot)"
+  run bootstrap --check
+  assert_success
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*: ok \(local: local\.caddy\)'
+  [ "$(snapshot)" = "$before" ]
+}
+
+@test "--check lists local Caddy snippets on the step 1 line and changes nothing (#26)" {
+  ns_xfail "ns:ns-144 acceptance" check_lists_local_snippets
+}
+
+# design: names are cleaned of control characters
+check_cleans_snippet_names() {
+  prepare_tree
+  : >"$NS_BS_ROOT/etc/caddy/Caddyfile.d/$(printf 'a\033b.caddy')"
+  run bootstrap --check
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*\(local: ab\.caddy\)'
+  assert_output_not_contains "$(printf '\033')"
+}
+
+@test "--check drops control characters from snippet names" {
+  ns_xfail "ns:ns-144 acceptance" check_cleans_snippet_names
+}
+
+# design: Caddyfile.d as a plain file needs the owner (check)
+check_caddyfile_d_not_a_dir() {
+  prepare_tree
+  rmdir "$NS_BS_ROOT/etc/caddy/Caddyfile.d"
+  : >"$NS_BS_ROOT/etc/caddy/Caddyfile.d"
+  run bootstrap --check
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*needs you: /etc/caddy/Caddyfile\.d is not a directory'
+}
+
+@test "--check says needs you when Caddyfile.d is not a directory" {
+  ns_xfail "ns:ns-144 acceptance" check_caddyfile_d_not_a_dir
+}
+
+# design: Caddyfile.d as a plain file needs the owner (apply), and no Caddyfile is written
+apply_caddyfile_d_not_a_dir() {
+  mkdir -p "$NS_BS_ROOT/etc/caddy"
+  : >"$NS_BS_ROOT/etc/caddy/Caddyfile.d"
+  NS_BS_STEPS=1 run bootstrap_apply
+  assert_failure 1
+  printf '%s\n' "$output" | grep -E '^\[1/11\].*needs you: /etc/caddy/Caddyfile\.d is not a directory'
+  [ -f "$NS_BS_ROOT/etc/caddy/Caddyfile.d" ]
+  [ ! -e "$NS_BS_ROOT/etc/caddy/Caddyfile" ]
+}
+
+@test "step 1 apply says needs you when Caddyfile.d is not a directory" {
+  ns_xfail "ns:ns-144 acceptance" apply_caddyfile_d_not_a_dir
 }
 
 # A git wrapper whose clone fails, as on a network or disk-full error.
