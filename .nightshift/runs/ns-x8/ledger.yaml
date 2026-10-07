@@ -1,0 +1,53 @@
+version: 1
+id: ns-x8
+project: nightshift
+request:
+  text: 'The full bats suite (tests/bats, 835 tests) takes about 15 minutes per run,
+    and runs often execute it several times (see ns-x4). Make it faster.
+
+
+    1. Run `bats --timing tests/bats` and list the 15 slowest tests and the slowest
+    files in the PR body, with the total time.
+
+    2. For each slow test, find the cause (real sleeps, timeouts waiting on network/apt/tmux/systemctl,
+    real tools reached via a PATH built from /usr/bin instead of stubs, large fixture
+    setup repeated per test) and fix it. Use stubs and fake clocks, and setup_file
+    for shared fixtures. Do not delete or weaken assertions.
+
+    3. Tests must not depend on host state such as a live tmux session, a running
+    ns run, or a real caddy or apt. ns-144 fixed one case of this in bootstrap.bats
+    (bc5fdc4). Look for the same pattern elsewhere.
+
+    4. Confirm `bats --jobs N tests/bats` is safe in parallel (no shared tmp paths
+    or ports).
+
+
+    Acceptance: before and after timings in the PR body, every test still passing,
+    no assertions removed. Target: the full suite under 5 minutes at --jobs 8 on ns-main.'
+tier: T1
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-x8
+feature_branch: null
+pr: null
+release: v0.1.8
+created: '2026-10-07T12:12:05Z'
+updated: '2026-10-07T12:12:06Z'
+budget:
+  used: 0
+  limit: 2
+  paused: false
+  since: '2026-10-07T12:12:06Z'
+phases: []
+events:
+- time: '2026-10-07T12:12:05Z'
+  type: created
+  note: run ns-x8 created
+- time: '2026-10-07T12:12:05Z'
+  type: tier
+  note: T1 (owner, 2 h)
