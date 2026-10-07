@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T21:18:21Z'
+updated: '2026-10-07T21:20:32Z'
 budget:
-  used: 9.25
+  used: 9.28
   limit: 10
   paused: false
-  since: '2026-10-07T21:18:21Z'
+  since: '2026-10-07T21:20:09Z'
   integrate_from: '2026-10-07T20:10:41Z'
 phases:
 - id: p1-checks-cache
@@ -243,6 +243,13 @@ events:
 - time: '2026-10-07T20:09:58Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T21:20:30Z'
+  type: review
+  note: review board
+- time: '2026-10-07T21:20:32Z'
+  type: note
+  note: 'note 3: board non-blocking: conductor-loop.sh:387 key=$(loop_checks_key)
+    || exit; wrap l'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main

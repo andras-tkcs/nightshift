@@ -1,26 +1,50 @@
-# Review board: code (ns-x5)
+# Board code review: ns-x5
 
-Range reviewed: `git diff origin/main...origin/feature/x5`, head `855863f7cdc509fa1856c0d90560de0f9c4477f4`.
-Plan: `docs/ns-x5-plan.md` (origin/plan/ns-x5). Profile: CLAUDE.md conventions. The project's checks were not run (the caller did not ask; full bats explicitly not to be run).
+Range: `git diff origin/main...origin/feature/x5`, head 852727e9423c0792fbd02c1d12d847500065776e. Plan: `origin/plan/ns-x5:docs/ns-x5-plan.md` (D1 to D11, manifest p1 to p3), `RUN/acceptance.md` AC-1 to AC-8. I read the diff, the plan, the acceptance criteria and RUN/notes.md. I did not run bats, as the caller asked. The caller reports that the full suite ran through ns-conductor and that only the accepted known failures bootstrap.bats #32 and kill.bats #464 failed. I was not given any worker log.
 
 ## Findings
 
-- blocking · origin/feature/x5 (whole range) · The reviewed head is only the plan commit `855863f` ("ns: plan and acceptance tests for ns-x5"): the diff holds `docs/ns-x5-plan.md` and the 20 acceptance tests, all still wrapped in `ns_xfail`. No implementation is on origin. The ledger marks p1-checks-cache and p2-stack-base-flow `merged`, but the merge commits `ad83b35` (p1) and `8d6c04d` (p2) exist only on the local `feature/x5` in `nightshift-ns-x5--feature` (5 commits ahead of origin). The ledger also has no `merge` events for either phase, so these merges did not go through `ns-conductor merge` (which pushes, `bin/lib/conductor-loop.sh:701`). · Push `feature/x5` (`git -C /home/ns/Coding/worktrees/nightshift-ns-x5--feature push origin feature/x5`, no force), then run the board again on the new head. Before that, rerun `ns-conductor checks ns-x5 feature` on that tree, because the merges skipped the merge-time checks.
-- blocking · docs/ns-x5-plan.md · Phase p3-retire was never run and is not in the ledger's `phases` list. So the plan doc is still on the feature branch (final_check 1), `CHANGELOG.md` `[Unreleased]` has no ns-x5 entry (AC-7, final_check 2), and the reference docs are stale even on the local head: `docs/conductor.md:137` (stack-base does not say it merges the base, pushes, undoes the merge when the push fails or needs a worktree, and still says "reruns `checks <id> feature`"), `docs/conductor.md:254` (old worker rule 4), `docs/usage.md:107` ("which reruns the checks"), `docs/agents.md:84` ("resolves and rechecks"). This is the missing doc update spec §15 requires. · Register and run p3-retire as the manifest specifies (steps 1 to 8), merge it through `ns-conductor merge` and push.
-- blocking · .nightshift/runs/ns-x5/notes.md · AC-4's second half is not met. The ns-x4 cause from the plan's Current state (tier T1, so `checks feature` already resolved to `--fix`; the checks ran before the round-1 fix commits; the integrator ran `checks fix` separately; direct `bats` runs 6+ times plus `/ns:dod`) is not in `RUN/notes.md`, which holds only the pre-existing-failures note. Without it the PR body's Follow-ups cannot carry the cause (final_check 4). · Run `ns-conductor note ns-x5 "<the ns-x4 cause, one line>"` as the plan's Risks section says.
-- blocking · AC-8 / final_check 5 · No full-suite pass through `ns-conductor checks ns-x5 feature` has been recorded for the merged tree. notes.md names two pre-existing failures: `bootstrap.bats` apt-get, which the owner accepted, and the flaky `kill.bats` `ns_kill_group`. · After the push, run `ns-conductor checks ns-x5 feature` once and record its result in the PR body, with the two accepted failures listed as known and not counted as passes.
+- non-blocking · bin/lib/conductor-loop.sh:387 · `key=$(loop_checks_key ...)`: the `ns_die` in `loop_checks_key` exits only the command substitution. When `rev-parse HEAD^{tree}` fails, `key` is empty and the checks still run. `jq --argjson k ""` then fails, so nothing is recorded. This is safe because it never gives a false pass, but the die message does not stop the call. · Use `key=$(loop_checks_key "$dir" "$canon") || exit`.
+- non-blocking · bin/lib/conductor-loop.sh:161 · The rewritten `conductor_stack_base` comment line is about 160 characters, much longer than the lines around it. · Wrap it like the rest of the comment.
+- non-blocking · plugins/ns/skills/run/SKILL.md:44 · T0 step 4 reads "`ns-conductor checks <id> feature`; the checks of Sync are its first run". A reader can take this to mean the checks run again right after Sync. · Reword it: "The Sync checks are this step's first run; on failure launch `ns:implementer` ... and rerun `ns-conductor checks <id> feature` ...".
+- non-blocking · docs/agents.md:85 · The integrator Stacking sentence reads "it resolves, commits and pushes; the checks run in `/ns:dod`, or escalates at gate 1.5". The semicolon splits the either/or, so the "or" has no clear subject. · Write "it resolves, commits and pushes (the checks then run in `/ns:dod`), or escalates ...", as run/SKILL.md Integrate step 2 already does.
+- non-blocking · docs/conductor.md:145 · "`ns stack merge` runs the checks" became "The stack merge command of `ns` runs the checks". The new wording is vaguer and the plan does not ask for it. · Restore the command name in backticks, unless docs-check needs this form; if so, note why.
+- non-blocking · CHANGELOG.md:18 · `### Changed` sits after `### Fixed`. That is what the plan asks for, but it is against Keep a Changelog order (Added, Changed, ..., Fixed, Security). · Optionally move it above `### Fixed`.
 
-The findings below come from reading the unpushed local head `8d6c04d` (`/home/ns/Coding/worktrees/nightshift-ns-x5--feature`). They are not part of the reviewed range. They are listed so the next round goes faster.
+## What I checked
 
-- non-blocking · bin/lib/conductor-loop.sh:148 (local head) · The `loop_stack_merge` conflict message still says "resolve, commit and rerun the checks". The new flow (integrator.md step 0, D10) says to commit and push, and that the checks run in `/ns:dod`. · Change it to "resolve, commit and push; the checks then run in /ns:dod". Update `docs/conductor.md` in p3 to match.
-- non-blocking · bin/lib/conductor-loop.sh:309-341 (local head) · `loop_checks_warn` warns only when HEAD lacks pushed refs. It says nothing when HEAD is ahead of `origin/<feature>`, which is the case that just happened: the board would review an origin head without the code while Sync's checks pass locally. `stack-base` also pushes nothing when the branch is already up to date with the base. · Follow-up: have Sync (or `loop_checks_warn` for `feature`) print `warning: <dir> HEAD is ahead of origin/<feature>: push before review`, so the existing "a `warning:` line means Escalate" rule catches it.
-- non-blocking · tests/bats/stack-pr.bats:857 (local head) · p2 added `ns-ledger state "$LEDGER" running --no-gate` to the first stack-base acceptance test. It is a fixture addition with a reason given in a comment, not a weakened assertion. It is acceptable, but it was added in the implementing commit, not in the acceptance commit. · Note it in the PR body. No change needed.
-- non-blocking · tests/bats/conductor-loop.bats:929,950 (local head) · The lock tests' `sleep 3` became `sleep 10` in the fix commit. This is a timing margin under load, not a weakening. · None. Mention it in the PR body.
-
-Other checks on the local head: `bash -n` and `shellcheck -x` pass for `bin/lib/conductor-loop.sh` and `bin/ns-conductor`. The integrator.md file contains no `bats`. The lock/replay/cache logic follows D3 to D7 (lock before key, replay only after a wait and only for a cacheable PASS or a failure, json removed before a run, `{lfd}>&-` on the check call). `loop_stack_merge` follows D8 (ancestor short-circuit before the dirty checks, reset to `pre` on a push failure, `integrate_from` set only after it returns). No untrusted text from the request was copied into code or docs as instructions (R-SEC-3).
+- Correctness of `loop_checks`, compared with D3/D4/D6/D7:
+  - The order is canon, budget guard, worktree check, warning, lock, clean flag and key, replay or cache, then run.
+  - Every path, including the 3600 s lock timeout (exit 1), stays inside the subshell, so the rc marker is always written under the caller's target name.
+  - `{lfd}>&-` on the `ns_profile_checks_run` call keeps the lock away from leftover processes.
+  - Replay needs a wait, a clean tree, the same key, `finished_epoch >= start`, and a FAIL or a cacheable PASS.
+  - A cache hit needs `rc == 0`, `cacheable == true` and a clean tree.
+  - The record is written with temp file + `mv`, after `rm -f` at the start of the run, and is cacheable only when the tree was clean before and after and the tree did not change.
+  - The usage check accepts only `--force` as the third argument.
+  - `conductor_merge` keeps the call without flags.
+- `loop_code_wt` now follows `feature_branch`, with the tier as fallback (D1). `loop_checks_canon` maps only `fix`, and only when it is the same worktree.
+- `loop_checks_warn` follows D5: it skips `fix-<n>` rounds, skips refs that are missing, and always returns 0.
+- `loop_stack_merge` follows D8:
+  - It fetches first and returns early when nothing is behind, so nothing is pushed.
+  - It checks for dirty and clashing files, then merges with `--no-ff`.
+  - On a conflict it records `stacked_on`, checkpoints and exits 6.
+  - When the push is refused it runs `reset --hard "$pre"` and dies.
+  - `integrate_from` is set only after it succeeds. The no-top path now also needs the code worktree.
+- Tests: the 16 conductor-loop and 4 stack-pr acceptance tests were committed first (855863f) with a strict xfail wrapper, which the implementation commits remove.
+  - 14c5db4 only lengthens the lock tests' `sleep 3` to `sleep 10`. That makes the overlap more reliable; it does not weaken the tests.
+  - 027f77c adds fixture setup (`develop` pushed, run state `running`) and a stronger remote-ref assertion.
+  - No test was deleted or skipped.
+- Acceptance:
+  - AC-1 to AC-4: bats tests for lock, stale lock, no lock leak, cache hit, misses (a), (c), (d) and (e), and the warning. The ns-x4 cause is RUN/notes.md note 2.
+  - AC-5: the worker prompt in `bin/ns-conductor`, `implementer.md`, `integrator.md` (no "bats"), run/implement skills.
+  - AC-6: Sync before review in run/implement; the integrator's base merge step is removed.
+  - AC-7: `docs/conductor.md` `### checks` covers the lock, the cache, `--force` and the warnings; CHANGELOG has the entry.
+  - AC-8: as the caller reports.
+- Docs: conductor.md (checks, stack-base, budget margin, worker prompt, logs table with the duplicate row removed), usage.md, agents.md, the dod skill. They match the code.
+- Hygiene: there are no `.nightshift/` files in the diff and `docs/ns-x5-plan.md` is deleted. Every file is in its phase's `touches`. No secrets. No text copied from untrusted sources (R-SEC-3).
 
 ## Summary
 
-The range under review, `origin/main...origin/feature/x5`, contains only the plan and the expected-failure acceptance tests. The two implemented phases were merged locally but never pushed, and phase p3-retire (CHANGELOG, reference docs, plan removal) never ran. The ns-x4 cause note is missing too. The unpushed implementation looks sound against D1 to D10. Push it, complete p3, add the note, run the feature checks once, then review again.
+The diff does what the plan's D1 to D11 ask for. AC-1 to AC-8 are met and covered by tests or by reading the diff. The tests were written first and none was weakened. There are no blocking findings. The six non-blocking items are wording or robustness polish for the PR body or a follow-up.
 
-REVIEW verdict=changes head=855863f7cdc509fa1856c0d90560de0f9c4477f4
+REVIEW verdict=approve head=852727e9423c0792fbd02c1d12d847500065776e
