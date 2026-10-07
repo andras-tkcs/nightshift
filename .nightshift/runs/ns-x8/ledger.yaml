@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:36:33Z'
+updated: '2026-10-07T15:36:44Z'
 budget:
   used: 2.06
   limit: 5
   paused: false
-  since: '2026-10-07T15:36:33Z'
+  since: '2026-10-07T15:36:44Z'
   integrate_from: null
 phases: []
 events:
@@ -101,4 +101,10 @@ events:
 - time: '2026-10-07T15:36:32Z'
   type: approved
   note: gate 1.5
-queued_for_slot: false
+- time: '2026-10-07T15:36:42Z'
+  type: state
+  note: 'queued: waiting for a free run slot'
+- time: '2026-10-07T15:36:43Z'
+  type: queued
+  note: waiting for a free run slot
+queued_for_slot: true
