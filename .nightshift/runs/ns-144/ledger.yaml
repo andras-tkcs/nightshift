@@ -13,19 +13,19 @@ tags:
 - adr
 state: running
 gate: null
-step: phases
+step: board
 stop_requested: null
 branch: plan/ns-144
 feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T13:34:12Z'
+updated: '2026-10-07T13:54:59Z'
 budget:
-  used: 6.88
+  used: 7.22
   limit: 8
   paused: false
-  since: '2026-10-07T13:34:10Z'
+  since: '2026-10-07T13:54:34Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
@@ -43,7 +43,7 @@ phases:
 - id: p2-docs-retire
   title: ADR 0010, security, setup, operations, spec and architecture docs, changelog,
     delete the plan
-  state: review
+  state: merged
   branch: feature/144--p2-docs-retire
   worktree: /home/ns/Coding/worktrees/nightshift-ns-144--p2-docs-retire
   attempts: 1
@@ -145,4 +145,7 @@ events:
 - time: '2026-10-07T13:34:11Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T13:34:35Z'
+  type: state
+  note: running
 queued_for_slot: false
