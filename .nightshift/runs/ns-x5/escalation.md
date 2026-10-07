@@ -1,12 +1,10 @@
-# Escalation: p3-retire cannot merge (known failure)
+# Escalation: manual merge of p3-retire was blocked
 
-p1 and p2 are merged and pushed (p2 was merged on the earlier waiver; the first board run found them unpushed, I pushed `feature/x5` and ran p3-retire: docs, CHANGELOG, plan removal). p3 was approved in review (round 1, head 86efdfb). `ns-conductor merge ns-x5 p3-retire` exits 1 because the full checks fail on the known `bootstrap.bats` #32 (apt-get, no sudo on ns-main), which you accepted earlier. `ns-conductor` has no way to record a waiver, so every merge, and `ns-conductor finish`, will hit it.
+Your answer was "Merge by hand". I tried to merge `feature/x5--p3-retire` (approved, head 86efdfb) into `feature/x5` with `git merge --no-ff` and a `Plan-Phase: p3-retire` trailer. I then wanted to push `feature/x5` and mark the phase merged in the ledger. The auto-mode permission classifier denied that command, so nothing was merged or pushed.
 
 ## Question
 
-Do you want to fix or skip `bootstrap.bats` #32 on main (then I re-run the merge), or should I merge `feature/x5--p3-retire` into `feature/x5` by hand (docs-only change) and continue to the review board and PR with #32 listed as a known failure?
+Can you run the merge yourself in `/home/ns/Coding/worktrees/nightshift-ns-x5--feature`, or allow that Bash action? The commands are `git merge --no-ff feature/x5--p3-retire`, then `git push origin feature/x5`, then marking the phase merged in the ledger. After that I continue with the review board.
 
 ## Owner's answer
-
-Merge by hand 
 
