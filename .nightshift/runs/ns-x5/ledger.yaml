@@ -48,7 +48,7 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T14:25:07Z'
+updated: '2026-10-07T14:25:19Z'
 budget:
   used: 4.65
   limit: 8
@@ -75,9 +75,11 @@ phases:
   branch: feature/x5--p2-stack-base-flow
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x5--p2-stack-base-flow
   attempts: 1
-  review_rounds: 0
+  review_rounds: 1
   not_before: null
   transient_retries: 0
+  review_verdict: approve
+  reviewed_head: 027f77c186ca2bbb94780642e3fe3aac5c23ad36
 events:
 - time: '2026-10-07T09:16:50Z'
   type: created
@@ -134,4 +136,7 @@ events:
 - time: '2026-10-07T14:23:26Z'
   type: phase-end
   note: p2-stack-base-flow exit 0
+- time: '2026-10-07T14:25:17Z'
+  type: review
+  note: p2-stack-base-flow round 1 approve
 queued_for_slot: false
