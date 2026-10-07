@@ -26,18 +26,18 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T15:18:50Z'
+updated: '2026-10-07T16:14:29Z'
 budget:
-  used: 2.57
+  used: 3.49
   limit: 8
   paused: false
-  since: '2026-10-07T15:18:49Z'
+  since: '2026-10-07T16:14:01Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
   title: ns note, the owner_notes schema, ns-conductor owner-notes and the report
     section
-  state: running
+  state: review
   branch: feature/x7--p1-note-cli
   worktree: /home/ns/Coding/worktrees/nightshift-ns-x7--p1-note-cli
   attempts: 3
@@ -136,4 +136,7 @@ events:
 - time: '2026-10-07T15:18:49Z'
   type: phase-start
   note: 'p1-note-cli attempt: pid 3070527'
+- time: '2026-10-07T16:14:28Z'
+  type: phase-end
+  note: p1-note-cli exit 0
 queued_for_slot: false
