@@ -6,23 +6,25 @@ request:
     line 12: printf: --: invalid option. fix all these'
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
+tier_recommended: T1
+tags:
+- bash
+- bats
 state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-x9
 feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T15:36:10Z'
+updated: '2026-10-07T15:37:01Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-07T15:36:04Z'
+  since: '2026-10-07T15:36:40Z'
   integrate_from: null
 phases: []
 events:
