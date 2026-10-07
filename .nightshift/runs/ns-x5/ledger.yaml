@@ -39,8 +39,8 @@ tags:
 - bats
 - skills
 - conductor
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: board
 stop_requested: null
 branch: plan/ns-x5
@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T19:01:31Z'
+updated: '2026-10-07T19:03:58Z'
 budget:
   used: 7.58
   limit: 8
   paused: false
-  since: '2026-10-07T19:01:31Z'
+  since: '2026-10-07T19:03:58Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -199,4 +199,7 @@ events:
   note: 'gate 1.5: waiting for the owner: Do you want to fix or skip `bootstrap.bats`
     #32 on main (then I re-run the merge), or should I merge `feature/x5--p3-retire`
     into `feature/x5` by hand (docs-only change) and continue to the review boa'
+- time: '2026-10-07T19:03:58Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
