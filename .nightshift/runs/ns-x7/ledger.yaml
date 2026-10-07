@@ -15,21 +15,31 @@ tier_recommended: null
 tags: []
 state: queued
 gate: null
-step: intake
+step: triage
 stop_requested: null
 branch: plan/ns-x7
 feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T10:06:19Z'
+updated: '2026-10-07T10:07:14Z'
 budget:
   used: 0
   limit: null
   paused: false
-  since: '2026-10-07T10:06:19Z'
+  since: '2026-10-07T10:07:14Z'
 phases: []
 events:
 - time: '2026-10-07T10:06:18Z'
   type: created
   note: run ns-x7 created
+- time: '2026-10-07T10:06:33Z'
+  type: state
+  note: running
+- time: '2026-10-07T10:07:13Z'
+  type: state
+  note: 'queued: waiting for a free run slot'
+- time: '2026-10-07T10:07:13Z'
+  type: queued
+  note: waiting for a free run slot
+queued_for_slot: true
