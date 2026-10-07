@@ -2,10 +2,18 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
-  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/gc"
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  REMOTE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  FWT="$WT--fix"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+  DESK="$NS_DESK_DIR/nightshift-sandbox"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
 project: nightshift-sandbox
@@ -19,14 +27,9 @@ stacks: [python]
 EOF
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
-  REMOTE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T1 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  FWT="$WT--fix"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
   PROJ="$(dirname "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)")"
-  DESK="$NS_DESK_DIR/nightshift-sandbox"
   rm -f "$TMUX_STUB_DIR/sbx-12"
 
   # a finished run: code branch with its own worktree, one phase branch, a desk folder, a session
@@ -41,6 +44,14 @@ EOF
   mkdir -p "$DESK/runs/sbx-12"
   printf 'plan\n' >"$DESK/runs/sbx-12/plan.md"
   : >"$TMUX_STUB_DIR/sbx-12"
+}
+
+setup() {
+  ns_test_setup
+  export GH_STUB_RESPONSES="$NS_REPO_ROOT/tests/fixtures/gh-stub/responses/gc"
+  ns_cached_fixture fixture_build
+  fixture_vars
+  PROJ="$(dirname "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)")"
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
