@@ -122,9 +122,43 @@ conductor_feature() {
   printf '%s\n' "$dir"
 }
 
-# conductor_stack_base <id>: print the base branch for the run's PR. With open PRs of other
-# runs it merges the top of the stack into the code branch (never a rebase), records
-# stacked_on and prints that branch; exit 6 on a conflict (the merge is left in progress), exit 7
+# loop_stack_merge <dir> <branch> <stacked> <note>: merge origin/<branch> into the code branch in <dir>
+# when HEAD is behind it (never a rebase), then push the code branch. Nothing to merge: nothing pushed.
+# A conflict leaves the merge in progress, records stacked_on <stacked> and exits 6; a refused push
+# undoes the merge so the next call retries merge and push.
+loop_stack_merge() {
+  local dir="$1" branch="$2" stacked="$3" note="$4" own pre clash mout
+  git -C "$dir" fetch -q origin "$branch" || ns_die "could not fetch origin $branch"
+  if git -C "$dir" merge-base --is-ancestor "origin/$branch" HEAD; then
+    return 0
+  fi
+  own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
+  if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
+    ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
+  fi
+  clash=$(comm -12 <(git -C "$dir" ls-files --others --exclude-standard | sort) \
+    <(git -C "$dir" diff --name-only "HEAD...origin/$branch" | sort))
+  [ -z "$clash" ] || ns_die "untracked files in $dir would be overwritten by merging $branch: $(tr '\n' ' ' <<<"$clash")"
+  pre=$(git -C "$dir" rev-parse HEAD)
+  if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $branch into $own$note" "origin/$branch" 2>&1); then
+    printf '%s\n' "$mout" >&2
+    if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
+      lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+      lg checkpoint "$ledger"
+      printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$branch" "$own" "$dir" >&2
+      exit 6
+    fi
+    ns_die "could not merge $branch into $own in $dir"
+  fi
+  if ! git -C "$dir" push -q origin "HEAD:refs/heads/$own" >/dev/null 2>&1; then
+    git -C "$dir" reset -q --hard "$pre"
+    ns_die "could not push $own; the merge was undone"
+  fi
+}
+
+# conductor_stack_base <id>: print the base branch for the run's PR. It merges the printed branch (the
+# top of the stack of other runs' open PRs, else the base branch) into the code branch when HEAD is
+# behind it (never a rebase), pushes the code branch after a merge, records stacked_on and prints it; exit 6 on a conflict (the merge is left in progress), exit 7
 # when, after pruning red leaves, the open run PRs form more than one chain or a chain's base is unknown.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
@@ -223,7 +257,9 @@ conductor_stack_base() {
     printf '%s\n' "$msg" >&2
     lg event "$ledger" stack "$msg"
   fi
+  [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
   if [ -z "$top" ]; then
+    loop_stack_merge "$dir" "$base" "$base" ""
     lg set "$ledger" ".stacked_on = $(jstr "$base") | .budget.integrate_from = \$now"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
@@ -231,25 +267,7 @@ conductor_stack_base() {
   fi
   head=$(jq -r .head <<<"$top")
   stacked=$(jq -r .run <<<"$top")
-  [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
-  own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
-  if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
-    ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
-  fi
-  git -C "$dir" fetch -q origin "$head" || ns_die "could not fetch origin $head"
-  clash=$(comm -12 <(git -C "$dir" ls-files --others --exclude-standard | sort) \
-    <(git -C "$dir" diff --name-only "HEAD...origin/$head" | sort))
-  [ -z "$clash" ] || ns_die "untracked files in $dir would be overwritten by merging $head: $(tr '\n' ' ' <<<"$clash")"
-  if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $head into $own (stacked on $stacked)" "origin/$head" 2>&1); then
-    printf '%s\n' "$mout" >&2
-    if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
-      lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
-      lg checkpoint "$ledger"
-      printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$head" "$own" "$dir" >&2
-      exit 6
-    fi
-    ns_die "could not merge $head into $own in $dir"
-  fi
+  loop_stack_merge "$dir" "$head" "$stacked" " (stacked on $stacked)"
   lg set "$ledger" ".stacked_on = $(jstr "$stacked") | .budget.integrate_from = \$now"
   lg checkpoint "$ledger"
   printf '%s\n' "$head"

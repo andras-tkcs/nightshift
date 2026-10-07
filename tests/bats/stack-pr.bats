@@ -84,6 +84,7 @@ PRS_TWO='[
   [ -f "$CODE_WT/other.txt" ]
   # a merge commit, never a rebase
   [ "$(git -C "$CODE_WT" rev-list --merges --count origin/main..HEAD)" -ge 1 ]
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
 }
 
 @test "stack-base picks the top of a two-PR stack" {
@@ -188,6 +189,7 @@ PRS_TWO='[
   clone=$(ns_project_path)
   # the profile is read from origin/main, so publish it there
   printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\n  test: "true"\ngit:\n  base_branch: develop\nstacks: [python]\n' >"$clone/.claude/project-profile.yaml"
+  git -C "$clone" push -q origin "$(git -C "$CODE_WT" rev-parse HEAD):refs/heads/develop"
   git -C "$clone" add -A
   git -C "$clone" commit -q -m "base branch develop"
   git -C "$clone" push -q origin HEAD:main
@@ -837,21 +839,6 @@ skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sor
 
 # ---- ns-x5 acceptance tests (RUN/test-strategy.md of ns-x5) ----
 
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p2-stack-base-flow deletes the
-# `ns_xfail "ns:ns-x5 acceptance" ` prefixes in the commit that implements them, then this helper.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
 # x5_main_ahead <file> <content>: one more commit on origin/main
 x5_main_ahead() {
   local w
@@ -865,8 +852,10 @@ x5_main_ahead() {
 }
 
 # AC-6, D8: with no open run PR, stack-base merges origin/main when behind and pushes
-x5_stack_merges_base() {
+@test "stack-base with no open run PR merges origin/main when behind and pushes the code branch (ns-x5)" {
   pr_list '[]'
+  # a live run: the ledger drops integrate_from outside the running state
+  ns-ledger state "$LEDGER" running --no-gate
   x5_main_ahead new.txt x
   run ns-conductor stack-base sbx-12
   assert_success
@@ -877,12 +866,8 @@ x5_stack_merges_base() {
   [ "$(ns-ledger get "$LEDGER" .budget.integrate_from)" = "$NS_NOW" ]
 }
 
-@test "stack-base with no open run PR merges origin/main when behind and pushes the code branch (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_stack_merges_base
-}
-
 # D8: up to date: no merge, nothing pushed; without a code worktree it dies
-x5_stack_up_to_date() {
+@test "stack-base on an up-to-date code branch makes no merge and pushes nothing; it dies without a code worktree (ns-x5)" {
   pr_list '[]'
   run ns-conductor stack-base sbx-12
   assert_success
@@ -895,12 +880,8 @@ x5_stack_up_to_date() {
   assert_output_contains "no code worktree"
 }
 
-@test "stack-base on an up-to-date code branch makes no merge and pushes nothing; it dies without a code worktree (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_stack_up_to_date
-}
-
 # D8: a conflict with origin/main exits 6 and sets no integrate_from
-x5_stack_base_conflict() {
+@test "stack-base exits 6 on a conflict with origin/main and sets no integrate_from (ns-x5)" {
   pr_list '[]'
   printf 'mine\n' >"$CODE_WT/README.md"
   git -C "$CODE_WT" commit -q -am "mine"
@@ -912,12 +893,8 @@ x5_stack_base_conflict() {
   [ "$(ns-ledger get "$LEDGER" '.budget.integrate_from // "none"')" = none ]
 }
 
-@test "stack-base exits 6 on a conflict with origin/main and sets no integrate_from (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_stack_base_conflict
-}
-
 # D8: a refused push undoes the merge; a retry merges and pushes
-x5_stack_push_refused() {
+@test "stack-base undoes its merge when the push is refused, and a retry pushes (ns-x5)" {
   local pre
   pr_list '[]'
   x5_main_ahead new.txt x
@@ -934,8 +911,4 @@ x5_stack_push_refused() {
   assert_success
   [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
   git -C "$CODE_WT" merge-base --is-ancestor origin/main HEAD
-}
-
-@test "stack-base undoes its merge when the push is refused, and a retry pushes (ns-x5)" {
-  ns_xfail "ns:ns-x5 acceptance" x5_stack_push_refused
 }
