@@ -13,7 +13,7 @@ tier: null
 tier_source: null
 tier_recommended: null
 tags: []
-state: queued
+state: running
 gate: null
 step: triage
 stop_requested: null
@@ -22,12 +22,13 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T10:07:14Z'
+updated: '2026-10-07T10:10:08Z'
 budget:
   used: 0
   limit: null
   paused: false
-  since: '2026-10-07T10:07:14Z'
+  since: '2026-10-07T10:10:07Z'
+  integrate_from: null
 phases: []
 events:
 - time: '2026-10-07T10:06:18Z'
@@ -42,4 +43,7 @@ events:
 - time: '2026-10-07T10:07:13Z'
   type: queued
   note: waiting for a free run slot
-queued_for_slot: true
+- time: '2026-10-07T10:10:07Z'
+  type: resumed
+  note: resumed from queued
+queued_for_slot: false
