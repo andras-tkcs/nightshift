@@ -20,12 +20,12 @@ feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T10:10:20Z'
+updated: '2026-10-07T10:30:16Z'
 budget:
-  used: 3.56
+  used: 3.89
   limit: 8
   paused: false
-  since: '2026-10-07T10:10:15Z'
+  since: '2026-10-07T10:30:03Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
