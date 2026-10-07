@@ -469,7 +469,7 @@ EOF"
     "source bin/lib/config.sh; ns_token_export acme" "ns_kill_teardown sbx-12 l n" "ns_stack_drop sbx-13" \
     "ns_desk_main import a b" "gc_run_inner '{}'" "ns-launch sbx-12" "/opt/nightshift/current/bin/ns-launch sbx-12" \
     "ns-gh apply andras-tkcs/nightshift" "env ns-gh apply andras-tkcs/nightshift --yes" \
-    "bash bin/lib/ns-note.sh" "ns_note_main sbx-12 x"
+    "bash bin/lib/ns-note.sh" "source bin/lib/ns-note.sh" "ns_note_main sbx-12 x"
 }
 
 @test "the other owner-only ns commands are blocked: approve, project, rm, purge, gc, new --allow-outside" {
