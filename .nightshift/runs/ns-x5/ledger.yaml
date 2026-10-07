@@ -48,13 +48,13 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T19:33:17Z'
+updated: '2026-10-07T19:33:23Z'
 budget:
   used: 7.93
   limit: 8
   paused: false
   since: '2026-10-07T19:33:02Z'
-  integrate_from: null
+  integrate_from: '2026-10-07T19:33:22Z'
 phases:
 - id: p1-checks-cache
   title: Lock, cache, --force, canonical target and wrong-target warning for ns-conductor
@@ -226,3 +226,5 @@ events:
   type: state
   note: running
 queued_for_slot: false
+stack_skipped: []
+stacked_on: main
