@@ -1,1 +1,2 @@
 1. bootstrap.bats 'step 1 with a failing apt-get...' fails on origin/main too (no sudo on ns-main); kill.bats 'ns_kill_group gives up after about 2 s' is flaky under full-suite load. Both block a green full checks run.
+2. ns-x4 cause: tier T1 so 'checks ns-x4 feature' already resolved to the fix worktree (label misled). Real causes: checks ran before the round-1 review fix commits and was not rerun; integrator ran 'checks ns-x4 fix' separately; implementers/integrator ran bats directly 6+ times overlapping, and /ns:dod ran it again.
