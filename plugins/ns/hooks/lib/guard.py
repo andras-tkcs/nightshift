@@ -394,14 +394,14 @@ PROFILE_WRITE_RE = re.compile(
 # ---------------------------------------------------------------------------
 # owner-only commands
 #
-# ns kill, tag, desk, approve, project, rm (purge), gc, stack merge, stack drop and
-# new --allow-outside are the owner's: they stop runs, release gates, push tags, merge or
+# ns kill, tag, desk, approve, project, rm (purge), gc, note, stack merge, stack drop and
+# new --allow-outside are the owner's: they stop runs, release gates, send a run owner instructions, push tags, merge or
 # close pull requests, delete branches, open pull requests with the owner's token, or read
 # any file into a run. ns-launch starts a run session with the project owner's token and
 # ns-gh apply changes repository settings. The bin/lib/ns-*.sh files and their functions
 # are only run through ns.
 
-OWNER_SUBS = {"kill", "tag", "desk", "approve", "project", "rm", "purge", "gc"}
+OWNER_SUBS = {"kill", "tag", "desk", "approve", "project", "rm", "purge", "gc", "note"}
 OWNER_WORDS = OWNER_SUBS | {"merge", "drop"}
 STACK_MSG = "ns stack merge and ns stack drop are the owner's commands"
 NEW_MSG = ("ns new --allow-outside is the owner's command "

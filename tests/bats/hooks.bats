@@ -468,7 +468,8 @@ EOF"
     "bin/lib/ns-desk.sh" "/opt/nightshift/current/bin/lib/ns-approve.sh" "sh -c 'source /x/bin/lib/ns-gc.sh'" \
     "source bin/lib/config.sh; ns_token_export acme" "ns_kill_teardown sbx-12 l n" "ns_stack_drop sbx-13" \
     "ns_desk_main import a b" "gc_run_inner '{}'" "ns-launch sbx-12" "/opt/nightshift/current/bin/ns-launch sbx-12" \
-    "ns-gh apply andras-tkcs/nightshift" "env ns-gh apply andras-tkcs/nightshift --yes"
+    "ns-gh apply andras-tkcs/nightshift" "env ns-gh apply andras-tkcs/nightshift --yes" \
+    "bash bin/lib/ns-note.sh" "ns_note_main sbx-12 x"
 }
 
 @test "the other owner-only ns commands are blocked: approve, project, rm, purge, gc, new --allow-outside" {
@@ -715,35 +716,11 @@ EOF" "cp /tmp/h .git/hooks/pre-push" "echo x >> .git/config"
     "awk 'BEGIN { system(\"ns_stack_merge sbx\") }'" "vim -c '!source bin/lib/ns-stack.sh; ns_stack_merge' x"
 }
 
-# ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
-
-# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
-# The command runs in a background subshell so errexit stays on inside it. Passes when the
-# command fails; fails with XPASS when it succeeds. Phase p2-guard-skill deletes the
-# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
-ns_xfail() {
-  local reason="$1" rc=0
-  shift
-  "$@" &
-  wait "$!" || rc=$?
-  if [ "$rc" -eq 0 ]; then
-    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
-    return 1
-  fi
-}
-
-# AC-4: ns note is blocked in every owner-only form; ns stop, ns note --help and the
-# conductor's note and owner-notes subcommands stay allowed
-x7_note_blocked() {
+@test "ns note is blocked for agents" {
   blocked_all "ns note is the owner's command" \
     "ns note sbx-12 \"use sqlite\"" "NS_X=1 ns note sbx-12 x" "cd /tmp && ns note sbx-12 x" \
     "/usr/local/bin/ns note sbx-12 x" "/opt/nightshift/current/bin/ns note sbx-12 x" '"$NS_HOME/bin/ns" note sbx-12 x' \
     "env ns note sbx-12 x" "bash -c 'ns note sbx-12 x'" 'echo $(ns note sbx-12 x)'
-  blocked_all "is the owner's" "bash bin/lib/ns-note.sh" "source bin/lib/ns-note.sh" "ns_note_main sbx-12 x"
   allowed_all "ns note --help" "ns stop sbx-12" "ns-conductor note sbx-12 \"follow-up\"" \
     "ns-conductor owner-notes sbx-12" "ns-ledger event \"\$NS_LEDGER\" note \"x\"" "git commit -m \"add a note\""
-}
-
-@test "ns note is blocked for agents (ns-x7)" {
-  ns_xfail "ns:ns-x7 acceptance" x7_note_blocked
 }

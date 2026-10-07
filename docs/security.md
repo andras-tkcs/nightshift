@@ -76,6 +76,7 @@ These commands are the owner's, because each one either decides something only y
 | `ns desk` (every subcommand) | pushes a branch and opens a pull request with the project owner's token |
 | `ns stack merge`, `ns stack drop` | merge pull requests into the base branch, or close one, revert and push, with the project owner's token |
 | `ns approve` | releases a gate, which is where you decide; for an onboarding run it pushes a branch and opens a pull request with the owner's token |
+| `ns note` | sends a run an instruction that its conductor follows over the plan's scope (bounded: no gates, guard or protected paths) |
 | `ns project` | clones a repository with the owner's token, registers it and starts its onboarding run |
 | `ns rm`, `ns purge` | deletes worktrees and branches, with `--remote` also remote branches, and closes pull requests with the owner's token |
 | `ns gc` | the daily housekeeping (run by a timer, not an agent): deletes remote branches of merged runs with the owner's token |
@@ -122,7 +123,7 @@ Behind the guard, this is what stops a fooled agent. Only some of it is enforced
 | merge an open pull request (`ns stack merge`, `gh pr merge`) | **only the guard**, apart from the required status checks the ruleset names (a pull request with failing required checks cannot be merged). The ruleset requires a pull request with 0 approvals, and the agent token is your own fine-grained token, so GitHub cannot tell its merge from yours. The merge is visible in the pull request's timeline. |
 | push a tag or create a release (`ns tag`) | **only the guard.** Contents write covers tags. A tag changes nothing on ns-main by itself: the upgrade is a root command you run. |
 | read the token files of other owners | **only the guard and the file mode**: the files belong to user `ns`, which agents run as. A leaked token is limited by its scopes above. |
-| stop or remove runs, release a gate, read files outside the desk into a run (`ns kill`, `ns rm`, `ns gc`, `ns approve`, `--allow-outside`) | **only the guard**: these act as user `ns` on ns-main. |
+| stop or remove runs, release a gate, read files outside the desk into a run (`ns kill`, `ns rm`, `ns gc`, `ns approve`, `ns note`, `--allow-outside`) | **only the guard**: these act as user `ns` on ns-main. An agent can still write `owner_notes` with `ns-ledger set`, as it can `stop_requested`; such a note is bounded the same way. |
 
 Check the part GitHub enforces in Review 1 and after every onboarding, as root with an admin token: `GH_TOKEN=<admin token> ns-gh audit <owner/repo>` lists the wanted ruleset, merge settings and workflow permissions against the current ones and changes nothing; `ns-gh apply` fixes what differs (see [Token scopes](#token-scopes)).
 
