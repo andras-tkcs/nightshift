@@ -19,7 +19,7 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T18:08:55Z'
+updated: '2026-10-07T18:09:28Z'
 budget:
   used: 1.57
   limit: 2
