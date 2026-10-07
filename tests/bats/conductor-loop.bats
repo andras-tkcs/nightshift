@@ -933,18 +933,38 @@ x5_sbx13() {
   L13="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13/.nightshift/runs/sbx-13/ledger.yaml"
 }
 
+# x5_hold: shell text for a check command that blocks until the test creates the release file
+x5_hold() {
+  echo "while [ ! -e $BATS_TEST_TMPDIR/release ]; do sleep 0.1; done"
+}
+
+# x5_two_calls: start a checks call that holds the lock, start a second one, release the first once
+# the second says it waits; sets ra, rb (their exit codes) and output (the second call's output)
+x5_two_calls() {
+  local pa pb i
+  ra=0 rb=0
+  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
+  pa=$!
+  x5_wait_count
+  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/b.out" 2>&1 3>&- &
+  pb=$!
+  for i in $(seq 200); do
+    ! grep -q "another run of feature" "$BATS_TEST_TMPDIR/b.out" || break
+    sleep 0.1
+  done
+  : >"$BATS_TEST_TMPDIR/release"
+  wait "$pa" || ra=$?
+  wait "$pb" || rb=$?
+  output=$(cat "$BATS_TEST_TMPDIR/b.out")
+}
+
 # AC-1: a concurrent second call waits and reports the first call's PASS
 x5_lock_pass() {
-  local pid ra=0
-  x5_sbx12 "; sleep 10"
-  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
-  pid=$!
-  x5_wait_count
-  run ns-conductor checks sbx-12 feature
-  wait "$pid" || ra=$?
+  x5_sbx12 "; $(x5_hold)"
+  x5_two_calls
   [ "$(x5_count)" -eq 1 ]
   [ "$ra" -eq 0 ]
-  assert_success
+  [ "$rb" -eq 0 ]
   assert_output_contains "another run of feature"
   assert_output_contains "result of the concurrent run on tree"
   assert_output_contains "PASS"
@@ -956,16 +976,11 @@ x5_lock_pass() {
 
 # AC-1: the same with a failing check: both exit 1, the check ran once
 x5_lock_fail() {
-  local pid ra=0
-  x5_sbx12 "; sleep 10; false"
-  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
-  pid=$!
-  x5_wait_count
-  run ns-conductor checks sbx-12 feature
-  wait "$pid" || ra=$?
+  x5_sbx12 "; $(x5_hold); false"
+  x5_two_calls
   [ "$(x5_count)" -eq 1 ]
   [ "$ra" -eq 1 ]
-  assert_failure 1
+  [ "$rb" -eq 1 ]
   assert_output_contains "result of the concurrent run on tree"
   assert_output_contains "FAIL"
 }
