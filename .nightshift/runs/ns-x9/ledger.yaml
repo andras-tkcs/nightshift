@@ -19,12 +19,12 @@ feature_branch: fix/ns-x9
 pr: https://github.com/andras-tkcs/nightshift/pull/170
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T20:28:29Z'
+updated: '2026-10-07T20:28:53Z'
 budget:
   used: 3.51
   limit: 4
   paused: false
-  since: '2026-10-07T20:28:29Z'
+  since: '2026-10-07T20:28:53Z'
   integrate_from: null
 phases:
 - id: fix
