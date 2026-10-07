@@ -1,0 +1,2 @@
+# Owner decision (gate 1.5 answer): option (b)
+The owner allows phase p1-note-cli to edit `bin/ns-ledger` (extend `touches` accordingly) so that `ns-ledger checkpoint --push` commits the `push-failed` event after a failed push. Then restore the assertion `[ -z "$(git -C "$WT" status --porcelain -- .nightshift)" ]` in the push-failure test in `tests/bats/note.bats`, add or adjust a bats test for the ns-ledger change, and address the rest of RUN/review-p1-note-cli-1.md. Non-blocking items (note length cap, CR/LF folding) are optional.
