@@ -13,14 +13,14 @@ tags:
 - adr
 state: running
 gate: null
-step: gate1
+step: phases
 stop_requested: null
 branch: plan/ns-144
 feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T06:36:01Z'
+updated: '2026-10-07T06:36:06Z'
 budget:
   used: 0.86
   limit: 8
