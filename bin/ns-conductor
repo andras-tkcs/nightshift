@@ -450,7 +450,7 @@ conductor_start() {
 
 # Usage limits (R-BUD-2, R-USE-4): bin/lib/usage_limit.py classifies the last result. A
 # usage limit pauses the budget until the reset time (or a backoff of 15 min, doubling, at most
-# 4 h, when no reset time can be read); the conductor parks the run and ns health-check resumes
+# 4 h, when no reset time can be read); the conductor parks the run and ns check resumes
 # it. A limit that does not reset, or the (USAGE_LIMIT_MAX+1)th limit of a phase, escalates.
 # A capacity 429 or a 529 overload is retried once after TRANSIENT_BACKOFF seconds.
 USAGE_LIMIT_MAX=3

@@ -371,10 +371,10 @@ launched_running() {
   run ns-launch sbx-12
   [ "$(ns-ledger get "$L" .state)" = running ]
   rm -f "$TMUX_STUB_DIR/sbx-12"
-  run ns health-check
+  run ns check
   assert_success
   assert_output_not_contains "resumed sbx-12"
-  run ns health-check
+  run ns check
   assert_success
   assert_output_not_contains "resumed sbx-12"
   [ ! -e "$TMUX_STUB_DIR/sbx-12" ]

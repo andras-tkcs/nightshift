@@ -3,4 +3,4 @@ Description=Nightshift run health check
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/ns health-check
+ExecStart=/usr/local/bin/ns check

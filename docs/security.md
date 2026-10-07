@@ -84,7 +84,7 @@ These commands are the owner's, because each one either decides something only y
 | `ns-gh apply` | changes repository settings (it needs an admin token, which agents never have; blocked anyway) |
 | `bin/lib/ns-*.sh`, run or sourced directly, and their functions (`ns_*_main`, `ns_stack_merge`, `ns_kill_teardown`, `ns_token_export`, ...) | the code of the commands above; it runs only through `ns` |
 
-Allowed, because runs need them or they change nothing that matters: `ns ls`, `status`, `log`, `report`, `stack` (the list), `stop`, `resume`, `publish`, `profile`, `doctor` (it reads the token files to show their expiry, never their content), `dequeue`, `drain`, `up`, `health-check`, `help`, `ns new` without `--allow-outside`, `--help` of every command, and `ns-conductor`, `ns-ledger`, `ns-notify` and `ns-gh audit`.
+Allowed, because runs need them or they change nothing that matters: `ns ls`, `status`, `log`, `report`, `stack` (the list), `stop`, `resume`, `publish`, `profile`, `doctor` (it reads the token files to show their expiry, never their content), `dequeue`, `drain`, `up`, `check` (and its deprecated alias `health-check`), `help`, `ns new` without `--allow-outside`, `--help` of every command, and `ns-conductor`, `ns-ledger`, `ns-notify` and `ns-gh audit`.
 
 The guard does not trust the command to be written plainly. It parses a shell command line the way bash does (quotes, backslashes, `$'...'`, variables and arrays set earlier in the same line, brace expansion, `$(...)`, backticks, `<(...)`, here-documents, `|`, `&&`, `||`, `;`, subshells, groups, functions, `case` branches) and finds an owner-only command in any of these forms:
 
