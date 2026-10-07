@@ -17,8 +17,8 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: running
-gate: null
+state: waiting
+gate: '1.5'
 step: phases
 stop_requested: null
 branch: plan/ns-x7
@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T20:48:10Z'
+updated: '2026-10-07T20:48:31Z'
 budget:
-  used: 8.05
+  used: 8.06
   limit: 8
   paused: false
-  since: '2026-10-07T20:47:37Z'
+  since: '2026-10-07T20:48:31Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -180,4 +180,13 @@ events:
 - time: '2026-10-07T19:39:15Z'
   type: review
   note: p2-guard-skill round 2 approve
+- time: '2026-10-07T20:48:20Z'
+  type: budget
+  note: 'budget used up: 8.05 h of 8 h (ns-conductor budget-check)'
+- time: '2026-10-07T20:48:23Z'
+  type: state
+  note: 'waiting gate 1.5: budget used up'
+- time: '2026-10-07T20:48:27Z'
+  type: gate
+  note: 'gate 1.5: waiting for the owner: budget used up: 8.05 h of 8 h'
 queued_for_slot: false
