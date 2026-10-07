@@ -3,9 +3,14 @@
 load helpers
 bats_require_minimum_version 1.5.0
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOP'
 project: nightshift-sandbox
@@ -18,7 +23,12 @@ EOP
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
-  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }

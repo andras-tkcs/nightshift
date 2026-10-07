@@ -2,9 +2,15 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
 project: nightshift-sandbox
@@ -19,8 +25,6 @@ EOF
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T2 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
   mkdir -p "$WT/docs"
   cp "$NS_REPO_ROOT/tests/fixtures/plans/two-phase-plan.md" "$WT/docs/sbx-12-plan.md"
   git -C "$WT" add docs/sbx-12-plan.md
@@ -28,6 +32,12 @@ EOF
   git -C "$WT" branch feature/12 origin/main
   git -C "$WT" push -q origin feature/12
   ns-ledger set "$LEDGER" '.feature_branch = "feature/12"'
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
   export NS_WORKER_MODE=bypassPermissions
   cat >"$BATS_TEST_TMPDIR/worker.sh" <<'EOF'
 phase=${NS_PHASE:?}

@@ -1858,15 +1858,10 @@ sudo -u ns cat /etc/cloudflared/tunnel.env         <span class="c"># Permission 
 systemctl is-active cloudflared                    <span class="c"># active; the dashboard still shows the tunnel Healthy</span></pre><button class="copy" type="button">Copy</button></div>
       <p class="note">cloudflared reads <code>TUNNEL_TOKEN</code> from its environment, and a root process's environment isn't visible to other users. If an agent already ran before this fix, also refresh the tunnel token in Cloudflare (Networking → Tunnels → ns-main) and put the new one in <code>tunnel.env</code>. Write what you found into issue #6.</p>
       <h4 class="sub">Desk pages may not load anything from outside (issue #5)</h4>
-      <p>Until the Review 1 run for #5 tightens the publish check, a Content-Security-Policy header makes the browser refuse outside scripts, styles and images on the HTML side of the desk. Not on SilverBullet (<code>:443</code>), which needs its own scripts.</p>
-      <div class="code"><pre><span class="c"># add the header line to the :8443 block and the http://127.0.0.1:8080 block</span>
-nano /etc/caddy/Caddyfile
-<span class="c">#     header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:"</span>
-caddy validate --config /etc/caddy/Caddyfile &amp;&amp; systemctl reload caddy
-
-curl -sI https://ns-main.&lt;tailnet&gt;.ts.net:8443/ | grep -i content-security
+      <p>The Content-Security-Policy header and Markdown as text/plain are part of <code>templates/caddy/Caddyfile.tmpl</code> (issues #5 and #27, ADR 0010): a plain run of <code>bootstrap.sh</code> after the upgrade writes them. Not on SilverBullet (<code>:443</code>), which needs its own scripts. Local Caddy additions go in <code>/etc/caddy/Caddyfile.d/*.caddy</code>, which bootstrap never touches.</p>
+      <div class="code"><pre>curl -sI https://ns-main.&lt;tailnet&gt;.ts.net:8443/ | grep -i content-security
 curl -sI http://127.0.0.1:8080/ | grep -i content-security</pre><button class="copy" type="button">Copy</button></div>
-      <p class="note"><code>bootstrap.sh --upgrade</code> leaves the Caddyfile alone, but a plain rerun of <code>bootstrap.sh</code> rewrites it from the template and drops this header and the ntfy block. The Review 1 runs for #5 and for ntfy put both into the template; until they're installed, check the Caddyfile after any plain rerun.</p>
+      <p class="note"><code>bootstrap.sh --upgrade</code> leaves the Caddyfile alone; run <code>bootstrap.sh</code> once after an upgrade that changes the Caddy template.</p>
     </div>
     <div class="st">
       <div class="st-head"><h3>Health check</h3><span class="who ns">ns</span></div>

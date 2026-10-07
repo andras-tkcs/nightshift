@@ -3,9 +3,15 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'PROFILE'
 project: nightshift-sandbox
@@ -19,9 +25,13 @@ PROFILE
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T1 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  LEDGER="$WT/.nightshift/runs/sbx-12/ledger.yaml"
   rm -f "$TMUX_STUB_DIR/sbx-12"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }

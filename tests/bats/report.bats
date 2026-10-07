@@ -2,22 +2,32 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+  RUNDIR="$SBX-sbx-12/.nightshift/runs/sbx-12"
+  LOGS="$NS_CONFIG_DIR/logs/sbx-12"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cp "$NS_REPO_ROOT/tests/fixtures/report/project-profile.yaml" "$FIX/.claude/project-profile.yaml"
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
-  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T2 --yes >/dev/null
-  RUNDIR="$SBX-sbx-12/.nightshift/runs/sbx-12"
   cp "$NS_REPO_ROOT/tests/fixtures/report/ledger.yaml" "$RUNDIR/ledger.yaml"
   cp "$NS_REPO_ROOT/tests/fixtures/report/escalation.md" "$RUNDIR/escalation.md"
-  LOGS="$NS_CONFIG_DIR/logs/sbx-12"
   mkdir -p "$LOGS"
   cp "$NS_REPO_ROOT"/tests/fixtures/report/logs/* "$LOGS/"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 ns() { "$NS_REPO_ROOT/bin/ns" "$@"; }
@@ -157,4 +167,78 @@ ev() { printf -- '"""- time: '"'"'%s'"'"'\n  type: %s\n  note: '"'"'%s'"'"'\n"""
   assert_success
   ! grep -q 'ghp_' "$RUNDIR/run-report.md"
   grep -qF '| [redacted] | 4 | 40 |' "$RUNDIR/run-report.md"
+}
+
+# ns-x6: gaps seen in the report of run ns-x4
+X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
+
+@test "ns report: the timeline follows the ledger's step events when there is no gate or phase (ns-x6)" {
+  cp "$X6/ledger-steps.yaml" "$RUNDIR/ledger.yaml"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| planning | 2026-10-02 10:00 | 5m | 5m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| triage | 2026-10-02 10:05 | 15m | 15m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| implement | 2026-10-02 10:20 | 40m | 40m | 0s |' "$RUNDIR/run-report.md"
+  grep -qF '| integrate | 2026-10-02 11:00 | 10m | 10m | 0s |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a session without a result event gives partial tokens from its assistant messages (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # messages are deduplicated by id: the last usage of m1 plus m2
+  grep -qF 'input 15, output 150, cache read 1.5k, cache write 200' "$RUNDIR/run-report.md"
+  grep '^| Tokens |' "$RUNDIR/run-report.md" | grep -qF 'partial'
+  ! grep -qF '| Tokens | no data |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a subagent with no task notification takes its time from its tool use and tool result (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # 10:05:02 to 11:06:30 is 1h 01m
+  grep -qE '^\| ns:integrator \| conductor \| [^|]+ \| 1 \| 1h 01m \|$' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: Checks breakdown counts the runs of each check and their total time (ns-x6)" {
+  rm -f "$LOGS"/*.checks.log
+  cp "$X6/feature.checks.log" "$X6/p1-core.checks.log" "$LOGS/"
+  run ns report sbx-12
+  assert_success
+  grep -qF 'Checks breakdown' "$RUNDIR/run-report.md"
+  # python test: 5s + 10s + 15s on feature, 30s on p1-core; python lint: 4s twice
+  grep -qF '| python test | 4 | 1m |' "$RUNDIR/run-report.md"
+  grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a cut-off Agent call takes its time to the last assistant message (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-agent-cut.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # 10:05:00 to 10:35:00 is 30m
+  grep -qE '^\| ns:integrator \| conductor \| unknown \| 1 \| 30m \|$' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a model with only partial tokens shows no data for its cost (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  grep -qE '^\| claude-opus-5-5 \|.*\| no data \|$' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: the Checks table lists only the last run of a checks log, the breakdown counts every run (ns-x6)" {
+  rm -f "$LOGS"/*.checks.log
+  cp "$X6/two-runs.checks.log" "$LOGS/feature.checks.log"
+  run ns report sbx-12
+  assert_success
+  sec="$(sed -n '/^## Checks/,/^### Checks breakdown/p' "$RUNDIR/run-report.md")"
+  # only the second block (python test passed, 10s) is in the table
+  grep -qF 'PASS' <<<"$sec"
+  ! grep -qF 'FAIL' <<<"$sec"
+  grep -qF '| python test | 2 | 15s |' "$RUNDIR/run-report.md"
+  grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
 }

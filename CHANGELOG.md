@@ -7,12 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The desk's HTML listeners (`:8443` and `http://127.0.0.1:8080`) send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`, so a desk page cannot run scripts or load anything from outside, also when it did not go through `ns publish`; directory listings lose their inline JavaScript. ADR 0010 (issue #5).
+- `*.md` files on those listeners are served as `text/plain; charset=utf-8` and never render as HTML (issue #27).
+
+### Added
+
+- Local Caddy additions go in `/etc/caddy/Caddyfile.d/*.caddy`, imported at the end of the rendered Caddyfile. `bootstrap.sh` step 1 creates the directory, `--check` lists the snippet names (`ok (local: <names>)`), and a rerun never touches them. After installing this release, run `bootstrap.sh` once as root to rewrite the Caddyfile (`--upgrade` leaves it alone) (issue #26).
+
 ### Changed
 
 - `ns health-check` is now `ns check` (the `ns-health.*` systemd units keep their names and run `ns check`). `ns health-check` still works as a deprecated alias (ns-x4).
 
 ### Fixed
 
+- Run report and `ns log` gaps (ns-x6): `ns log` stamps each line with the event's own time; the report timeline of T0 and T1 runs follows `step` events (`ns-ledger set` now appends a `step` event when `.step` changes); a session without a result event gives partial tokens summed from its assistant messages; a subagent without a task notification takes its time from its Agent call to its tool result; a new Checks breakdown table counts runs and total time per check (`ns-conductor checks` now appends to the checks log, each run opening with `== run <UTC>`).
 - The desk through Cloudflare Access no longer fails with "Failed to register a ServiceWorker ... The script resource is behind a redirect": `docs/accounts.md` adds a `Nightshift desk static` Access application with a Bypass policy for SilverBullet's `/service_worker.js` and `/.client/*`, as SilverBullet's authentication proxy notes require. `docs/setup.md` gets a curl check for it, and `docs/security.md` and `docs/operations.md` list the bypass and its teardown.
 
 ### Changed

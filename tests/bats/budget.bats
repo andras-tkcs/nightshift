@@ -6,9 +6,15 @@ load stack-gh
 
 HOOKS="$NS_REPO_ROOT/plugins/ns/hooks"
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
+  BARE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   cat >"$FIX/.claude/project-profile.yaml" <<'EOF'
 project: nightshift-sandbox
@@ -21,9 +27,13 @@ stacks: [python]
 EOF
   printf '# sandbox\n' >"$FIX/README.md"
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
-  BARE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx --sandbox >/dev/null
-  SBX="$NS_CODING_DIR/worktrees/nightshift-sandbox"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
   export NS_WORKER_MODE=bypassPermissions
 }
 
