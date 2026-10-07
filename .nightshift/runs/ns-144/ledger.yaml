@@ -20,14 +20,23 @@ feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T06:36:16Z'
+updated: '2026-10-07T06:36:21Z'
 budget:
-  used: 0.86
+  used: 0.87
   limit: 8
   paused: false
-  since: '2026-10-07T06:35:41Z'
+  since: '2026-10-07T06:36:17Z'
   integrate_from: null
-phases: []
+phases:
+- id: p1-caddy-bootstrap
+  title: CSP and Markdown rules in the Caddy template, Caddyfile.d import, bootstrap
+    step 1 creates and lists it, bats cases
+  state: running
+  branch: feature/144--p1-caddy-bootstrap
+  worktree: /home/ns/Coding/worktrees/nightshift-ns-144--p1-caddy-bootstrap
+  attempts: 1
+  review_rounds: 0
+  not_before: null
 events:
 - time: '2026-10-07T04:46:33Z'
   type: created
@@ -56,4 +65,7 @@ events:
 - time: '2026-10-07T06:35:42Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T06:36:20Z'
+  type: phase-start
+  note: 'p1-caddy-bootstrap attempt: pid 1039284'
 queued_for_slot: false
