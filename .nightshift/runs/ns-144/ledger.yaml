@@ -1,0 +1,32 @@
+version: 1
+id: ns-144
+project: nightshift
+request:
+  issue: 144
+tier: T2
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-144
+feature_branch: null
+pr: null
+release: v0.1.8
+created: '2026-10-07T04:46:33Z'
+updated: '2026-10-07T04:46:34Z'
+budget:
+  used: 0
+  limit: 8
+  paused: false
+  since: '2026-10-07T04:46:34Z'
+phases: []
+events:
+- time: '2026-10-07T04:46:33Z'
+  type: created
+  note: run ns-144 created
+- time: '2026-10-07T04:46:34Z'
+  type: tier
+  note: T2 (owner, 8 h)
