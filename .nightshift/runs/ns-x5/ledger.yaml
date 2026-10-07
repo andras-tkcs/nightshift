@@ -39,7 +39,7 @@ tags:
 - bats
 - skills
 - conductor
-state: queued
+state: running
 gate: null
 step: gate1
 stop_requested: null
@@ -48,12 +48,13 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T10:22:48Z'
+updated: '2026-10-07T10:38:49Z'
 budget:
   used: 0.88
   limit: 8
   paused: false
-  since: '2026-10-07T10:22:48Z'
+  since: '2026-10-07T10:38:47Z'
+  integrate_from: null
 phases: []
 events:
 - time: '2026-10-07T09:16:50Z'
@@ -80,4 +81,7 @@ events:
 - time: '2026-10-07T10:22:47Z'
   type: queued
   note: waiting for a free run slot
-queued_for_slot: true
+- time: '2026-10-07T10:38:48Z'
+  type: resumed
+  note: resumed from queued
+queued_for_slot: false
