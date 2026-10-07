@@ -415,8 +415,9 @@ git_clone_fails() {
 
 @test "step 1 with a failing apt-get does not report changed and exits non-zero" {
   mkdir -p "$BATS_TEST_TMPDIR/nocaddy"
-  # The host may have a real caddy: build a PATH of the stubs and every other tool but caddy.
-  for s in /usr/bin/* "$NS_REPO_ROOT"/tests/fixtures/bootstrap/bin/*; do
+  # The host may have a real caddy or tmux (a live run's session would block the step): build a
+  # PATH of every other tool but caddy, with the stubs linked last so they win.
+  for s in /usr/bin/* "$NS_REPO_ROOT"/tests/fixtures/bin/* "$NS_REPO_ROOT"/tests/fixtures/bootstrap/bin/*; do
     [ "$(basename "$s")" = caddy ] || ln -sf "$s" "$BATS_TEST_TMPDIR/nocaddy/$(basename "$s")"
   done
   PATH="$BATS_TEST_TMPDIR/nocaddy:/nonexistent" \
