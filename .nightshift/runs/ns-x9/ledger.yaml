@@ -19,13 +19,13 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T18:09:37Z'
+updated: '2026-10-07T18:09:44Z'
 budget:
   used: 1.58
   limit: 2
   paused: false
   since: '2026-10-07T18:09:29Z'
-  integrate_from: null
+  integrate_from: '2026-10-07T18:09:43Z'
 phases:
 - id: fix
   title: fix
@@ -67,4 +67,4 @@ events:
   note: resumed from running
 queued_for_slot: false
 stack_skipped: []
-stacked_on: ns-144
+stacked_on: ns-x8
