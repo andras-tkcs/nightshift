@@ -109,7 +109,7 @@ All new cases run only through the stubs and `NS_BS_ROOT` set by `setup()`, neve
 
 ### D5. ADR 0010
 
-File `docs/adr/0010-desk-serves-self-contained-pages.md`, title `# 0010. The desk serves only self-contained pages`, sections `## Status` (`Accepted`), `## Context`, `## Decision`, `## Consequences`, the same shape as `docs/adr/0009-e2e-keep-in-build-a.md`. Content, in plain sentences:
+File `docs/adr/0010-desk-content-policy.md`, title `# 0010. The desk serves only self-contained pages`, sections `## Status` (`Accepted`), `## Context`, `## Decision`, `## Consequences`, the same shape as `docs/adr/0009-e2e-keep-in-build-a.md`. Content, in plain sentences:
 
 - Context: spec R-DSK-2 (HTML reports are self-contained). The desk serves agent-written HTML from `/srv/ns-space` on `:8443` (tailnet) and `http://127.0.0.1:8080` (the tunnel, behind Cloudflare Access). Agent text is untrusted. Issues #5 (outside loads) and #27 (Markdown rendering). Owners need local Caddy additions that survive a bootstrap rerun (#26).
 - Decision, four numbered points:
@@ -123,9 +123,9 @@ File `docs/adr/0010-desk-serves-self-contained-pages.md`, title `# 0010. The des
 
 ### D6. Doc edits
 
-- `docs/adr/README.md`: append the row `| [0010](0010-desk-serves-self-contained-pages.md) | The desk serves only self-contained pages | Accepted |`.
-- `docs/security.md`: directly after the paragraph that starts `Nothing prints a token:` (the paragraph after the "What lives where" table), add a paragraph starting `The desk:` that says: the `:8443` and `http://127.0.0.1:8080` listeners send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` (no scripts, no outside loads); `*.md` is served as `text/plain`; `ns publish` refuses unsafe HTML first and the header is the second layer for anything it misses or that reached `/srv/ns-space` another way; SilverBullet on `:443` and ntfy on `:8444` do not get the header; link `[ADR 0010](adr/0010-desk-serves-self-contained-pages.md)`.
-- `docs/setup.md` step 1 (line 68): extend the paragraph so it also says that the `:8443` and `:8080` listeners send the CSP header `default-src 'none'; style-src 'unsafe-inline'; img-src data:`, serve `*.md` as `text/plain`, and that the Caddyfile imports `/etc/caddy/Caddyfile.d/*.caddy` last: local additions go there, bootstrap creates the directory, lists the files in `--check` and never touches them. Link `[ADR 0010](adr/0010-desk-serves-self-contained-pages.md)`. In the manual block, add the line `install -d -m 755 /etc/caddy/Caddyfile.d` directly before the `sed "s/@TS_HOST@/...` line. After the block's sentence about `get_certificate tailscale`, add: `A snippet in Caddyfile.d with an error makes the reload fail, and bootstrap's restart fallback then leaves Caddy stopped until the snippet is fixed; check with caddy validate --config /etc/caddy/Caddyfile before systemctl reload caddy.` (with the two commands in backticks).
+- `docs/adr/README.md`: append the row `| [0010](0010-desk-content-policy.md) | The desk serves only self-contained pages | Accepted |`.
+- `docs/security.md`: directly after the paragraph that starts `Nothing prints a token:` (the paragraph after the "What lives where" table), add a paragraph starting `The desk:` that says: the `:8443` and `http://127.0.0.1:8080` listeners send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:` (no scripts, no outside loads); `*.md` is served as `text/plain`; `ns publish` refuses unsafe HTML first and the header is the second layer for anything it misses or that reached `/srv/ns-space` another way; SilverBullet on `:443` and ntfy on `:8444` do not get the header; link `[ADR 0010](adr/0010-desk-content-policy.md)`.
+- `docs/setup.md` step 1 (line 68): extend the paragraph so it also says that the `:8443` and `:8080` listeners send the CSP header `default-src 'none'; style-src 'unsafe-inline'; img-src data:`, serve `*.md` as `text/plain`, and that the Caddyfile imports `/etc/caddy/Caddyfile.d/*.caddy` last: local additions go there, bootstrap creates the directory, lists the files in `--check` and never touches them. Link `[ADR 0010](adr/0010-desk-content-policy.md)`. In the manual block, add the line `install -d -m 755 /etc/caddy/Caddyfile.d` directly before the `sed "s/@TS_HOST@/...` line. After the block's sentence about `get_certificate tailscale`, add: `A snippet in Caddyfile.d with an error makes the reload fail, and bootstrap's restart fallback then leaves Caddy stopped until the snippet is fixed; check with caddy validate --config /etc/caddy/Caddyfile before systemctl reload caddy.` (with the two commands in backticks).
 - `docs/operations.md` "Updates": after the paragraph at line 100 that starts ``It installs `/opt/nightshift/<tag>` if missing``, add a paragraph: `--upgrade` does not rewrite `/etc/caddy/Caddyfile`; when a release changes `templates/caddy/Caddyfile.tmpl` (the changelog says so), run `/opt/nightshift/current/bin/bootstrap.sh` once as root after the upgrade; it rewrites the Caddyfile and leaves `/etc/caddy/Caddyfile.d/*.caddy`, the place for local additions, untouched.
 - `docs/spec.md` line 279 (bootstrap step 1): replace the final `.` of the line with: `; the two HTML listeners send the desk CSP header and serve *.md as text/plain (ADR 0010); the Caddyfile imports /etc/caddy/Caddyfile.d/*.caddy last for local additions, which bootstrap creates and lists but never changes.` (code spans as in the surrounding text).
 - `docs/architecture.html` lines 1860-1869 (the `<h4 class="sub">Desk pages may not load anything from outside (issue #5)</h4>` subsection): keep the `<h4>`. Replace the `<p>` with: `<p>The Content-Security-Policy header and Markdown as text/plain are part of <code>templates/caddy/Caddyfile.tmpl</code> (issues #5 and #27, ADR 0010): a plain run of <code>bootstrap.sh</code> after the upgrade writes them. Not on SilverBullet (<code>:443</code>), which needs its own scripts. Local Caddy additions go in <code>/etc/caddy/Caddyfile.d/*.caddy</code>, which bootstrap never touches.</p>`. In the following `<div class="code"><pre>`, delete the comment line, the `nano` line, the commented `header` line and the `caddy validate` line, keeping only the two `curl -sI ... | grep -i content-security` lines. Replace the `<p class="note">` after it with `<p class="note"><code>bootstrap.sh --upgrade</code> leaves the Caddyfile alone; run <code>bootstrap.sh</code> once after an upgrade that changes the Caddy template.</p>`. Touch nothing else in the file.
@@ -144,7 +144,7 @@ File `docs/adr/0010-desk-serves-self-contained-pages.md`, title `# 0010. The des
 
 ## ADRs
 
-- ADR 0010 (`docs/adr/0010-desk-serves-self-contained-pages.md`, Accepted): the desk's HTML listeners send a strict CSP and serve Markdown as text, `ns publish` stays the first layer, and local Caddy additions live in `/etc/caddy/Caddyfile.d/`. Written in phase `p2-docs-retire` from D5.
+- ADR 0010 (`docs/adr/0010-desk-content-policy.md`, Accepted): the desk's HTML listeners send a strict CSP and serve Markdown as text, `ns publish` stays the first layer, and local Caddy additions live in `/etc/caddy/Caddyfile.d/`. Written in phase `p2-docs-retire` from D5.
 
 ## Manual steps
 
@@ -156,7 +156,7 @@ File `docs/adr/0010-desk-serves-self-contained-pages.md`, title `# 0010. The des
 - Caddy syntax is not exercised by bats (acceptance assumption). Phase 1 runs `caddy adapt` on the rendered template with the Caddy 2.6.2 on ns-main as an extra mechanical check. If `caddy adapt` exits non-zero with an error (not a warning) about the inserted lines, the brief is wrong: stop with `status=blocked` and quote the error.
 - Known leftover, out of this run's scope (the design names only the subsection around `docs/architecture.html:1861`): the historical hand-setup Caddyfile snippets in `docs/architecture.html` (the ntfy `cat >> /etc/caddy/Caddyfile` around lines 1907-1917 and the full Caddyfile around lines 2091-2109) do not show the CSP, `@md` or `import` lines. The template rendered by `bootstrap.sh` is the source of truth. p2 must not edit them.
 - Existing `! ...` negations in the middle of `tests/bats/bootstrap.bats` cases (around lines 200, 201, 279) cannot fail; out of scope here (no weakening and no unrelated test edits), worth a follow-up issue.
-- `tests/docs-check` currently fails on the run branch with `.nightshift/runs/ns-144/design.md:57: broken link 0010-desk-serves-self-contained-pages.md` (a Markdown link in the design, relative to the run directory). The conductor fixes that line in `design.md` (for example turn the link into a code span) before phase p1 starts; no phase may touch it. If p2 still sees that error, it stops with `status=blocked`.
+- `tests/docs-check` currently fails on the run branch with `.nightshift/runs/ns-144/design.md:57: broken link 0010-desk-content-policy.md` (a Markdown link in the design, relative to the run directory). The conductor fixes that line in `design.md` (for example turn the link into a code span) before phase p1 starts; no phase may touch it. If p2 still sees that error, it stops with `status=blocked`.
 - `defer` and the CSP on `browse` listings are intended (design); listings lose their inline JavaScript.
 - If "--check on a prepared tree prints eleven ok lines and exits 0" fails after D2, the most likely cause is a missing `Caddyfile.d` in `prepare_tree`; fix only `prepare_tree`, never the assertion.
 - Open owner questions, carried from the design and not part of this run: add `X-Content-Type-Options: nosniff` to the two HTML blocks? Should step 1 run `caddy validate` before reload to catch a bad snippet? Neither blocks the plan.
@@ -177,7 +177,7 @@ verify_after_merge:
   - "tests/lint"
 final_checks:
   - "docs/ns-144-plan.md is deleted"
-  - "docs/adr/0010-desk-serves-self-contained-pages.md exists with Status Accepted and is listed in docs/adr/README.md"
+  - "docs/adr/0010-desk-content-policy.md exists with Status Accepted and is listed in docs/adr/README.md"
   - "CHANGELOG.md has [Unreleased] entries for #5, #27 and #26"
   - "tests/docs-check --final exits 0"
 phases:
@@ -212,7 +212,7 @@ phases:
     depends_on: [p1-caddy-bootstrap]
     complexity: M
     touches:
-      - docs/adr/0010-desk-serves-self-contained-pages.md
+      - docs/adr/0010-desk-content-policy.md
       - docs/adr/README.md
       - docs/security.md
       - docs/setup.md
@@ -223,9 +223,9 @@ phases:
       - docs/ns-144-plan.md
     brief: |
       Read docs/ns-144-plan.md sections D5 and D6 and .nightshift/runs/ns-144/acceptance.md (AC-7). Write in the plain, short-sentence style of the surrounding docs.
-      1. Create docs/adr/0010-desk-serves-self-contained-pages.md from D5, in the shape of docs/adr/0009-e2e-keep-in-build-a.md (Status Accepted).
+      1. Create docs/adr/0010-desk-content-policy.md from D5, in the shape of docs/adr/0009-e2e-keep-in-build-a.md (Status Accepted).
       2. docs/adr/README.md: append the 0010 row from D6.
-      3. docs/security.md: add the "The desk:" paragraph from D6 with the link to adr/0010-desk-serves-self-contained-pages.md.
+      3. docs/security.md: add the "The desk:" paragraph from D6 with the link to adr/0010-desk-content-policy.md.
       4. docs/setup.md step 1: apply D6 (paragraph extension with the CSP header, Markdown as text/plain, /etc/caddy/Caddyfile.d/*.caddy for local additions bootstrap never touches; the install -d line in the manual block; the caddy validate sentence).
       5. docs/operations.md "Updates": add the paragraph from D6.
       6. docs/spec.md line 279: append the text from D6.
@@ -236,10 +236,10 @@ phases:
       Stop condition (stop with status=blocked): docs/adr/0010-* already exists or another ADR already uses number 0010; the architecture.html subsection is not at about lines 1860-1869 or reads differently from D6's description.
       Do not change bin/, templates/ or tests/ in this phase.
     acceptance:
-      - "test -f docs/adr/0010-desk-serves-self-contained-pages.md && grep -q '^Accepted' docs/adr/0010-desk-serves-self-contained-pages.md"
-      - "grep -q \"default-src 'none'; style-src 'unsafe-inline'; img-src data:\" docs/adr/0010-desk-serves-self-contained-pages.md"
-      - "grep -q '0010-desk-serves-self-contained-pages.md' docs/adr/README.md"
-      - "grep -q 'Content-Security-Policy' docs/security.md && grep -q 'adr/0010-desk-serves-self-contained-pages.md' docs/security.md"
+      - "test -f docs/adr/0010-desk-content-policy.md && grep -q '^Accepted' docs/adr/0010-desk-content-policy.md"
+      - "grep -q \"default-src 'none'; style-src 'unsafe-inline'; img-src data:\" docs/adr/0010-desk-content-policy.md"
+      - "grep -q '0010-desk-content-policy.md' docs/adr/README.md"
+      - "grep -q 'Content-Security-Policy' docs/security.md && grep -q 'adr/0010-desk-content-policy.md' docs/security.md"
       - "grep -q 'Content-Security-Policy\\|CSP' docs/setup.md && grep -q 'text/plain' docs/setup.md && grep -q '/etc/caddy/Caddyfile.d/\\*.caddy' docs/setup.md"
       - "grep -c 'nano /etc/caddy/Caddyfile' docs/architecture.html prints 0"
       - "sed -n '/^## \\[Unreleased\\]/,/^## \\[0/p' CHANGELOG.md mentions #5, #27 and #26"

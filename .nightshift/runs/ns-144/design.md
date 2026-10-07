@@ -5,7 +5,7 @@
 - `templates/caddy/Caddyfile.tmpl`: CSP and `@md` lines in the `:8443` and `http://127.0.0.1:8080` blocks only (AC-1, AC-2); `import` as the last line (AC-3). `:443` and `:8444` unchanged (non-goal).
 - `bin/bootstrap.sh`: `check_1` and `apply_1` only (AC-4, AC-5). Steps 2 to 11 and the step loop unchanged.
 - `tests/bats/bootstrap.bats`: `prepare_tree` plus new cases (AC-1 to AC-6).
-- New `docs/adr/0010-desk-serves-self-contained-pages.md`, and edits to `docs/adr/README.md`, `docs/security.md`, `docs/setup.md` and `CHANGELOG.md` `[Unreleased]` (AC-7). Also fix `docs/architecture.html` around line 1861, which still says to add the CSP header by hand.
+- New `docs/adr/0010-desk-content-policy.md`, and edits to `docs/adr/README.md`, `docs/security.md`, `docs/setup.md` and `CHANGELOG.md` `[Unreleased]` (AC-7). Also fix `docs/architecture.html` around line 1861, which still says to add the CSP header by hand.
 - `bin/lib/desk.sh` unchanged. Its comment at line 12 already points to the template.
 
 ## Interfaces
@@ -44,7 +44,7 @@ Extend the existing "rendered Caddyfile has the desk..." case only if needed. Do
 
 - New directory `/etc/caddy/Caddyfile.d/`, root:root 755. Bootstrap creates it and lists it. The owner owns its contents. No migration: on an existing server the next `bootstrap.sh` run reports `would change: update /etc/caddy/Caddyfile, create /etc/caddy/Caddyfile.d`.
 
-## ADR 0010 outline (`0010-desk-serves-self-contained-pages.md`, Accepted)
+## ADR 0010 outline (`0010-desk-content-policy.md`, Accepted)
 
 - Context: R-DSK-2. The desk serves agent-written HTML from `/srv/ns-space` on `:8443` (tailnet) and `127.0.0.1:8080` (tunnel, Access). Agent text is untrusted. Issues #5 and #27. Owners need local Caddy additions that survive reruns (#26).
 - Decision: (1) The HTML listeners send `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`. Pages may use inline CSS and `data:` images only. No scripts of any kind, no external loads (styles, fonts, images, frames), no form posts or fetches. (2) `*.md` is served as `text/plain; charset=utf-8`, so Markdown never renders as HTML. (3) `ns publish` (`ns_desk_check_html`) stays as the first layer. It refuses a page before it reaches the desk and gives the agent a clear error. The header is the second layer. It catches what the deny-list misses and covers files written to `/srv/ns-space` without `ns publish`. (4) Local additions go in `/etc/caddy/Caddyfile.d/*.caddy`, imported last. Bootstrap creates the directory, lists it in `--check` and never touches its contents.
@@ -54,8 +54,8 @@ Extend the existing "rendered Caddyfile has the desk..." case only if needed. Do
 
 ## Doc edits
 
-- `docs/adr/README.md`: row `| 0010 (file 0010-desk-serves-self-contained-pages.md) | The desk serves only self-contained pages | Accepted |`.
-- `docs/security.md`: after the "What lives where" paragraph at line 34, add a short "The desk" paragraph. It names the CSP header and its value, says `.md` is served as text/plain and that `ns publish` is the first layer, and links `adr/0010-desk-serves-self-contained-pages.md`.
+- `docs/adr/README.md`: row `| 0010 (file 0010-desk-content-policy.md) | The desk serves only self-contained pages | Accepted |`.
+- `docs/security.md`: after the "What lives where" paragraph at line 34, add a short "The desk" paragraph. It names the CSP header and its value, says `.md` is served as text/plain and that `ns publish` is the first layer, and links `adr/0010-desk-content-policy.md`.
 - `docs/setup.md` step 1 (line 68): CSP header on `:8443` and `:8080`, Markdown as `text/plain`, and `/etc/caddy/Caddyfile.d/*.caddy` for local additions that bootstrap never touches. Add `install -d -m 755 /etc/caddy/Caddyfile.d` to the manual block, and a note that a bad snippet stops the reload.
 - `CHANGELOG.md` `[Unreleased]`: one entry each for #5, #27 and #26.
 
