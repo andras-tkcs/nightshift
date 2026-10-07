@@ -19,12 +19,12 @@ feature_branch: fix/ns-x9
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T19:40:31Z'
+updated: '2026-10-07T20:00:34Z'
 budget:
-  used: 2.71
+  used: 3.04
   limit: 4
   paused: false
-  since: '2026-10-07T19:40:19Z'
+  since: '2026-10-07T20:00:07Z'
   integrate_from: '2026-10-07T19:30:04Z'
 phases:
 - id: fix
