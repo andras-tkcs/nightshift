@@ -1,12 +1,11 @@
-# Escalation: manual merge of p3-retire was blocked
+# Budget exceeded
 
-Your answer was "Merge by hand". I tried to merge `feature/x5--p3-retire` (approved, head 86efdfb) into `feature/x5` with `git merge --no-ff` and a `Plan-Phase: p3-retire` trailer. I then wanted to push `feature/x5` and mark the phase merged in the ledger. The auto-mode permission classifier denied that command, so nothing was merged or pushed.
+Run ns-x5 (T2) used 8.1 h of its 8 h wall-clock budget at step `board`. The deterministic budget check in `ns-conductor budget-check` stopped its workers and escalated the run here (R-BUD-1).
 
 ## Question
 
-Can you run the merge yourself in `/home/ns/Coding/worktrees/nightshift-ns-x5--feature`, or allow that Bash action? The commands are `git merge --no-ff feature/x5--p3-retire`, then `git push origin feature/x5`, then marking the phase merged in the ledger. After that I continue with the review board.
+Give the run more time, or stop it? To continue, raise `budget_hours` below to the new limit in hours (above 8.1), then run `ns approve ns-x5`. To end the run, run `ns stop ns-x5` instead.
 
 ## Owner's answer
 
-I merged to main the fix. If you pull in main it should be ok now. Pull in main.
-
+budget_hours: 8
