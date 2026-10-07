@@ -362,7 +362,7 @@ checks_running() {
   rm -f "$TMUX_STUB_DIR/sbx-12"
   run ns check
   assert_success
-  [[ "$output" == *"ns check: "* ]]
+  assert_output_contains "ns check: "
   [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
   [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
 }
@@ -373,7 +373,7 @@ checks_running() {
   rm -f "$TMUX_STUB_DIR/sbx-12"
   run ns health-check
   assert_success
-  [[ "$output" == *"ns check: "* ]]
+  assert_output_contains "ns check: "
   [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
   [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
 }
