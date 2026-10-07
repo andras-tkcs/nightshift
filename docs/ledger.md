@@ -134,7 +134,7 @@ ns-ledger checkpoint <ledger> [--push]
 
 Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the whole steps of 0.01 h (36 seconds) since `budget.since`, and `since` moves forward by exactly the time charged, so the remainder is carried to the next checkpoint and frequent checkpoints lose nothing; otherwise `since` is set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
 
-With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event and still exits 0; the next checkpoint commits that event.
+With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event, commits it locally (`ns-ledger: <id> <state> (push failed)`, not pushed) and still exits 0; the next successful push carries it.
 
 ```
 ns-ledger checkpoint "$NS_LEDGER" --push
