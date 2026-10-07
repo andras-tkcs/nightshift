@@ -1,0 +1,43 @@
+version: 1
+id: sbx-12
+project: nightshift-sandbox
+request:
+  issue: 12
+tier: T1
+tier_source: owner
+tier_recommended: T1
+tags: []
+state: done
+gate: '2'
+step: done
+stop_requested: null
+branch: plan/sbx-12
+feature_branch: feature/12
+pr: https://github.com/andras-tkcs/nightshift-sandbox/pull/7
+created: '2026-10-02T10:00:00Z'
+updated: '2026-10-02T11:10:00Z'
+budget:
+  used: 1.8
+  limit: 4
+  paused: false
+  since: '2026-10-02T13:21:00Z'
+phases: []
+events:
+- time: '2026-10-02T10:00:00Z'
+  type: created
+  note: 'run sbx-12 created'
+- time: '2026-10-02T10:00:10Z'
+  type: state
+  note: 'running'
+- time: '2026-10-02T10:05:00Z'
+  type: step
+  note: 'triage'
+- time: '2026-10-02T10:20:00Z'
+  type: step
+  note: 'implement'
+- time: '2026-10-02T11:00:00Z'
+  type: step
+  note: 'integrate'
+- time: '2026-10-02T11:10:00Z'
+  type: finish
+  note: 'run finished'

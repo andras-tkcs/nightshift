@@ -884,3 +884,11 @@ assert len(q) == 200, len(q)
 assert q.startswith("Why not [31mred? a"), repr(q[:30])
 PY2
 }
+
+@test "checks twice leaves two == run lines in the checks log (ns-x6)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  [ "$(grep -c '^== run ' "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log")" = 2 ]
+}
