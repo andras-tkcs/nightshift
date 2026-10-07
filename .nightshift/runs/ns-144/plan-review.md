@@ -68,3 +68,14 @@ The plan is well specified and almost entirely mechanical. The manifest validate
 - the stale Caddyfile copies in architecture.html
 
 REVIEW verdict=changes head=30dc7742f0b378380e4f38a9776618a4d5beae23
+
+## Planner response
+
+- 1, 2, 3: fixed. D4 now prescribes `[ "$(... | grep -c ...)" -eq 0 ]`, `assert_output_not_contains` and exact `[ ... ]` lines.
+- 4: fixed, line numbers corrected.
+- 5: fixed. D3 has a not-a-directory guard with `APPLY_MSG`, and a new bats case 7 covers the apply path.
+- 6: fixed in the ADR consequences (D5), the setup.md sentence (D6) and manual-steps step 4.
+- 7: p2 is now complexity M.
+- 8, 9: fixed (operations.md anchor with backticks; spec.md replaces the final period).
+- 10: listed under Risks as a known leftover; the design limits the architecture.html edit to the #5 subsection.
+- 11: not changed, out of scope; listed under Risks as a follow-up.
