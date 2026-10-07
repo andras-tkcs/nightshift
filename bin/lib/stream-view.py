@@ -8,7 +8,10 @@ import textwrap
 from datetime import datetime, timezone
 
 
-def hhmm():
+def hhmm(ev=None):
+    ts = ev.get("timestamp") if isinstance(ev, dict) else None
+    if isinstance(ts, str) and re.match(r"\d{4}-\d\d-\d\dT\d\d:\d\d", ts):
+        return ts[11:16]
     now = os.environ.get("NS_NOW")
     if now and len(now) >= 16:
         return now[11:16]
@@ -88,20 +91,20 @@ def render(ev):
             if not isinstance(item, dict):
                 continue
             if item.get("type") == "text" and str(item.get("text") or "").strip():
-                out.append(wrap(f"{hhmm()} text: {item['text']}"))
+                out.append(wrap(f"{hhmm(ev)} text: {item['text']}"))
             elif item.get("type") == "tool_use":
                 inp = tool_input(item.get("input", {}))
-                out.append(wrap(f"{hhmm()} tool: {item.get('name') or '?'} {inp}"))
+                out.append(wrap(f"{hhmm(ev)} tool: {item.get('name') or '?'} {inp}"))
     elif t == "user":
         for item in content:
             if isinstance(item, dict) and item.get("type") == "tool_result":
-                out.append(wrap(f"{hhmm()} {result_line(item)}"))
+                out.append(wrap(f"{hhmm(ev)} {result_line(item)}"))
     elif t == "result":
         try:
             cost = float(ev.get("total_cost_usd") or 0)
         except (TypeError, ValueError):
             cost = 0.0
-        out.append(f"{hhmm()} done: {ev.get('subtype') or '?'}, {ev.get('num_turns') or 0} turns, ${cost:.2f}")
+        out.append(f"{hhmm(ev)} done: {ev.get('subtype') or '?'}, {ev.get('num_turns') or 0} turns, ${cost:.2f}")
     return out
 
 

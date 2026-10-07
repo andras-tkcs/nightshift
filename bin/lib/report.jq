@@ -50,8 +50,14 @@ def minus($waits):
 | (.created | ep) as $t0
 | ($t0) as $start
 # planning ends at gate 1, else at the first phase-start or review, else at the end
+# a run with no gate 1, phase or review (T0, T1) follows the ledger's step events instead:
+# planning ends at the first step change, each step runs to the next
+| ([$ev[] | select(.type == "step" and .note != "done")]) as $stepev
+| ($stepev | length > 0 and ($waits | map(select(.gate == "1")) | length) == 0
+    and ($ev | map(select(.type == "phase-start" or .type == "review")) | length) == 0) as $bystep
 | ([($waits | map(select(.gate == "1")) | .[0].s),
     ($ev | map(select(.type == "phase-start" or .type == "review") | .t) | .[0]),
+    (if $bystep then $stepev[0].t else null end),
     $end] | map(select(. != null)) | min) as $plan_end
 | def row($label; $s; $e; $own_wait):
     {label: $label, s: $s, e: ([$e, $s] | max), kind: (if $own_wait then "wait" else "step" end)}
@@ -60,6 +66,10 @@ def minus($waits):
     | .dead = overlap(.s; .e; $dead)
     | .active = ([.wall - .wait - .dead, 0] | max);
   (([row("planning"; $start; $plan_end; false)]
+   + (if $bystep then
+        [$stepev | to_entries[] | . as $x
+         | row($x.value.note; $x.value.t; ($stepev[$x.key + 1].t // $end); false)]
+      else [] end)
    + [$waits[] | row(if .gate == "1.5" then "escalation (gate 1.5)" else "gate \(.gate) wait" end; .s; .e; true)]
    + [$ev | to_entries[] | select(.value.type == "phase-start") | . as $p
       | ($p.value.note | first_word) as $ph
@@ -107,7 +117,8 @@ def minus($waits):
 | ($rows0 | map(. + (if $L == null then {tok: null, cost: null} else ($by_row[.i | tostring] // {tok: 0, cost: 0}) end))) as $rows
 | ($by_row["-1"]) as $unplaced
 | ($L.total // null) as $total
-| ($logs[0].checks // []) as $checks
+| ($logs[0].checks // []) as $allchecks
+| ($allchecks | map(select(.last != false))) as $checks
 | ($logs[0] != null and ($logs[0].checks | length) > 0) as $has_checks
 | ($waits | map(select(.gate == "1.5"))) as $esc
 | ($end - $t0) as $wall
@@ -137,7 +148,7 @@ def minus($waits):
     "| Dead or stopped | \($deadsum | dur) |",
     "| Budget | \(if $b == null then "none" else "\($b.used // 0) h of \(if $b.limit == null then "no limit" else "\($b.limit) h" end)" end) |",
     "| Cost | \($total.cost // null | money) |",
-    "| Tokens | \(if $total == null then "no data" else "\($total.tok | sumtok | tok) (input \($total.tok.in | tok), output \($total.tok.out | tok), cache read \($total.tok.cr | tok), cache write \($total.tok.cw | tok))" end) |",
+    "| Tokens | \(if $total == null then "no data" else "\($total.tok | sumtok | tok)\(if $total.partial then " partial" else "" end) (input \($total.tok.in | tok), output \($total.tok.out | tok), cache read \($total.tok.cr | tok), cache write \($total.tok.cw | tok))" end) |",
     "| Review rounds | \($rounds) |",
     "| Escalations | \($nesc) |",
     "| Checks | \(if $has_checks | not then "no data" else
@@ -164,11 +175,12 @@ def minus($waits):
       ["By agent. A subagent's tokens and cost are part of the agent that started it.", "",
        "| Agent | Log | Sessions | Turns | Input | Output | Cache read | Cache write | Cost |",
        "|---|---|---|---|---|---|---|---|---|"]
-      + [$L.agents[] | "| \(.agent | esc) | \(.log | esc) | " + (if .cost == null then "no data | no data | no data | no data | no data | no data | no data |"
+      + [$L.agents[] | "| \(.agent | esc) | \(.log | esc) | " + (if .tok == null then "no data | no data | no data | no data | no data | no data | no data |"
+          elif .cost == null then "\(.sessions) | \(.turns) | \(.tok.in | tok) | \(.tok.out | tok) | \(.tok.cr | tok) | \(.tok.cw | tok) | no data (partial) |"
           else "\(.sessions) | \(.turns) | \(.tok.in | tok) | \(.tok.out | tok) | \(.tok.cr | tok) | \(.tok.cw | tok) | \(.cost | money) |" end)]
       + ([$L.agents[]
           | (select(.bad > 0) | "- \(.log | esc): \(.bad) \(if .bad == 1 then "line is" else "lines are" end) not JSON and \(if .bad == 1 then "was" else "were" end) skipped."),
-            (select(.open > 0) | "- \(.log | esc): \(.open) \(if .open == 1 then "session has" else "sessions have" end) no result event (cut off); \(if .open == 1 then "its" else "their" end) tokens and cost are not in the totals.")]
+            (select(.open > 0) | "- \(.log | esc): \(.open) \(if .open == 1 then "session has" else "sessions have" end) no result event (cut off); \(if .open == 1 then "its" else "their" end) \(if .partial then "cost is not in the totals; the tokens are summed from the assistant messages (partial)" else "tokens and cost are not in the totals" end).")]
          | if length > 0 then [""] + . else . end)
       + ["", "By model:", "", "| Model | Input | Output | Cache read | Cache write | Cost |", "|---|---|---|---|---|---|"]
       + [$L.models[] | "| \(.model | esc) | \(.tok.in | tok) | \(.tok.out | tok) | \(.tok.cr | tok) | \(.tok.cw | tok) | \(.cost | money) |"]
@@ -187,5 +199,10 @@ def minus($waits):
           else "\(.result) | \(.end - .start | dur) | \(.start | stamp) |" end)]
       + ([$checks[] | select(.result == "SKIP") | "\(.target) \(.stack) \(.name)" | esc]
          | if length > 0 then ["", "SKIP (pytest collected no tests; not a failure, but check it was meant): \(join(", "))."] else [] end)
+      + ["", "### Checks breakdown", "", "Every run of each check in the run's checks logs, with the total time of the runs that have times.", "",
+         "| Check | Runs | Total time |", "|---|---|---|"]
+      + [$allchecks | group_by("\(.stack) \(.name)")[]
+         | {n: "\(.[0].stack) \(.[0].name)", runs: length, t: ([.[] | select(.result != null) | .end - .start] | add // 0), untimed: ([.[] | select(.result == null)] | length)}
+         | "| \(.n | esc) | \(.runs) | \(if .untimed == .runs then "no data" elif .untimed > 0 then "at least \(.t | dur)" else (.t | dur) end) |"]
     end)
   | .[]

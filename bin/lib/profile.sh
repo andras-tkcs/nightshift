@@ -29,7 +29,7 @@ ns_profile_json() {
 # A python test (or any pytest command) exiting 5 collected no tests: SKIP. Without checks it prints
 # "SKIP no checks configured". Returns 1 when a check failed, else 0. Around each check's output the
 # log gets `== start <stack> <name> <UTC>` and `== end <stack> <name> <UTC> <PASS|FAIL|SKIP> exit <rc>`
-# (ns report reads them, #65).
+# (ns report reads them, #65). The log is appended to, each run opening with `== run <UTC>`.
 ns_profile_checks_run() {
   local dir="$1" prof="$2" log="$3" n total stack name cmd crc res failed=0
   total=$(jq '(.checks // []) | length' <<<"$prof")
@@ -37,7 +37,8 @@ ns_profile_checks_run() {
     printf 'SKIP no checks configured\n'
     return 0
   fi
-  : >"$log"
+  # append: ns report counts every run; the `== run` line marks where this run starts
+  printf '== run %s\n' "$(ns_now)" >>"$log"
   for ((n = 0; n < total; n++)); do
     stack=$(jq -r ".checks[$n].stack" <<<"$prof")
     name=$(jq -r ".checks[$n].name" <<<"$prof")

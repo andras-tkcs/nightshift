@@ -85,6 +85,8 @@ ns-ledger set <ledger> <jq-program>
 
 Applies the jq program to the ledger, sets `updated`, validates and writes. If the result is invalid it exits 1 with `ledger <path>: <first error>; not written`.
 
+When the program changes `.step`, it also appends a `step` event whose note is the new step (the run report builds its timeline from them; a ledger without `step` events still reports).
+
 ```
 ns-ledger set "$NS_LEDGER" '.step = "phases" | .feature_branch = "feature/12"'
 ```
