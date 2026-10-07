@@ -17,7 +17,7 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: queued
+state: running
 gate: null
 step: phases
 stop_requested: null
@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-07T13:35:28Z'
+updated: '2026-10-07T15:18:15Z'
 budget:
   used: 2.56
   limit: 8
   paused: false
-  since: '2026-10-07T13:35:28Z'
+  since: '2026-10-07T15:18:13Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -127,4 +127,7 @@ events:
 - time: '2026-10-07T13:35:26Z'
   type: queued
   note: waiting for a free run slot
-queued_for_slot: true
+- time: '2026-10-07T15:18:14Z'
+  type: resumed
+  note: resumed from queued
+queued_for_slot: false
