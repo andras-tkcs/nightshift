@@ -39,8 +39,8 @@ tags:
 - bats
 - skills
 - conductor
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: board
 stop_requested: null
 branch: plan/ns-x5
@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T19:05:11Z'
+updated: '2026-10-07T19:12:31Z'
 budget:
   used: 7.59
   limit: 8
   paused: false
-  since: '2026-10-07T19:05:11Z'
+  since: '2026-10-07T19:12:31Z'
   integrate_from: null
 phases:
 - id: p1-checks-cache
@@ -216,4 +216,7 @@ events:
   note: 'gate 1.5: waiting for the owner: Can you run the merge yourself in `/home/ns/Coding/worktrees/nightshift-ns-x5--feature`,
     or allow that Bash action? The commands are `git merge --no-ff feature/x5--p3-retire`,
     then `git push origin fe'
+- time: '2026-10-07T19:12:30Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
