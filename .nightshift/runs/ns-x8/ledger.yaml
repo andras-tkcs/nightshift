@@ -41,12 +41,12 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:43:06Z'
+updated: '2026-10-07T16:03:01Z'
 budget:
-  used: 2.11
+  used: 2.44
   limit: 5
   paused: false
-  since: '2026-10-07T15:42:38Z'
+  since: '2026-10-07T16:02:26Z'
   integrate_from: null
 phases:
 - id: fix
