@@ -48,7 +48,7 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T21:20:47Z'
+updated: '2026-10-07T21:20:53Z'
 budget:
   used: 9.29
   limit: 10
@@ -252,4 +252,4 @@ events:
     || exit; wrap l'
 queued_for_slot: false
 stack_skipped: []
-stacked_on: main
+stacked_on: ns-x9
