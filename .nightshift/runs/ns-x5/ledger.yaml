@@ -41,14 +41,14 @@ tags:
 - conductor
 state: running
 gate: null
-step: gate1
+step: phases
 stop_requested: null
 branch: plan/ns-x5
 feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T10:39:10Z'
+updated: '2026-10-07T10:39:16Z'
 budget:
   used: 0.88
   limit: 8
