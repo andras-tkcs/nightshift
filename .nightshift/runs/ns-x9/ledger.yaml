@@ -8,7 +8,7 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: queued
+state: running
 gate: null
 step: intake
 stop_requested: null
@@ -17,12 +17,13 @@ feature_branch: null
 pr: null
 release: v0.1.8
 created: '2026-10-07T13:54:56Z'
-updated: '2026-10-07T13:55:02Z'
+updated: '2026-10-07T15:36:06Z'
 budget:
   used: 0
   limit: 2
   paused: false
-  since: '2026-10-07T13:55:02Z'
+  since: '2026-10-07T15:36:04Z'
+  integrate_from: null
 phases: []
 events:
 - time: '2026-10-07T13:54:56Z'
@@ -37,4 +38,7 @@ events:
 - time: '2026-10-07T13:55:01Z'
   type: queued
   note: waiting for a free run slot
-queued_for_slot: true
+- time: '2026-10-07T15:36:05Z'
+  type: resumed
+  note: resumed from queued
+queued_for_slot: false
