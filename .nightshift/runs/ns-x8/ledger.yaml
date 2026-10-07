@@ -41,7 +41,7 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:39:40Z'
+updated: '2026-10-07T15:39:44Z'
 budget:
   used: 2.06
   limit: 5
@@ -110,4 +110,7 @@ events:
 - time: '2026-10-07T15:39:38Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-07T15:39:43Z'
+  type: dequeued
+  note: started from the queue
 queued_for_slot: false
