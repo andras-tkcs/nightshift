@@ -202,3 +202,20 @@ X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
   grep -qF '| python test | 4 | 1m |' "$RUNDIR/run-report.md"
   grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
 }
+
+@test "ns report: a cut-off Agent call takes its time to the last assistant message (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-agent-cut.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  # 10:05:00 to 10:35:00 is 30m
+  grep -qE '^\| ns:integrator \| conductor \| unknown \| 1 \| 30m \|$' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a model with only partial tokens shows no data for its cost (ns-x6)" {
+  rm -f "$LOGS"/*
+  cp "$X6/conductor-cut-off.jsonl" "$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  grep -qE '^\| claude-opus-5-5 \|.*\| no data \|$' "$RUNDIR/run-report.md"
+}
