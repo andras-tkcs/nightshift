@@ -8,3 +8,5 @@ Do you want to fix or skip `bootstrap.bats` #32 on main (then I re-run the merge
 
 ## Owner's answer
 
+Merge by hand 
+
