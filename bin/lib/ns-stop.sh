@@ -22,7 +22,7 @@ ns_stop_main() {
   [ -f "$ledger" ] || ns_die "no ledger for $id: worktree missing, try ns resume $id"
   state=$("$NS_HOME/bin/ns-ledger" get "$ledger" .state)
   if [ "$state" = parked ] && [ -n "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.budget.paused_until // ""')" ]; then
-    # parked on a usage limit: ns health-check would resume it after the reset, so stop it for good
+    # parked on a usage limit: ns check would resume it after the reset, so stop it for good
     "$NS_HOME/bin/ns-ledger" set "$ledger" '.budget.paused_until = null'
     ns_kill_teardown "$id" "$ledger" "stopped by the owner (parked on a usage limit)"
     printf '%s stopped (it was parked on a usage limit)\n' "$id"

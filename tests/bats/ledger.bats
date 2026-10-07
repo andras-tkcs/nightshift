@@ -331,3 +331,17 @@ SHIM
   assert_success
   [ "${lines[1]}" = "$D: \$: Additional properties are not allowed ('odd' was unexpected)" ]
 }
+
+@test "set with .step=triage adds exactly one step event; a set that leaves .step alone adds none" {
+  T="$BATS_TEST_TMPDIR/step-ledger.yaml"
+  ns-ledger init "$T" --id app-x1 --project app --text "do the thing" --branch plan/app-x1
+  n0="$(ns-ledger get "$T" '[.events[] | select(.type == "step")] | length')"
+  run ns-ledger set "$T" '.step = "triage"'
+  assert_success
+  [ "$(ns-ledger get "$T" '[.events[] | select(.type == "step")] | length')" = "$((n0 + 1))" ]
+  [ "$(ns-ledger get "$T" '[.events[] | select(.type == "step" and .note == "triage")] | length')" = 1 ]
+  total="$(ns-ledger get "$T" '.events | length')"
+  run ns-ledger set "$T" '.tags = ["python"]'
+  assert_success
+  [ "$(ns-ledger get "$T" '.events | length')" = "$total" ]
+}

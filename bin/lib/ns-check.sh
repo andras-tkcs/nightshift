@@ -6,8 +6,8 @@ source "$NS_HOME/bin/lib/config.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/runs.sh"
 
-ns_health_check_help() {
-  printf 'usage: ns health-check\n\n'
+ns_check_help() {
+  printf 'usage: ns check\n\n'
   printf 'Looks at every active run that is running with no open gate. A run whose tmux session is\n'
   printf 'gone is dead; one whose logs (JSONL, checks log) have not grown for NS_SILENT_SECS (default\n'
   printf '1200) is silent, unless its conductor is running ns-conductor checks.\n'
@@ -18,8 +18,8 @@ ns_health_check_help() {
   printf 'dead conductor and no open gate, once budget.paused_until in its ledger has passed.\n'
 }
 
-ns_health_check_main() {
-  [ $# -eq 0 ] || ns_usage "ns health-check"
+ns_check_main() {
+  [ $# -eq 0 ] || ns_usage "ns check"
   ns_load_env
   local entry id ledger led state gate health dir f old bad=0 sent=0 total=0 seen=' ' pu now
   local wake=() resumed=0 queued=0 out
@@ -79,5 +79,5 @@ ns_health_check_main() {
       ns_warn "could not resume $id after its usage limit"
     fi
   done
-  printf 'ns health-check: %s run(s) checked, %s unhealthy, %s notified, %s resumed after a usage limit, %s queued\n' "$total" "$bad" "$sent" "$resumed" "$queued"
+  printf 'ns check: %s run(s) checked, %s unhealthy, %s notified, %s resumed after a usage limit, %s queued\n' "$total" "$bad" "$sent" "$resumed" "$queued"
 }

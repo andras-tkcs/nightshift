@@ -127,6 +127,12 @@ Two-factor comes from your Google account, so make sure it is on there. If the t
 4. Policies: Select existing policies, `only me`.
 5. Login methods: only Google. With a single method, turn on Apply instant authentication.
 6. Save. Repeat for `ns-view` (name `Nightshift reports`).
+7. Let SilverBullet's static client files through. The browser fetches the desk's service worker script without following a login redirect, so behind Access alone it fails with "The script resource is behind a redirect, which is disallowed" whenever the Access session is missing or expired. SilverBullet's own [authentication proxy notes](https://docs.silverbullet.md/Authentication%20Proxy) name the two paths to exclude:
+   1. Access controls, Policies, Add a policy: name `public static`, action Bypass, Include selector Everyone. Save.
+   2. Applications, Create new application, Self-hosted and private, name `Nightshift desk static`. Add public hostname `ns-desk`, your domain, path `service_worker.js`; add a second public hostname `ns-desk`, your domain, path `.client/*`.
+   3. Policies: Select existing policies, `public static` only. Save. Access applies the application with the more specific path, so these two paths skip the login while the rest of `ns-desk` stays behind `only me`.
+
+   These paths serve only SilverBullet's own client code, which is public anyway; pages, `/.fs/*` and the API stay behind the login. `ns-view` has no service worker and needs no bypass.
 
 Each application has to match the address of its tunnel route in [setup.md](setup.md) exactly. Access applications are deny-by-default, so an address protected here stays closed even before anything runs behind it.
 

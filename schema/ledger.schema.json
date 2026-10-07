@@ -53,7 +53,7 @@
         "limit": { "type": ["number", "null"], "minimum": 0, "description": "Hours allowed, null until a tier is set." },
         "paused": { "type": "boolean", "description": "True while the clock is paused (usage limit)." },
         "since": { "$ref": "#/$defs/time", "description": "Start of the interval not yet added to used." },
-        "paused_until": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }], "description": "After a usage limit: when it resets. ns health-check resumes a run parked on it after this time." },
+        "paused_until": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }], "description": "After a usage limit: when it resets. ns check resumes a run parked on it after this time." },
         "integrate_from": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "Set by ns-conductor stack-base when it passes; cleared when the run leaves running or is resumed. While set, the integrator may finish over budget up to a margin." }
       }
     },
