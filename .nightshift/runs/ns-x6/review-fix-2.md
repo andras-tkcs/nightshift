@@ -1,20 +1,28 @@
-# Review ns-x6 fix, round 2
+# Review ns-x6 fix, round 2 (rerun)
 
-Range: `origin/main...origin/fix/ns-x6`, head 73cea2ce4dffa318e8a57f08d8fe69a295da9e92. Checked against the mini-plan, CLAUDE.md and .claude/project-profile.yaml. I ran only tests/bats/report.bats, stream.bats and ledger*.bats (all pass), plus one probe of `read_checks_log` on a log that mixes an old-format run with a new `== run` run (the last run is picked correctly).
+Range: `origin/main...origin/fix/ns-x6` at cf26c0f (commits cd32e47 test, 73cea2c fix, d51be51 test, 8359941 fix, cf26c0f tests). Read-only git only, and no checks were run, as the caller asked. This review covers the whole range and looks most closely at the changes since round 1 (73cea2c..cf26c0f).
 
 ## Findings
 
-- blocking · docs/conductor.md:145 · Still says the checks log is "rewritten on each run, so it holds the last run for that target". `ns_profile_checks_run` now appends, and each run starts with `== run <UTC>`. · Say that the log is appended to, that each run opens with `== run <UTC>`, and that `ns report` takes its Checks table from the last run and its Checks breakdown from all runs.
-- blocking · docs/conductor.md:269 · The logs table still describes `<target>.checks.log` as "the last `checks` run for a phase or `feature`". · Change it to "every `checks` run for a phase or `feature`, each opening with `== run <UTC>`".
-- blocking · bin/ns-ledger:139-140, bin/lib/profile.sh:40-41, bin/lib/report_logs.py:316-343 · Two new behaviours have no test. (1) `ns-ledger set` appending a `step` event when `.step` changes. Real T0/T1 runs need it to get a step timeline, and the report test uses a hand-written ledger. (2) The checks log appending with `== run` markers, and the Checks table keeping only the last run (`last`). The ns-x6 checks fixtures have no `== run` lines. · Add bats tests that fail without the change. In ledger.bats: `set '.step="triage"'` adds one `type: step, note: triage` event, and a set that leaves `.step` alone adds none. In report.bats: a checks log with two `== run` blocks lists only the second block in the Checks table, and the breakdown counts both. Optionally add a conductor-loop test that two `checks` runs leave two `== run` lines.
-- non-blocking · docs/ledger.md:46 · The list of event types in use does not include the new `step` type. · Add `step` (note: the new step) to the list.
-- non-blocking · bin/lib/report_logs.py:281 · When a log has no result event, its partial tokens go into `models` with cost 0.0, so the By model table shows `$0.00` for that model instead of `no data`. · Keep that model's cost as None (or flag it as partial) so `money` prints `no data`.
-- non-blocking · bin/lib/profile.sh:41 · `<target>.checks.log` now grows without limit for the life of the run. This is acceptable for one run's logs. · Mention it in the PR body as a possible follow-up (rotation) if logs get large.
+- non-blocking · tests (commit cf26c0f) · The new tests for the `step` event on `ns-ledger set`, the last-run-only Checks table and the two `== run` lines came after the fix commit 73cea2c that added that behaviour, so they did not fail first. They add coverage and weaken nothing, so they are not a defect. · Say in the PR body that these are tests added after the fix, not failing-first tests.
+- non-blocking · bin/lib/report_logs.py:164-166,225-228 · `last_asst` is the latest assistant message in the whole log file, across every session in it. If a later session follows in the same log, a cut-off Agent call in an earlier session gets a time that runs into the later session. · Track the latest assistant time per session and use the one from the Agent call's own session.
+- non-blocking · docs/conductor.md:272 · The log table still has a second, older row for `<target>.checks.log`, `<target>.checks.rc` ("output and exit code of `ns-conductor checks`"). It was already on main, and it now repeats the updated row at line 269. · Remove the duplicate row.
+- non-blocking · bin/lib/report_logs.py:277-285 · Carried over from round 1: the partial-token fallback applies only when the log has no result event at all, which is narrower than mini-plan item 3. docs/usage.md describes it accurately. · Mention it in the PR body.
+- non-blocking · bin/lib/profile.sh, bin/ns-ledger · Carried over from round 1: these files are outside the mini-plan's Files list, but items 2 and 5 need them. · Mention them in the PR body.
 
 ## Summary
 
-The mini-plan's five fixes are in place and their fixtures and tests are in the failing-test commit cd32e47. `ns log` uses each event's own timestamp. The T0/T1 timeline follows `step` events. A log without results gives partial tokens. Foreground subagent time comes from the Agent call to its tool_result, and background launches are excluded. The Checks breakdown is a new table. `expected.md` changed in the fix commit only to add the new breakdown section, which is legitimate. The code looks correct.
+Both round-1 blockers are fixed.
 
-The blocking items are a stale description of the checks log in docs/conductor.md and missing tests for the two supporting changes: the step event in `ns-ledger set`, and the appended checks log with its last-run selection. Nothing was copied from untrusted text, and the diff contains no `.nightshift/` files or secrets.
+1. docs/conductor.md (line 145 and the log table) now says the checks log is appended to, that each run opens with `== run <UTC time>`, and that the report uses the last run for Checks and every run for Checks breakdown.
+2. A cut-off Agent call with no tool result now takes its time up to the latest assistant message (report_logs.py:225-228). That fix has a fixture and test in commit d51be51, which came before fix commit 8359941, and docs/usage.md describes it.
 
-REVIEW verdict=changes head=73cea2ce4dffa318e8a57f08d8fe69a295da9e92
+The round-1 non-blocking points are also handled:
+
+- docs/ledger.md lists `step`.
+- A model with only partial tokens has cost None, and report.jq shows it as `no data`. main() merges a None cost across agents safely.
+- stream-view.py converts timestamps to UTC and falls back to the old slicing if parsing fails.
+
+No test was weakened. No untrusted text was copied into code, docs or tests, and no `.nightshift/` files are on the branch. No blocking findings.
+
+REVIEW verdict=approve head=cf26c0f7e780249bc5b61eef4ac9ed40e92996c7
