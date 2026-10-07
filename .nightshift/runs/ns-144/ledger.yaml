@@ -11,8 +11,8 @@ tags:
 - caddy
 - docs
 - adr
-state: running
-gate: null
+state: waiting
+gate: '1.5'
 step: phases
 stop_requested: null
 branch: plan/ns-144
@@ -20,12 +20,12 @@ feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T08:15:50Z'
+updated: '2026-10-07T08:15:53Z'
 budget:
-  used: 2.52
+  used: 2.53
   limit: 8
   paused: false
-  since: '2026-10-07T08:15:17Z'
+  since: '2026-10-07T08:15:53Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
@@ -82,4 +82,12 @@ events:
   type: note
   note: 'note 1: bootstrap.bats ''step 1 with a failing apt-get'' fails on base 6a21abd
     on ns-main '
+- time: '2026-10-07T08:15:52Z'
+  type: state
+  note: waiting gate 1.5
+- time: '2026-10-07T08:15:52Z'
+  type: gate
+  note: 'gate 1.5: waiting for the owner: The base already fails "step 1 with a failing
+    apt-get ..." on ns-main. Shall I review and merge p1 despite this red check (and
+    note the failure for a separate issue), or do you want it fixed first (an'
 queued_for_slot: false
