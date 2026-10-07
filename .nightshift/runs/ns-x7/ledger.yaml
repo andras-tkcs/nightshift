@@ -1,0 +1,35 @@
+version: 1
+id: ns-x7
+project: nightshift
+request:
+  text: 'Add ''ns note <id> "text"'': an owner-only command that appends a timestamped
+    owner note to the run ledger (new ledger field owner_notes plus an ''owner-note''
+    event, committed and pushed like stop_requested). The conductor reads unread notes
+    at its existing between-step checkpoints (same places it checks stop_requested),
+    treats them as owner instructions that override the plan''s scope, records them
+    as read, and mentions them in the run report. Add it to the guard''s owner-only
+    list, docs/usage.md, docs/ledger.md, docs/conductor.md and tests.'
+tier: null
+tier_source: null
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-x7
+feature_branch: null
+pr: null
+release: v0.1.8
+created: '2026-10-07T10:06:18Z'
+updated: '2026-10-07T10:06:19Z'
+budget:
+  used: 0
+  limit: null
+  paused: false
+  since: '2026-10-07T10:06:19Z'
+phases: []
+events:
+- time: '2026-10-07T10:06:18Z'
+  type: created
+  note: run ns-x7 created
