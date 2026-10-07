@@ -36,6 +36,23 @@ lock() {
   flock -w 30 9 || ns_die "ledger busy"
 }
 
+# BUDGET_TX: jq definition budget_tx($old; $now). The budget clock runs while the state is running and
+# the budget is not paused. When a write starts or stops the clock, the hours up to now are charged
+# (if it ran) and since is set to now, so time spent parked, queued, stopped or at a gate is never
+# charged by the next checkpoint (#9). A write that sets since itself (a dead run leaving running:
+# ns resume, ns drain, ns kill set since to now) is not charged: its gap is not budget used.
+# Leaving running also ends the integrator's exemption (budget.integrate_from).
+# shellcheck disable=SC2016 # jq variables, not shell ones
+BUDGET_TX='def budget_tx($old; $now):
+  def active: .state == "running" and ((.budget.paused // false) | not);
+  if ($old | active) == active then .
+  else (if ($old | active) and .budget.since == $old.budget.since
+        then .budget.used = (((.budget.used + (($now | fromdateiso8601) - ($old.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100)
+        else . end)
+    | .budget.since = $now
+  end
+  | if .state != "running" and (.budget.integrate_from // null) != null then .budget.integrate_from = null else . end;'
+
 # event_filter <type> <note>: filter reading JSON on stdin, writing JSON with the event added.
 event_filter() {
   jq -c --arg now "$(ns_now)" --arg type "$1" --arg note "$2" \
@@ -57,7 +74,7 @@ git_retry() {
 }
 
 cmd_init() {
-  local ledger="$1" id="" project="" issue="" text="" branch="" dir now release
+  local ledger="$1" id="" project="" issue="" text="" branch="" dir now release cand rel
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -78,11 +95,15 @@ cmd_init() {
   lock "$ledger"
   [ ! -e "$ledger" ] || ns_die "ledger exists: $ledger"
   now="$(ns_now)"
-  release="$(basename "${NS_HOME:-}")"
-  if ! [[ $release =~ ^v[0-9] ]]; then
-    release="$(basename "$(readlink -f "${NS_HOME:-/}" 2>/dev/null || true)")"
-    [[ $release =~ ^v[0-9] ]] || release=""
-  fi
+  # a release only for an installed one: ${NS_OPT:-/opt/nightshift}/<tag>, as ns_release_home reads it
+  release=""
+  for cand in "${NS_HOME:-}" "$(readlink -f "${NS_HOME:-/}" 2>/dev/null || true)"; do
+    rel="$(basename "$cand")"
+    if [[ $rel =~ ^v[0-9][0-9A-Za-z._-]*$ ]] && [[ $rel != *..* ]] && [ "$(dirname "$cand")" -ef "${NS_OPT:-/opt/nightshift}" ]; then
+      release="$rel"
+      break
+    fi
+  done
   if jq -n -c --arg release "$release" --arg id "$id" --arg project "$project" --arg issue "$issue" --arg text "$text" \
     --arg branch "$branch" --arg now "$now" '{
       version: 1, id: $id, project: $project,
@@ -115,7 +136,7 @@ cmd_get() {
 cmd_set() {
   local ledger="$1" prog="${2:?usage: ns-ledger set <ledger> <jq-program>}"
   ns_ledger_read "$ledger" |
-    jq -c --arg now "$(ns_now)" "($prog) | .updated = \$now" |
+    jq -c --arg now "$(ns_now)" "$BUDGET_TX . as \$old | ($prog) | budget_tx(\$old; \$now) | .updated = \$now" |
     ns_ledger_write "$ledger"
 }
 
@@ -139,8 +160,9 @@ cmd_state() {
   [ -z "$gate" ] || msg="$msg gate $gate"
   [ -z "$note" ] || msg="$msg: $note"
   ns_ledger_read "$ledger" |
-    jq -c --arg s "$state" --arg g "$gate" --argjson ng "$nogate" \
-      '.state = $s | (if $g != "" then .gate = $g elif $ng == 1 then .gate = null else . end)' |
+    jq -c --arg s "$state" --arg g "$gate" --argjson ng "$nogate" --arg now "$(ns_now)" \
+      "$BUDGET_TX"' . as $old | .state = $s | (if $g != "" then .gate = $g elif $ng == 1 then .gate = null else . end)
+        | budget_tx($old; $now)' |
     event_filter state "$msg" |
     ns_ledger_write "$ledger"
 }
@@ -180,9 +202,12 @@ cmd_checkpoint() {
   now="$(ns_now)"
   json="$(ns_ledger_read "$ledger" | jq -c --arg now "$now" '
     (if .state == "running" and (.budget.paused | not)
-     then .budget.used = ((.budget.used + (($now | fromdateiso8601) - (.budget.since | fromdateiso8601)) / 3600) * 100 | round) / 100
-     else . end)
-    | .budget.since = $now | .updated = $now')"
+     then ((((($now | fromdateiso8601) - (.budget.since | fromdateiso8601)) / 36) | floor) as $u
+           | (if $u > 0 then $u else 0 end) as $u
+           | .budget.used = (((.budget.used * 100 | round) + $u) / 100)
+           | .budget.since = ((.budget.since | fromdateiso8601) + $u * 36 | todateiso8601))
+     else .budget.since = $now end)
+    | .updated = $now')"
   printf '%s\n' "$json" | ns_ledger_write "$ledger"
   state="$(jq -r .state <<<"$json")"
   id="$(jq -r .id <<<"$json")"
@@ -209,7 +234,7 @@ cmd_validate() {
 }
 
 cmd_budget_exceeded() {
-  ns_ledger_read "$1" | jq -e '.budget.limit != null and .budget.used > .budget.limit' >/dev/null
+  ns_ledger_read "$1" | jq -e '.budget.limit != null and .budget.used >= .budget.limit' >/dev/null
 }
 
 main() {

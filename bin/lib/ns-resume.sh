@@ -47,7 +47,9 @@ ns_resume_reconcile() {
   trailer=Plan-Phase
   if project=$(ns_project_by_name "$(jq -r .project <<<"$entry")"); then
     path=$(jq -r .path <<<"$project")
-    trailer=$(ns_profile_json "$path" 2>/dev/null | jq -r '.git.phase_trailer // "Plan-Phase"') || trailer=Plan-Phase
+    # the run's profile: the project's prefix and branch, as ns new and the conductor read it (#14)
+    trailer=$(ns_profile_json "$path" "$(jq -r .prefix <<<"$project")" "$(jq -r '.branch // ""' <<<"$project")" 2>/dev/null |
+      jq -r '.git.phase_trailer // "Plan-Phase"') || trailer=Plan-Phase
     [ -n "$trailer" ] || trailer=Plan-Phase
   fi
   log=$(git -C "$wt" log "origin/$feature" --format=%B 2>/dev/null) || log=""
@@ -62,6 +64,10 @@ ns_resume_reconcile() {
     elif [ "$st" = running ] && ! grep -qxF "$ph" <<<"$live"; then
       "$NS_HOME/bin/ns-ledger" set "$ledger" "(.phases[] | select(.id == \"$ph\") | .state) = \"pending\"" || return 1
       "$NS_HOME/bin/ns-ledger" event "$ledger" note "reconciled $ph as pending: no live worker" || return 1
+    elif [ "$st" = queued ]; then
+      # queued for a pool slot by the last session; the new conductor schedules pending phases
+      "$NS_HOME/bin/ns-ledger" set "$ledger" "(.phases[] | select(.id == \"$ph\") | .state) = \"pending\"" || return 1
+      "$NS_HOME/bin/ns-ledger" event "$ledger" note "reconciled $ph as pending: queued for a pool slot" || return 1
     fi
   done <<<"$phases"
 }
@@ -117,15 +123,24 @@ ns_resume_start() {
     ns_resume_dequeue_check "$id" "$ledger" || return
     state=queued
     mark=true
+    # the upgrade lock taken after the caller's check: the run stays in the queue (#78)
+    ! ns_upgrade_locked quiet || return 10
   else
     if ns_tmux_has "$id"; then
       printf '%s is already running\n' "$id"
       return 0
     fi
+    # the upgrade lock taken after ns_resume_one's check: the run waits in the queue
+    if ns_upgrade_locked quiet; then
+      ns_queue_for_upgrade "$id" "$ledger" "$state" ns_resume_push
+      return
+    fi
     live=$(ns_queue_live_count)
     if [ "$live" -ge "$(ns_queue_max)" ]; then
       if [ "$state" != queued ] || [ "$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false')" != true ]; then
-        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true' || return 1
+        # no live conductor here: a crashed run's dead gap is not budget used (#9)
+        # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+        "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = true | .budget.since = $now' || return 1
         "$NS_HOME/bin/ns-ledger" state "$ledger" queued --note "waiting for a free run slot" || return 1
         "$NS_HOME/bin/ns-ledger" event "$ledger" queued "waiting for a free run slot" || return 1
         ns_resume_push "$id" "$ledger" || return 1
@@ -135,7 +150,11 @@ ns_resume_start() {
     fi
     mark=$("$NS_HOME/bin/ns-ledger" get "$ledger" '.queued_for_slot // false') || return 1
   fi
-  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running"' || return 1
+  # the budget clock restarts now: the gap since the last checkpoint (a crash, a park, the queue, a
+  # stop) is not budget used (#9). ns-ledger set restarts it for any other state; a crashed run was
+  # already running, so set since here too
+  # shellcheck disable=SC2016 # $now is the jq variable of ns-ledger set
+  "$NS_HOME/bin/ns-ledger" set "$ledger" '.stop_requested = null | .queued_for_slot = false | .state = "running" | .budget.since = $now | .budget.integrate_from = null' || return 1
   if ! "$NS_HOME/bin/ns-ledger" event "$ledger" resumed "resumed from $state" ||
     ! ns_resume_push "$id" "$ledger" ||
     ! NS_HOME="$rhome" ns_tmux_start "$id" "$wt" "$rhome/bin/ns-launch $id --resume"; then
@@ -148,6 +167,7 @@ ns_resume_start() {
 # ns_resume_one <id>: returns 10 when the run had to wait in the queue
 ns_resume_one() {
   local id="$1" entry wt ledger state gate rhome
+  ns_upgrade_guard
   entry=$(ns_run_get "$id") || ns_die "unknown run $id"
   wt=$(jq -r .worktree <<<"$entry")
   ledger=$(ns_run_ledger "$id")

@@ -26,7 +26,7 @@ gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
 stop_requested: null             # null | stopped | parked
 branch: plan/sbx-12
-release: v0.1.0                 # Nightshift release the run started on; null for a dev checkout. Resume and workers use it
+release: v0.1.0                 # Nightshift release the run started on (set only when NS_HOME is ${NS_OPT:-/opt/nightshift}/<tag>); null for a dev checkout. Resume and workers use it, scripts and plugins
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
 queued_for_slot: false           # true while the run waits for a free run slot (max_runs); only then does ns dequeue start it
 stacked_on: null                 # null | the base branch (git.base_branch) | run id of the PR this run is stacked on (ns-conductor stack-base)
@@ -34,9 +34,11 @@ stack_skipped: []                # optional; red leaf run PRs stack-base pruned 
 pr: null                         # PR URL
 created: 2026-10-02T21:00:00Z
 updated: 2026-10-02T21:05:00Z
-budget: {used: 0.0, limit: null, paused: false, since: 2026-10-02T21:00:00Z}   # hours
+budget: {used: 0.0, limit: null, paused: false, since: 2026-10-02T21:00:00Z}   # hours; paused_until (optional): usage-limit reset time
+                                 # budget.integrate_from: set by ns-conductor stack-base when it passes, cleared when the run leaves running
 phases:
   - {id: p1-x, title: "...", state: pending, branch: null, worktree: null, attempts: 0, review_rounds: 0}
+    # optional: usage_limits (count), transient_retries (0 or 1), not_before (earliest restart after a transient error)
 events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
@@ -105,7 +107,7 @@ ns-ledger event "$NS_LEDGER" phase-start "p1-x attempt 1"
 ns-ledger state <ledger> <state> [--gate <g> | --no-gate] [--note <text>]
 ```
 
-Sets the state, and the gate when given (`--no-gate` clears it), and appends a `state` event with the note `<state>[ gate <g>]: <text>`.
+Sets the state, and the gate when given (`--no-gate` clears it), and appends a `state` event with the note `<state>[ gate <g>]: <text>`. Like `set`, it keeps the budget clock right (see [The budget clock](#the-budget-clock)).
 
 ```
 ns-ledger state "$NS_LEDGER" waiting --gate 1 --note "plan ready"
@@ -129,7 +131,7 @@ ns-ledger tier "$NS_LEDGER" T2 --source triage --hours 6 --tags python,risk:poli
 ns-ledger checkpoint <ledger> [--push]
 ```
 
-Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the hours since `budget.since`, rounded to 2 decimals; `since` is always set to now. It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
+Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the whole steps of 0.01 h (36 seconds) since `budget.since`, and `since` moves forward by exactly the time charged, so the remainder is carried to the next checkpoint and frequent checkpoints lose nothing; otherwise `since` is set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
 
 With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event and still exits 0; the next checkpoint commits that event.
 
@@ -151,11 +153,15 @@ Exits 0 if the ledger is valid (after recovery, see below), otherwise prints the
 ns-ledger budget-exceeded <ledger>
 ```
 
-Exits 0 if `budget.limit` is set and `budget.used` is greater than it, otherwise exits 1.
+Exits 0 if `budget.limit` is set and `budget.used` has reached it (`used >= limit`), otherwise exits 1. It reads `used` as of the last checkpoint; `ns-conductor budget-check` checkpoints first and escalates.
 
 ```
 ns-ledger budget-exceeded "$NS_LEDGER" && ns-ledger state "$NS_LEDGER" parked --note "budget used up"
 ```
+
+## The budget clock
+
+The clock runs while the state is `running` and `budget.paused` is false. `set` and `state` compare the ledger before and after the write: when the write stops the clock (a gate, a park, a stop, a pause) the hours since `budget.since` are added to `used` first; when it starts the clock again (back to `running`, or an unpause) `since` is set to now. So the next checkpoint never charges time spent queued, at a gate, parked, stopped or paused. A write that sets `since` itself is never charged. A crashed run is still `running`, with the old `since`: every command that moves a run with no live conductor out of that state sets `since` to now in the same write (`ns resume`, also when it has to queue the run, `ns drain` and `ns kill`), so the time it was dead is not charged either. Any write that leaves the run in a state other than `running` also clears `budget.integrate_from`, which ends the integrator's budget exemption (see `ns-conductor budget-check`).
 
 ## Schema drift and live runs
 

@@ -27,9 +27,11 @@ ns_profile_json() {
 # ns_profile_checks_run <dir> <profile json> <log file>: run the profile's checks in <dir> in a clean
 # environment, one line per check on stdout (PASS|SKIP|FAIL <stack> <name>), their output to the log.
 # A python test (or any pytest command) exiting 5 collected no tests: SKIP. Without checks it prints
-# "SKIP no checks configured". Returns 1 when a check failed, else 0.
+# "SKIP no checks configured". Returns 1 when a check failed, else 0. Around each check's output the
+# log gets `== start <stack> <name> <UTC>` and `== end <stack> <name> <UTC> <PASS|FAIL|SKIP> exit <rc>`
+# (ns report reads them, #65).
 ns_profile_checks_run() {
-  local dir="$1" prof="$2" log="$3" n total stack name cmd crc failed=0
+  local dir="$1" prof="$2" log="$3" n total stack name cmd crc res failed=0
   total=$(jq '(.checks // []) | length' <<<"$prof")
   if [ "$total" -eq 0 ]; then
     printf 'SKIP no checks configured\n'
@@ -41,17 +43,20 @@ ns_profile_checks_run() {
     name=$(jq -r ".checks[$n].name" <<<"$prof")
     cmd=$(jq -r ".checks[$n].cmd" <<<"$prof")
     printf '== %s %s: %s\n' "$stack" "$name" "$cmd" >>"$log"
+    printf '== start %s %s %s\n' "$stack" "$name" "$(ns_now)" >>"$log"
     crc=0
     (cd "$dir" && env -i HOME="${HOME:-}" PATH="$PATH" LANG="${LANG:-C.UTF-8}" TERM="${TERM:-dumb}" \
       TMPDIR="${TMPDIR:-/tmp}" bash -c "$cmd") >>"$log" 2>&1 </dev/null || crc=$?
     if [ "$crc" -eq 0 ]; then
-      printf 'PASS %s %s\n' "$stack" "$name"
+      res=PASS
     elif [ "$crc" -eq 5 ] && { { [ "$stack" = python ] && [ "$name" = test ]; } || [[ $cmd == *pytest* ]]; }; then
-      printf 'SKIP %s %s\n' "$stack" "$name"
+      res=SKIP
     else
-      printf 'FAIL %s %s\n' "$stack" "$name"
+      res=FAIL
       failed=1
     fi
+    printf '== end %s %s %s %s exit %s\n' "$stack" "$name" "$(ns_now)" "$res" "$crc" >>"$log"
+    printf '%s %s %s\n' "$res" "$stack" "$name"
   done
   return "$failed"
 }

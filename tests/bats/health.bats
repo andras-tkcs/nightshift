@@ -175,6 +175,75 @@ age_log() { touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/conductor.js
   [ ! -e "$NS_CONFIG_DIR/health/sbx-99" ]
 }
 
+# parked_paused <id> <paused_until or null>: a run parked on a usage-limit pause
+parked_paused() {
+  ns new "$1" --tier T1 --yes >/dev/null
+  rm -f "$TMUX_STUB_DIR/$1"
+  ns-ledger set "$(ledger_of "$1")" ".state = \"parked\" | .budget.paused = true | .budget.paused_until = $2"
+}
+
+@test "health-check resumes a run parked on a usage limit once paused_until has passed" {
+  parked_paused sbx-12 '"2026-10-02T20:30:00Z"'
+  parked_paused sbx-13 '"2026-10-02T23:00:00Z"'
+  parked_paused sbx-14 null
+  run ns health-check
+  assert_success
+  assert_output_contains "resumed sbx-12"
+  assert_output_contains "1 resumed after a usage limit"
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = running ]
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+  [ "$(ns-ledger get "$(ledger_of sbx-13)" .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-13" ]
+  [ "$(ns-ledger get "$(ledger_of sbx-14)" .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-14" ]
+}
+
+@test "health-check resumes a dead running run whose usage pause has passed" {
+  running_run sbx-12
+  rm -f "$TMUX_STUB_DIR/sbx-12"
+  ns-ledger set "$(ledger_of sbx-12)" '.budget.paused = true | .budget.paused_until = "2026-10-02T20:30:00Z"'
+  run ns health-check
+  assert_success
+  assert_output_contains "resumed sbx-12"
+  assert_output_contains "1 resumed after a usage limit"
+  [ -f "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "health-check does not resume a run paused on a usage limit that waits at a gate" {
+  parked_paused sbx-12 '"2026-10-02T20:30:00Z"'
+  ns-ledger set "$(ledger_of sbx-12)" '.gate = "1.5"'
+  run ns health-check
+  assert_success
+  assert_output_contains "0 resumed after a usage limit, 0 queued"
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = parked ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
+@test "health-check counts a woken run that has to queue separately" {
+  printf 'max_runs: 1\n' >"$NS_CONFIG_DIR/config.yaml"
+  running_run sbx-20
+  touch -d "2026-10-02T20:59:00Z" "$NS_CONFIG_DIR/logs/sbx-20/conductor.jsonl"
+  parked_paused sbx-12 '"2026-10-02T20:30:00Z"'
+  run ns health-check
+  assert_success
+  assert_output_contains "queued sbx-12"
+  assert_output_contains "0 resumed after a usage limit, 1 queued"
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = queued ]
+}
+
+@test "ns stop on a run parked on a usage limit stops it and health-check leaves it" {
+  parked_paused sbx-12 '"2026-10-02T20:30:00Z"'
+  run ns stop sbx-12
+  assert_success
+  assert_output_contains "stopped"
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = stopped ]
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" '.budget.paused_until // "none"')" = none ]
+  run ns health-check
+  assert_success
+  [ "$(ns-ledger get "$(ledger_of sbx-12)" .state)" = stopped ]
+  [ ! -e "$TMUX_STUB_DIR/sbx-12" ]
+}
+
 @test "stream-view survives malformed events and keeps going" {
   big=$(head -c 300000 /dev/zero | tr '\0' x)
   {
@@ -197,4 +266,92 @@ age_log() { touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/conductor.js
   printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"a"}]}}' >"$BATS_TEST_TMPDIR/one.jsonl"
   run bash -c "'$NS_REPO_ROOT/bin/lib/stream-view.py' <'$BATS_TEST_TMPDIR/one.jsonl' >&-"
   assert_success
+}
+
+teardown() {
+  [ -z "${CHECKS_PID:-}" ] || kill "$CHECKS_PID" 2>/dev/null || true
+  [ -z "${OTHER_PID:-}" ] || kill "$OTHER_PID" 2>/dev/null || true
+}
+
+# checks_running <id>: a foreground "ns-conductor checks <id> feature" under the conductor's pane
+checks_running() {
+  mkdir -p "$NS_CONFIG_DIR/logs/$1"
+  : >"$NS_CONFIG_DIR/logs/$1/feature.checks.log"
+  touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/$1/feature.checks.log"
+  bash -c "exec -a 'ns-conductor checks $1 feature' sleep 300" 3>&- >/dev/null 2>&1 &
+  CHECKS_PID=$!
+}
+
+@test "a run whose conductor runs its checks is not silent (#56)" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  run ns status sbx-12
+  assert_success
+  assert_output_contains "health   ok"
+  run ns health-check
+  assert_success
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 0 ]
+  # the checks end: silent again
+  kill "$CHECKS_PID"
+  wait "$CHECKS_PID" 2>/dev/null || true
+  run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}
+
+@test "checks of another run, outside the conductor's pane, do not count (#56)" {
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  # the pane is another live process, not an ancestor of the checks
+  sleep 300 3>&- >/dev/null 2>&1 &
+  OTHER_PID=$!
+  export TMUX_STUB_PANE_PID=$OTHER_PID
+  run ns status sbx-12
+  assert_output_contains "health   silent 34m"
+}
+
+@test "a fresh checks log or checks.rc counts as output (#56)" {
+  running_run sbx-12
+  age_log sbx-12
+  : >"$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  touch -d "2026-10-02T20:59:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+  touch -d "2026-10-02T20:26:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.log"
+  printf '0\n' >"$NS_CONFIG_DIR/logs/sbx-12/p1.checks.rc"
+  touch -d "2026-10-02T20:58:00Z" "$NS_CONFIG_DIR/logs/sbx-12/p1.checks.rc"
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+}
+
+@test "a tick that cannot read the ledger does not cause a second notification (#56)" {
+  export NS_NTFY_TOPIC=t
+  running_run sbx-12
+  age_log sbx-12
+  run ns health-check
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+  l="$(ledger_of sbx-12)"
+  # ns-ledger get fails for one tick: its lock file cannot be opened
+  touch "$l.lock"
+  chmod 000 "$l.lock"
+  run ns health-check
+  chmod 644 "$l.lock"
+  assert_output_contains "0 run(s) checked"
+  [ -e "$NS_CONFIG_DIR/health/sbx-12" ]
+  run ns health-check
+  assert_success
+  [ "$(grep -c '^curl ' "$NS_STUB_LOG")" = 1 ]
+}
+
+@test "checks that run longer than NS_CHECKS_MAX_SECS count as silent again (#56 review)" {
+  running_run sbx-12
+  age_log sbx-12
+  checks_running sbx-12
+  run ns status sbx-12
+  assert_output_contains "health   ok"
+  sleep 2
+  NS_CHECKS_MAX_SECS=1 run ns status sbx-12
+  assert_output_contains "health   silent 34m"
 }

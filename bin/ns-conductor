@@ -20,6 +20,8 @@ source "$NS_HOME/bin/lib/stacks.sh"
 source "$NS_HOME/bin/lib/pool.sh"
 # shellcheck source=/dev/null
 source "$NS_HOME/bin/lib/stack-pr.sh"
+# shellcheck source=/dev/null
+source "$NS_HOME/bin/lib/desk.sh"
 # the phase loop subcommands (fix-branch, feature, checks, ...); they use this file's helpers
 if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ]; then
   # shellcheck source=/dev/null
@@ -35,6 +37,7 @@ usage() {
   printf '  check-auto\n'
   printf '  should-stop   <id>\n'
   printf '  park          <id>\n'
+  printf '  budget-check  <id>\n'
   if [ -f "$NS_HOME/bin/lib/conductor-loop.sh" ] && declare -F conductor_loop_usage >/dev/null; then
     conductor_loop_usage
   fi
@@ -78,6 +81,119 @@ phase_update() {
   lg set "$ledger" "if any(.phases[]; .id == $pj) then .phases |= map(if .id == $pj then ($upd) else . end) else .phases += [{id: $pj, title: $tj, state: \"pending\", branch: null, worktree: null, attempts: 0, review_rounds: 0} | ($upd)] end"
 }
 
+# ---------------------------------------------------------------------------
+# budget (R-BUD-1)
+
+# budget_guard <subcommand>: the one budget check of every tier, with the run context loaded.
+# Checkpoints the ledger, so budget.used counts up to now. Returns 0 while the run may go on. A
+# running run with no open gate whose wall-clock budget is used up (used >= limit) has its
+# workers stopped, gets gate 1.5 and a budget event first, then RUN/escalation.md (with a
+# budget_hours line for the owner's answer), published (which notifies); then it returns 4. A run
+# that already waits at that gate over its budget returns 4 and only completes a missing document
+# or desk copy (a check killed half-way). Any other state over budget returns 4 without escalating.
+# <who> integrator marks the integrator's own calls (checks feature, the hooks' budget-check):
+# after stack-base has passed in this running stretch (budget.integrate_from, cleared when the run
+# leaves running or is resumed) they may go on over budget up to max(0.5 h, 25 % of the limit), so
+# the integrator can open the PR and run finish. Serialised by a lock in the run's ledger directory.
+budget_guard() {
+  local rc=0 fd
+  exec {fd}>"$(dirname "$ledger")/budget.lock"
+  if ! flock -w 300 "$fd"; then
+    exec {fd}>&-
+    ns_die "budget check busy for $id"
+  fi
+  budget_guard_locked "$@" || rc=$?
+  exec {fd}>&-
+  return "$rc"
+}
+
+budget_guard_locked() {
+  local by="$1" who="${2:-}" st gate used limit step tier grace last
+  lg checkpoint "$ledger"
+  lg budget-exceeded "$ledger" || return 0
+  IFS=$'\t' read -r st gate used limit step tier grace last < <(lg get "$ledger" \
+    '[.state, (.gate // "-"), .budget.used, .budget.limit, .step, (.tier // "-"),
+      (.state == "running" and .gate == null and .step == "integrate" and (.budget.integrate_from // null) != null
+       and .budget.used < .budget.limit + ([0.5, .budget.limit * 0.25] | max)),
+      ([.events[] | select(.type == "state")] | last | .note // "-")] | @tsv')
+  if [ "$who" = integrator ] && [ "$grace" = true ]; then
+    printf 'budget exceeded: %s h of %s h; stack-base passed, so the integrator may finish (within the margin)\n' "$used" "$limit" >&2
+    return 0
+  fi
+  if [ "$st" = waiting ] && [ "$gate" = 1.5 ]; then
+    if [ "$last" = "waiting gate 1.5: budget used up" ]; then
+      budget_escalation_doc "$by" "$used" "$limit" "$step" "$tier" repair
+    fi
+    printf 'budget exceeded: %s waits at gate 1.5 for the owner; end this session now\n' "$id"
+    return 4
+  fi
+  if [ "$st" != running ] || [ "$gate" != - ]; then
+    printf 'budget exceeded (state %s, gate %s); nothing escalated\n' "$st" "$gate"
+    return 4
+  fi
+  stop_workers "$id"
+  lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
+  # the gate first: a check killed after this leaves a run at the gate, never a running run with
+  # an escalation document; the next check completes the document and the desk copy
+  lg event "$ledger" budget "budget used up: $used h of $limit h (ns-conductor $by)"
+  lg state "$ledger" waiting --gate 1.5 --note "budget used up"
+  # a gate event like ns-conductor gate writes: ns report counts the wait and shows its cause (#118)
+  lg event "$ledger" gate "gate 1.5: waiting for the owner: budget used up: $used h of $limit h"
+  budget_escalation_doc "$by" "$used" "$limit" "$step" "$tier"
+  printf 'budget exceeded: %s h of %s h; escalated at gate 1.5 (RUN/escalation.md); end this session now\n' "$used" "$limit"
+  return 4
+}
+
+# budget_escalation_doc <by> <used> <limit> <step> <tier> [repair]: write and commit
+# RUN/escalation.md, push the ledger and publish the document. With repair it does nothing when the
+# budget document and its desk copy are both there.
+budget_escalation_doc() {
+  local by="$1" used="$2" limit="$3" step="$4" tier="$5" repair="${6:-}" rel esc desk
+  rel=".nightshift/runs/$id/escalation.md"
+  esc="$wt/$rel"
+  desk="$(ns_desk_run_dir "$(jq -r .project <<<"$run")" "$id")/escalation.md"
+  # a repair keeps the document only when it is this escalation's: the budget heading, the hours
+  # used and the current limit (an older budget document may name a lower budget_hours)
+  local current=0
+  if head -n 1 "$esc" 2>/dev/null | grep -qx '# Budget exceeded' &&
+    grep -qF "used $used h of its $limit h" "$esc" && grep -qx "budget_hours: $limit" "$esc"; then
+    current=1
+  fi
+  if [ -n "$repair" ] && [ "$current" -eq 1 ] && [ -f "$desk" ]; then
+    return 0
+  fi
+  if [ "$current" -eq 0 ] || [ -z "$repair" ]; then
+    mkdir -p "$(dirname "$esc")"
+    cat >"$esc.tmp.$$" <<ESC
+# Budget exceeded
+
+Run $id ($tier) used $used h of its $limit h wall-clock budget at step \`$step\`. The deterministic budget check in \`ns-conductor $by\` stopped its workers and escalated the run here (R-BUD-1).
+
+## Question
+
+Give the run more time, or stop it? To continue, raise \`budget_hours\` below to the new limit in hours (above $used), then run \`ns approve $id\`. To end the run, run \`ns stop $id\` instead.
+
+## Owner's answer
+
+budget_hours: $limit
+ESC
+    mv -f "$esc.tmp.$$" "$esc"
+  fi
+  if ! { git -C "$wt" add -f -- "$rel" && { git -C "$wt" diff --cached --quiet -- "$rel" ||
+    git -C "$wt" commit -q -m "ns: budget escalation for $id" -- "$rel"; }; } >/dev/null 2>&1; then
+    ns_warn "could not commit $rel"
+  fi
+  lg checkpoint "$ledger" --push
+  "$NS_HOME/bin/ns" publish "$id" RUN/escalation.md >&2 || ns_warn "could not publish RUN/escalation.md"
+}
+
+conductor_budget_check() {
+  [ $# -eq 1 ] || ns_usage "ns-conductor budget-check <id>"
+  load_run "$1"
+  # called by the plugin's hooks: during the integration that includes the integrator's calls
+  budget_guard budget-check integrator
+}
+
 valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }
 
 # ---------------------------------------------------------------------------
@@ -85,7 +201,8 @@ valid_phase_id() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]] && [[ $1 != *--* ]]; }
 
 conductor_check_auto() {
   local out rc=0 reason=""
-  out=$(timeout 180 "${NS_CLAUDE:-claude}" -p --permission-mode auto --max-turns 4 --model sonnet \
+  # the nested call is no conductor: it must not see (or hook into) the run's ledger
+  out=$(env -u NS_RUN_ID -u NS_LEDGER timeout 180 "${NS_CLAUDE:-claude}" -p --permission-mode auto --max-turns 4 --model sonnet \
     --output-format json "Run the bash command true, then reply with the single word ok." </dev/null 2>/dev/null) || rc=$?
   if [ "$rc" -eq 0 ]; then
     if jq -e '.is_error != true and ((.permission_denials // []) | length == 0)' <<<"$out" >/dev/null 2>&1; then
@@ -121,6 +238,54 @@ auto_mode_fresh() {
 # ---------------------------------------------------------------------------
 # start
 
+# queue_phase <phase> <reason>: the phase waits for a pool slot
+queue_phase() {
+  phase_update "$1" '.state = "queued"' &&
+    lg event "$ledger" note "queued $1: $2" &&
+    printf 'queued %s: %s\n' "$1" "$2"
+}
+
+# spawn_worker: run by conductor_start under the pool lock (ns_pool_locked), with its locals.
+# Counts the live workers again, starts the worker detached and waits up to 5 seconds for its
+# pid file, so a second start sees this worker in its count. Returns 10 when the phase already
+# has a live worker and 3 (phase queued) when the pool is full. Called as `... || rc=$?`, so
+# set -e is off here: every step checks its own result.
+spawn_worker() {
+  local n max i=0
+  if ns_pool_live "$id" | grep -qx "$id $phase"; then
+    return 10
+  fi
+  n=$(ns_pool_count) || ns_die "cannot count the workers"
+  max=$(ns_pool_max) || ns_die "cannot read max_workers"
+  if [ "$n" -ge "$max" ]; then
+    queue_phase "$phase" "pool full ($n/$max)" || ns_die "cannot queue $phase"
+    return 3
+  fi
+  rm -f "$pidf" "$exf" || ns_die "cannot remove the old pid file of $phase"
+  (
+    cd "$pwt" || exit 1
+    # 9>&-: the worker must not inherit the pool lock
+    # shellcheck disable=SC2016
+    setsid bash -c '
+      pf=$1; ef=$2; prompt=$3; log=$4; run=$5; phase=$6; model=$7; turns=$8; started=$9
+      shift 9
+      printf "pid=%s\nrun=%s\nphase=%s\nstarted=%s\n" "$$" "$run" "$phase" "$started" >"$pf.tmp"
+      mv "$pf.tmp" "$pf"
+      env BASH_DEFAULT_TIMEOUT_MS=600000 BASH_MAX_TIMEOUT_MS=600000 NS_WORKER=1 NS_PHASE="$phase" NS_LEDGER= \
+        "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
+        --max-turns "$turns" --model "$model" --agent ns:implementer "$@" <"$prompt" >"$log" 2>&1
+      echo $? >"$ef"
+    ' ns-worker "$pidf" "$exf" "$prompt" "$log" "$id" "$phase" "$model" "$turns" "$started" "${plugin_args[@]}" \
+      </dev/null >/dev/null 2>&1 9>&- &
+  ) || ns_die "cannot start the worker for $phase"
+  while [ "$i" -lt 50 ]; do
+    [ -f "$pidf" ] && break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ -f "$pidf" ] || ns_die "worker for $phase did not start"
+}
+
 conductor_start() {
   [ $# -ge 2 ] || ns_usage "ns-conductor start <id> <phase> [--feedback <file>]"
   local phase="$2" feedback="" entry title mode feature pbranch pwt model turns n max
@@ -148,19 +313,27 @@ conductor_start() {
     return 0
   fi
 
-  # 1. pool
+  # 1. pool: a quick look before the worktree work; step 7 counts again under the pool lock
   n=$(ns_pool_count)
   max=$(ns_pool_max)
   if [ "$n" -ge "$max" ]; then
-    phase_update "$phase" '.state = "queued"'
-    lg event "$ledger" note "queued $phase: pool full ($n/$max)"
-    printf 'queued %s: pool full (%s/%s)\n' "$phase" "$n" "$max"
+    queue_phase "$phase" "pool full ($n/$max)" || ns_die "cannot queue $phase"
     return 3
   fi
   # 2. budget
-  if lg budget-exceeded "$ledger"; then
-    printf 'budget exceeded\n'
-    return 4
+  budget_guard start || return
+  # 2b. usage-limit pause and transient-retry backoff (exit 8)
+  local pu nb now
+  now=$(now_epoch)
+  pu=$(lg get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end')
+  if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$now" ]; then
+    printf 'usage limit: paused until %s\n' "$pu"
+    return 8
+  fi
+  nb=$(phase_get "$phase" not_before '""')
+  if [ -n "$nb" ] && [ "$(date -u -d "$nb" +%s)" -gt "$now" ]; then
+    printf '%s: transient error, retry not before %s\n' "$phase" "$nb"
+    return 8
   fi
   # 3. auto mode
   mode="${NS_WORKER_MODE:-$(ns_config_get worker_mode auto)}"
@@ -204,6 +377,12 @@ conductor_start() {
   mkdir -p "$workers"
   prompt="$logdir/$phase.prompt.md"
   log="$logdir/$phase.jsonl"
+  # keep an earlier attempt's log (its tokens and cost) as <phase>--attempt<n>.jsonl (#65)
+  if [ -s "$log" ]; then
+    n=1
+    while [ -e "$logdir/$phase--attempt$n.jsonl" ]; do n=$((n + 1)); done
+    mv "$log" "$logdir/$phase--attempt$n.jsonl"
+  fi
   docs=$(jq -r '.docs // {} | to_entries[] | .value' <<<"$profile" | sed 's/^/- /')
   [ -n "$docs" ] || docs="- (none)"
   checks=$(jq -r '.checks // [] | .[] | "- \(.stack) \(.name): \(.cmd)"' <<<"$profile")
@@ -235,41 +414,32 @@ conductor_start() {
     printf 'then the checks you ran with their results, and anything you could not do.\n'
   } >"$prompt"
   rm -rf "$tmp"
-  # 7. spawn
+  # 7. spawn, under the pool lock (R-CON-2)
   model=$(jq -r --argjson e "$entry" '$e.model // .agents.implementer.model // "sonnet"' <<<"$profile")
   turns=$(ns_config_get worker_max_turns 200)
   pidf="$workers/$id--$phase.pid"
   exf="$workers/$id--$phase.exit"
-  rm -f "$pidf" "$exf"
   started=$(ns_now)
   local -a plugin_args=()
   mapfile -t plugin_args < <(ns_plugin_args)
   export NS_WORKER_MODE="$mode"
-  (
-    cd "$pwt"
-    # shellcheck disable=SC2016
-    setsid bash -c '
-      pf=$1; ef=$2; prompt=$3; log=$4; run=$5; phase=$6; model=$7; turns=$8; started=$9
-      shift 9
-      printf "pid=%s\nrun=%s\nphase=%s\nstarted=%s\n" "$$" "$run" "$phase" "$started" >"$pf.tmp"
-      mv "$pf.tmp" "$pf"
-      env BASH_DEFAULT_TIMEOUT_MS=600000 BASH_MAX_TIMEOUT_MS=600000 NS_WORKER=1 NS_PHASE="$phase" NS_LEDGER= \
-        "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
-        --max-turns "$turns" --model "$model" --agent ns:implementer "$@" <"$prompt" >"$log" 2>&1
-      echo $? >"$ef"
-    ' ns-worker "$pidf" "$exf" "$prompt" "$log" "$id" "$phase" "$model" "$turns" "$started" "${plugin_args[@]}" \
-      </dev/null >/dev/null 2>&1 &
-  )
-  local i=0 pid=""
-  while [ "$i" -lt 50 ]; do
-    [ -f "$pidf" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  [ -f "$pidf" ] || ns_die "worker for $phase did not start"
+  local rc=0 pid=""
+  ns_pool_locked spawn_worker || rc=$?
+  case "$rc" in
+    0) ;;
+    10)
+      printf '%s already running\n' "$phase"
+      return 0
+      ;;
+    12)
+      queue_phase "$phase" "pool lock busy" || ns_die "cannot queue $phase"
+      return 3
+      ;;
+    *) return "$rc" ;;
+  esac
   pid=$(ns_pool_field "$pidf" pid)
   # 8. ledger
-  phase_update "$phase" ".state = \"running\" | .attempts += 1 | .branch = $(jstr "$pbranch") | .worktree = $(jstr "$pwt")" "$title"
+  phase_update "$phase" ".state = \"running\" | .not_before = null | .attempts += 1 | .branch = $(jstr "$pbranch") | .worktree = $(jstr "$pwt")" "$title"
   lg event "$ledger" phase-start "$phase attempt: pid $pid"
   lg checkpoint "$ledger"
   printf 'started %s pid %s\n' "$phase" "$pid"
@@ -278,9 +448,27 @@ conductor_start() {
 # ---------------------------------------------------------------------------
 # wait
 
+# Usage limits (R-BUD-2, R-USE-4): bin/lib/usage_limit.py classifies the last result. A
+# usage limit pauses the budget until the reset time (or a backoff of 15 min, doubling, at most
+# 4 h, when no reset time can be read); the conductor parks the run and ns health-check resumes
+# it. A limit that does not reset, or the (USAGE_LIMIT_MAX+1)th limit of a phase, escalates.
+# A capacity 429 or a 529 overload is retried once after TRANSIENT_BACKOFF seconds.
+USAGE_LIMIT_MAX=3
+USAGE_BACKOFF=900
+USAGE_BACKOFF_MAX=14400
+TRANSIENT_BACKOFF=60
+
+now_epoch() { date -u -d "$(ns_now)" +%s; }
+iso_of() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+
+# phase_get <phase> <field> <default>
+phase_get() {
+  lg get "$ledger" "[.phases[] | select(.id == $(jstr "$1")) | .$2] | (.[0] // $3)"
+}
+
 # finish_worker <pid file>: handle one finished worker; prints one line
 finish_worker() {
-  local f="$1" base phase code ef lastres done_dir
+  local f="$1" base phase code ef lastres done_dir cls kind until msg now n backoff tr
   base=${f##*/}
   base=${base%.pid}
   phase=${base#*--}
@@ -298,21 +486,68 @@ finish_worker() {
   if [ -f "$logdir/$phase.jsonl" ]; then
     lastres=$(jq -R -c 'fromjson? | select(.type == "result")' "$logdir/$phase.jsonl" 2>/dev/null | tail -n1) || lastres=""
   fi
-  if [ -n "$lastres" ] && jq -e 'tojson | test("usage limit|rate limit"; "i")' <<<"$lastres" >/dev/null 2>&1; then
-    printf 'finished %s usage-limit\n' "$phase"
-    lg set "$ledger" '.budget.paused = true'
-    lg event "$ledger" usage-pause "$phase hit a usage limit"
-    phase_update "$phase" '.state = "pending"'
-  else
-    printf 'finished %s exit %s\n' "$phase" "$code"
-    phase_update "$phase" '.state = "review"'
-    lg event "$ledger" phase-end "$phase exit $code"
+  now=$(now_epoch)
+  kind=none
+  until=-
+  msg=""
+  if [ -n "$lastres" ]; then
+    cls=$(python3 "$NS_HOME/bin/lib/usage_limit.py" "$now" <<<"$lastres") || cls=none
+    IFS=$'\t' read -r kind until msg <<<"$cls" || true
   fi
+  case "$kind" in
+    usage | usage-final)
+      n=$(($(phase_get "$phase" usage_limits 0) + 1))
+      phase_update "$phase" ".state = \"pending\" | .usage_limits = $n"
+      lg set "$ledger" '.budget.paused = true'
+      if [ "$kind" = usage-final ] || [ "$n" -gt "$USAGE_LIMIT_MAX" ]; then
+        [ "$kind" = usage-final ] || msg="$n usage limits in this phase"
+        lg set "$ledger" '.budget.paused_until = null'
+        lg event "$ledger" usage-pause "$phase hit a usage limit; escalate: $msg"
+        printf 'finished %s usage-limit escalate: %s\n' "$phase" "$msg"
+        return 0
+      fi
+      if ! [[ $until =~ ^[0-9]+$ ]]; then
+        backoff=$((USAGE_BACKOFF << (n - 1)))
+        [ "$backoff" -le "$USAGE_BACKOFF_MAX" ] || backoff=$USAGE_BACKOFF_MAX
+        until=$((now + backoff))
+      fi
+      lg set "$ledger" ".budget.paused_until = $(jstr "$(iso_of "$until")")"
+      lg event "$ledger" usage-pause "$phase hit a usage limit; paused until $(iso_of "$until"): $msg"
+      printf 'finished %s usage-limit until %s\n' "$phase" "$(iso_of "$until")"
+      ;;
+    transient)
+      tr=$(phase_get "$phase" transient_retries 0)
+      if [ "$tr" -lt 1 ]; then
+        until=$(iso_of $((now + TRANSIENT_BACKOFF)))
+        phase_update "$phase" ".state = \"pending\" | .transient_retries = 1 | .not_before = $(jstr "$until")"
+        lg event "$ledger" phase-end "$phase transient error, retry at $until: $msg"
+        printf 'finished %s transient retry at %s\n' "$phase" "$until"
+        return 0
+      fi
+      printf 'finished %s exit %s\n' "$phase" "$code"
+      phase_update "$phase" '.state = "review" | .transient_retries = 0 | .not_before = null'
+      lg event "$ledger" phase-end "$phase exit $code (transient error again: $msg)"
+      ;;
+    *)
+      printf 'finished %s exit %s\n' "$phase" "$code"
+      phase_update "$phase" '.state = "review" | .transient_retries = 0 | .not_before = null'
+      lg event "$ledger" phase-end "$phase exit $code"
+      ;;
+  esac
+}
+
+# due_retry: prints "<epoch> <phase>" of the earliest pending phase with a not_before, if any
+due_retry() {
+  local nb ph
+  while IFS=$'\t' read -r ph nb; do
+    [ -n "$ph" ] || continue
+    printf '%s %s\n' "$(date -u -d "$nb" +%s)" "$ph"
+  done < <(lg get "$ledger" '.phases[] | select(.state == "pending" and (.not_before // null) != null) | [.id, .not_before] | @tsv') | sort -n | head -n1
 }
 
 conductor_wait() {
   [ $# -ge 1 ] || ns_usage "ns-conductor wait <id> [--timeout <s>]"
-  local id="$1" timeout=540 deadline now remaining sr f base pid finished live
+  local id="$1" timeout=540 deadline now remaining sr f base pid finished live queued=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -351,13 +586,43 @@ conductor_wait() {
       return 0
     fi
     if [ "${#live[@]}" -eq 0 ]; then
-      printf 'no workers\n'
+      local due nb ph delay
+      due=$(due_retry)
+      # a transient error's retry that is due (or soon due) comes first
+      if [ -n "$due" ]; then
+        nb=${due%% *}
+        ph=${due#* }
+        delay=$((nb - $(now_epoch)))
+        remaining=$((deadline - $(date +%s)))
+        if [ "$delay" -gt "$remaining" ]; then
+          [ "$remaining" -le 0 ] || sleep "$remaining"
+          printf 'still waiting: retry %s at %s\n' "$ph" "$(iso_of "$nb")"
+          return 124
+      fi
+      [ "$delay" -le 0 ] || sleep "$delay"
+      printf 'retry %s\n' "$ph"
       return 0
+      fi
+      # a phase queued for a pool slot: sleep until another run's worker frees one, so the
+      # caller's retry of start after exit 3 is not a tight loop
+      queued=$(lg get "$ledger" '[.phases[]? | select(.state == "queued") | .id] | join(" ")')
+      if [ -z "$queued" ]; then
+        printf 'no workers\n'
+        return 0
+      fi
+      if [ "$(ns_pool_count)" -lt "$(ns_pool_max)" ]; then
+        printf 'pool slot free\n'
+        return 0
+      fi
     fi
     now=$(date +%s)
     remaining=$((deadline - now))
     if [ "$remaining" -le 0 ]; then
-      printf 'still running: %s\n' "${live[*]}"
+      if [ "${#live[@]}" -eq 0 ]; then
+        printf 'pool full: %s waits for a slot\n' "$queued"
+      else
+        printf 'still running: %s\n' "${live[*]}"
+      fi
       return 124
     fi
     [ "$remaining" -le 5 ] || remaining=5
@@ -416,7 +681,9 @@ conductor_stop() {
 conductor_should_stop() {
   [ $# -eq 1 ] || ns_usage "ns-conductor should-stop <id>"
   load_run "$1"
-  [ -n "$(lg get "$ledger" '.stop_requested // empty')" ]
+  [ -z "$(lg get "$ledger" '.stop_requested // empty')" ] || return 0
+  budget_guard should-stop || return
+  return 1
 }
 
 conductor_park() {
@@ -425,6 +692,8 @@ conductor_park() {
   load_run "$1"
   sr=$(lg get "$ledger" '.stop_requested // empty')
   [ -n "$sr" ] || sr=parked
+  # an open gate (a budget escalation, for example) stays open: the run keeps waiting there
+  [ -z "$(lg get "$ledger" '.gate // empty')" ] || sr=waiting
   stop_workers "$1"
   lg set "$ledger" '.phases |= map(if .state == "running" then .state = "pending" else . end)'
   lg state "$ledger" "$sr" --note "conductor ended its session"
@@ -454,6 +723,7 @@ main() {
       ;;
     should-stop) conductor_should_stop "$@" ;;
     park) conductor_park "$@" ;;
+    budget-check) conductor_budget_check "$@" ;;
     *)
       # later subcommands live in conductor-loop.sh (phase p16): it defines
       # conductor_loop_dispatch <subcommand> [args], which returns 64 for an unknown one

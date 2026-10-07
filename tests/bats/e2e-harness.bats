@@ -206,3 +206,109 @@ new file mode 100644
   [ "$status" -eq 0 ]
   [ "$output" = "$(printf 'KEEP.md\t-old\nKEEP.md\t+new\nGONE.md\t-gone line\nNEW.md\t+fresh')" ]
 }
+
+# e2e_runs_fixture: two runs in runs.yaml; sbx-1 has a ledger in its worktree, sbx-2 has none,
+# and a stray notes.md of sbx-1 sits in an older directory under E2E_ROOT
+e2e_runs_fixture() {
+  E2E_ROOT="$BATS_TEST_TMPDIR/root"
+  RUN1="$E2E_ROOT/coding/worktrees/sandbox-sbx-1/.nightshift/runs/sbx-1"
+  mkdir -p "$RUN1" "$E2E_ROOT/aaa-old/.nightshift/runs/sbx-1" "$E2E_ROOT/coding/worktrees/sandbox-sbx-2"
+  printf 'id: sbx-1\n' >"$RUN1/ledger.yaml"
+  printf '1. stray\n2. stray\n' >"$E2E_ROOT/aaa-old/.nightshift/runs/sbx-1/notes.md"
+  cat >"$NS_CONFIG_DIR/runs.yaml" <<YAML
+runs:
+  - id: sbx-1
+    worktree: $E2E_ROOT/coding/worktrees/sandbox-sbx-1
+  - id: sbx-2
+    worktree: $E2E_ROOT/coding/worktrees/sandbox-sbx-2
+YAML
+}
+
+@test "e2e_run_dir resolves RUN/ from the worktree that holds the run's ledger (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  e2e_runs_fixture
+  run e2e_run_dir sbx-1
+  [ "$status" -eq 0 ]
+  [ "$output" = "$RUN1" ]
+  # no ledger in the worktree, or an unknown run: no directory
+  run e2e_run_dir sbx-2
+  [ "$status" -ne 0 ]
+  run e2e_run_dir sbx-9
+  [ "$status" -ne 0 ]
+}
+
+@test "t1_notes_match reads notes.md of the run's own worktree, not the first copy find sees (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/t1.sh"
+  e2e_runs_fixture
+  # the ledger has no note events
+  e2e_ledger_has() { return 1; }
+  run t1_notes_match sbx-1
+  [ "$status" -eq 0 ]
+  printf '1. real\n' >"$RUN1/notes.md"
+  run t1_notes_match sbx-1
+  [ "$status" -ne 0 ]
+  # a run whose ledger cannot be found is a failure, not a pass
+  run t1_notes_match sbx-2
+  [ "$status" -ne 0 ]
+}
+
+@test "t1_no_denial matches the auto mode classifier denial text of Claude Code (ns-71)" {
+  E2E_REPO=owner/sandbox
+  # shellcheck source=/dev/null
+  source "$E2E/lib.sh"
+  # shellcheck source=/dev/null
+  source "$E2E/scenarios/t1.sh"
+  mkdir -p "$NS_CONFIG_DIR/logs/sbx-1"
+  log="$NS_CONFIG_DIR/logs/sbx-1/conductor.jsonl"
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}\n' >"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -eq 0 ]
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: pushes to main"}]}}\n' >>"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -ne 0 ]
+  printf '{"type":"result","result":"Auto mode could not evaluate this action and is blocking it for safety"}\n' >"$log"
+  run t1_no_denial sbx-1
+  [ "$status" -ne 0 ]
+}
+
+@test "pool-watch.sh counts live workers from pid files and session-leader processes, read-only (#10)" {
+  d="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$d/workers"
+  # a worker is a session leader (ns-conductor starts it with setsid); its forked child is not
+  NS_CONFIG_DIR="$d" setsid bash -c 'echo $$ >"$1"; ( sleep 30; true ) & sleep 30; true' ns-worker "$BATS_TEST_TMPDIR/w.pid" &
+  for _ in $(seq 1 50); do [ -s "$BATS_TEST_TMPDIR/w.pid" ] && break; sleep 0.1; done
+  live=$(cat "$BATS_TEST_TMPDIR/w.pid")
+  printf 'pid=%s\n' "$live" >"$d/workers/app-1--p1.pid"
+  printf 'pid=999999\n' >"$d/workers/app-1--p2.pid"
+  printf 'pid=%s\n' "$live" >"$d/workers/app-2--p1.pid"
+  echo 0 >"$d/workers/app-2--p1.exit"
+  before=$(find "$d" -type f -printf '%p %s %T@\n' | sort)
+  run "$E2E/pool-watch.sh" --config-dir "$d" --once
+  kill -- "-$live" 2>/dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"live=1 procs=1 max_live=1 max_procs=1 app-1--p1"* ]]
+  [[ "$output" == *"max live workers seen: 1 (procs: 1)"* ]]
+  [[ "$output" != *"No such file"* ]]
+  [ "$(find "$d" -type f -printf '%p %s %T@\n' | sort)" = "$before" ]
+  run "$E2E/pool-watch.sh" --interval 0
+  [ "$status" -eq 2 ]
+}
+
+@test "pool-watch.sh fails when a live pid file has no ns-worker process for that home (#10)" {
+  d="$BATS_TEST_TMPDIR/home"
+  mkdir -p "$d/workers"
+  # a live process, but not an ns-worker of this home: the cross-check must not stay silent at 0
+  sleep 30 &
+  printf 'pid=%s\n' "$!" >"$d/workers/app-1--p1.pid"
+  run "$E2E/pool-watch.sh" --config-dir "$d" --once
+  kill "$!" 2>/dev/null || true
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"live=1 procs=0"* ]]
+  [[ "$output" == *"no ns-worker process"* ]]
+}

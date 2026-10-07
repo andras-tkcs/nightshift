@@ -141,11 +141,12 @@ ns_tmux_has() { tmux has-session -t "=$1" 2>/dev/null; }
 ns_tmux_kill() { tmux kill-session -t "=$1"; }
 ns_tmux_pane_pid() { tmux list-panes -t "=$1" -F '#{pane_pid}' | head -1; }
 
-# ns_run_log_mtime <id>: epoch seconds of the newest conductor or phase log, empty when none
+# ns_run_log_mtime <id>: epoch seconds of the newest conductor, phase or checks log (or
+# checks.rc marker), empty when none
 ns_run_log_mtime() {
   local dir f m best=""
   dir="$(ns_config_dir)/logs/$1"
-  for f in "$dir"/*.jsonl; do
+  for f in "$dir"/*.jsonl "$dir"/*.checks.log "$dir"/*.checks.rc; do
     [ -f "$f" ] || continue
     m=$(stat -c %Y "$f" 2>/dev/null) || continue
     if [ -z "$best" ] || [ "$m" -gt "$best" ]; then best=$m; fi
@@ -163,9 +164,29 @@ ns_run_idle_s() {
   printf '%s\n' $((now - m))
 }
 
+# ns_run_checks_busy <id> <pane pid>: true when an "ns-conductor checks <id> ..." process runs
+# under the conductor's tmux pane (a long foreground check writes nothing to the JSONL logs) for
+# less than NS_CHECKS_MAX_SECS (default 3600): a check that runs longer may hang, and is silent
+ns_run_checks_busy() {
+  local p q n et max=${NS_CHECKS_MAX_SECS:-3600}
+  for p in $(pgrep -f -- "ns-conductor checks $1( |\$)" 2>/dev/null); do
+    et=$(ps -o etimes= -p "$p" 2>/dev/null | tr -d ' ') || et=""
+    [[ $et =~ ^[0-9]+$ ]] && [ "$et" -lt "$max" ] || continue
+    q=$p
+    n=0
+    while [[ $q =~ ^[0-9]+$ ]] && [ "$q" -gt 1 ] && [ "$n" -lt 64 ]; do
+      [ "$q" != "$2" ] || return 0
+      q=$(ps -o ppid= -p "$q" 2>/dev/null | tr -d ' ') || q=""
+      n=$((n + 1))
+    done
+  done
+  return 1
+}
+
 # ns_run_health <id> <state> <gate>: prints ok, dead or "silent <N>m".
 # Only a running run with no open gate can be unhealthy: dead when its tmux session or the
-# session's pane process is gone, silent when its log has not grown for NS_SILENT_SECS (1200).
+# session's pane process is gone, silent when its logs (JSONL, checks log, checks.rc) have not
+# grown for NS_SILENT_SECS (1200) and the conductor is not running its checks.
 ns_run_health() {
   local id="$1" state="$2" gate="${3:-}" pid idle limit
   if [ "$state" != running ] || { [ -n "$gate" ] && [ "$gate" != null ]; }; then
@@ -183,7 +204,7 @@ ns_run_health() {
   fi
   limit=${NS_SILENT_SECS:-1200}
   idle=$(ns_run_idle_s "$id")
-  if [ -n "$idle" ] && [ "$idle" -ge "$limit" ]; then
+  if [ -n "$idle" ] && [ "$idle" -ge "$limit" ] && ! { [[ $pid =~ ^[0-9]+$ ]] && ns_run_checks_busy "$id" "$pid"; }; then
     printf 'silent %sm\n' $((idle / 60))
     return 0
   fi
@@ -202,9 +223,11 @@ ns_secs_fmt() {
   fi
 }
 
-# ns_escalation_question <escalation.md>: the "## Question" section as one line, at most 200 chars
+# ns_escalation_question <escalation.md>: the "## Question" section as one line, at most 200
+# characters (not bytes); tabs and line ends become spaces, other control characters are dropped
 ns_escalation_question() {
-  local q
-  q=$(awk '/^## /{f = ($0 ~ /^## Question[[:space:]]*$/); next} f' "$1" | tr '\n' ' ' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  local q LC_ALL=C.UTF-8
+  q=$(awk '/^## /{f = ($0 ~ /^## Question[[:space:]]*$/); next} f' "$1" | tr '\n\r\t' '   ' | tr -d '[:cntrl:]' |
+    sed 's/  */ /g; s/^[[:space:]]*//; s/[[:space:]]*$//')
   printf '%s\n' "${q:0:200}"
 }

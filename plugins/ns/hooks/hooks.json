@@ -1,5 +1,8 @@
 {"hooks": {
-  "PreToolUse": [{"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read|Grep|Glob|LS", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh\""}]}],
-  "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/checkpoint.sh\""}]}],
+  "PreToolUse": [
+    {"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read|Grep|Glob|LS", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh\""}]},
+    {"matcher": "*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/budget.sh\"", "timeout": 90}]}
+  ],
+  "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/checkpoint.sh\"", "timeout": 150}]}],
   "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\""}]}]
 }}

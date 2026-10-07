@@ -43,13 +43,13 @@ ns ls
 ns resume --all
 ```
 
-`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked or crashed run; runs you stopped with `ns stop` or `ns kill` stay stopped (it names them) until you `ns resume <id>` them. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` timer come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
+`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked or crashed run; runs you stopped with `ns stop` or `ns kill` stay stopped (it names them) until you `ns resume <id>` them. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` and `ns health-check` timers come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
 
 ## A run that stopped without telling you
 
 Runs beyond `max_runs` (default 2, in `config.yaml`) wait as `queued`: `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position. They start by themselves when a conductor ends; `ns dequeue` starts them by hand and `ns new --now` skips the queue. After a reboot `ns resume --all` starts as many runs as `max_runs` allows and queues the rest.
 
-`ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to the log for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
+`ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to its logs (the JSONL logs, a checks log or `.checks.rc`) for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. A run whose conductor is running `ns-conductor checks` is not silent while the checks have run for less than `NS_CHECKS_MAX_SECS` (default 3600); a check that runs longer may hang and counts as silent again. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
 
 ## Cleanup: what `ns gc` drops
 
@@ -97,7 +97,11 @@ Nightshift runs from a release under `/opt/nightshift/<tag>`, not from your dev 
 /opt/nightshift/current/bin/bootstrap.sh --upgrade <tag>
 ```
 
-It installs `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current` to it, and re-pins the plugin marketplace and plugins to that tag. Earlier releases stay in place, and a run keeps using the release it started on (recorded as `release` in its ledger), so keep an old release until no run points at it. The upgrade refuses with exit 1 while any run is active (state not `done`, `stopped` or `failed`), listing each with its release; stop them, wait, or pass `--force` (`bootstrap.sh --upgrade <tag> --force`).
+It installs `/opt/nightshift/<tag>` if missing, repoints `/opt/nightshift/current` to it, re-pins the plugin marketplace and plugins to that tag, and reinstalls the `ns-gc` and `ns-health` timers from the new release. Earlier releases stay in place, and a run keeps using the release it started on (recorded as `release` in its ledger): its scripts and its plugins (agents, skills and the guard hook), which `ns-launch` loads with `--plugin-dir /opt/nightshift/<release>/plugins/...` when the release is not `current`. A plugin loaded with `--plugin-dir` replaces the installed marketplace plugin of the same name for that session (checked with Claude Code 2.1.291: the session's plugin list shows `ns@inline` and `ns-python@inline` and no `ns@nightshift` or `ns-python@nightshift`, and each agent once), so hooks and agents do not load twice. A stack plugin that the run's project does not use is not passed, so the current release's copy of it stays loaded from the marketplace. Keep an old release until no run points at it; old releases are never removed for you yet (issue #152).
+
+The upgrade, and every other `bootstrap.sh` run that changes the install, refuses with exit 1 while a job is live: a run's tmux session, its conductor process or one of its workers. It lists each as `id  state  release  pid`. Runs at a gate, queued or parked are listed as information and do not block, since they resume on their own release; a run that is `running` in its ledger with nothing alive is shown as `looks dead: ns kill <id> or ns stop <id>` and does not block either. `--force` proceeds anyway. Before forcing, check the release notes for changed `ns-conductor` interfaces: a live conductor keeps running the release it started on, but the tools it calls from `PATH` may change under it. For example, since issue #12 `ns-conductor review-round` needs a third argument, the review's verdict (`approve` or `changes`), and a two-argument call exits 2. Since issue #71 `review-round approve` also needs this round's review file with `REVIEW verdict=approve head=<sha>` (exit 9 otherwise), and `ns-conductor merge` exits 8 without an approved review of the current phase head: an older release's skills, which know neither, stop at those exits. While `bootstrap.sh` runs it holds `/opt/nightshift/.upgrade.lock`, and `ns new`, `ns resume`, `ns dequeue` and `ns approve` refuse to start a conductor until it is gone (a run that was already past that check is queued; the `ns-health` timer's `ns dequeue` starts it within about 5 minutes after the upgrade, or the next conductor that ends does). Before it lists the jobs, `bootstrap.sh` waits for the queue lock (`~/.config/ns/queue.lock`, up to 130 s, `NS_BS_QUEUE_WAIT`), so a conductor start already in flight finishes first and shows up in the list; if the lock stays busy it refuses unless `--force`. The upgrade lock names the pid of its `bootstrap.sh`: a lock whose pid is gone or belongs to another program is stale and ignored with a warning, and a lock without a readable pid counts as held. If no `bootstrap.sh` runs and the lock stays, remove it with `sudo rm /opt/nightshift/.upgrade.lock`. `bootstrap.sh` reads the pid files under `~ns/.config/ns` only when they are regular files (not symlinks), and only their first bytes; it drops control characters from the ledger fields it prints.
+
+Update the plugins only this way. Never run `claude plugin update`, `claude plugin marketplace update` or `claude plugin install` for `ns@nightshift` by hand: the marketplace is pinned to the installed tag (`~/.config/ns/release-pin`), and a hand update would change the agents and the guard of live runs without the check above.
 
 Rollback is the same command with the previous tag:
 
@@ -111,7 +115,7 @@ Check afterwards, as `ns`:
 ns doctor
 ```
 
-Do it between runs: `ns drain` first, then `ns resume --all` afterwards. Other updates:
+Do it between runs: `ns drain` first (it parks the running runs, which then do not block), then `ns resume --all` afterwards. Other updates:
 
 - SilverBullet, as `ns`:
 
@@ -224,7 +228,7 @@ Restore drill, twice a year: rebuild a throwaway server this way from a backup a
 
 Gate 1.5 is an escalation: the run hit its time budget or three review rounds on a phase and parked itself. It put an `escalation.md` on the desk and sent an ntfy message. Read `escalation.md` at the desk, then:
 
-1. Edit the desk documents as the escalation asks (for example give more budget or change the plan).
+1. Edit the desk documents as the escalation asks (for example give more budget by raising `budget_hours` in a `# Budget exceeded` escalation, or change the plan).
 2. Release the gate:
 
    ```bash

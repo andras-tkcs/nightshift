@@ -11,7 +11,8 @@ setup() {
   mkdir -p "$REL"
   cp -r "$NS_REPO_ROOT/bin" "$NS_REPO_ROOT/schema" "$REL"/
   L="$BATS_TEST_TMPDIR/run/.nightshift/runs/sbx-12/ledger.yaml"
-  NS_HOME="$REL" "$REL/bin/ns-ledger" init "$L" --id sbx-12 --project sbx --text x --branch plan/sbx-12
+  # an installed release lives under NS_OPT; init records a release only there (#72)
+  NS_OPT="$OPT" NS_HOME="$REL" "$REL/bin/ns-ledger" init "$L" --id sbx-12 --project sbx --text x --branch plan/sbx-12
   [ "$(ns-ledger get "$L" .release)" = v9.9.9 ]
   CHECKOUT="$NS_REPO_ROOT"
 }

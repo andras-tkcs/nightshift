@@ -19,17 +19,17 @@ The conductor session is headless: ending a turn ends the process. End your turn
 
 ## 1. Schedule
 
-A phase is ready when it is `pending` and every phase in its `depends_on` is `merged` (and, if one of those has `human_gate: true`, it was approved, see section 3 step 7). Start ready phases up to `max_parallel` (manifest, default 2) with `ns-conductor start <id> <phase>`:
+A phase is ready when it is `pending` (or `queued`: it waits for a pool slot) and every phase in its `depends_on` is `merged` (and, if one of those has `human_gate: true`, it was approved, see section 3 step 7). Start ready phases up to `max_parallel` (manifest, default 2) with `ns-conductor start <id> <phase>`:
 
 - exit 0: started.
-- exit 3: pool full; try again after the next `wait`.
-- exit 4 (budget) or exit 5 (auto mode does not work): escalate (section 6).
+- exit 3: pool full (the phase is now `queued`); try again after the next `wait`. With none of your own workers live, `wait` sleeps until another run frees a slot (`pool slot free`) or its timeout (exit 124, `pool full: <phases> waits for a slot`; call it again), so do not retry `start` without it.
+- exit 4 (budget): the run already waits at gate 1.5; end the session. Exit 5 (auto mode does not work): escalate (section 6).
 
 Phases in the same wave touch different files by design.
 
 ## 2. Wait and collect
 
-Loop on `ns-conductor wait <id>`. Exit 124 means still running: call it again. Exit 6 means stop requested: `ns-conductor park <id>` and end the session. For each `finished <phase> exit <code>` line go to section 3. A `finished <phase> usage-limit` line means `wait` already paused the budget and reset the phase to `pending`: keep calling `ns-conductor wait <id> --timeout 540` until `ns-conductor start <id> <phase>` succeeds, then `ns-conductor unpause <id>`.
+Loop on `ns-conductor wait <id>`. Exit 124 means still running: call it again. Exit 6 means stop requested: `ns-conductor park <id>` and end the session. For each `finished <phase> exit <code>` line go to section 3. A `finished <phase> usage-limit until <time>` line means `wait` already paused the budget until that time and reset the phase to `pending`: start no more phases, keep calling `wait` only while other workers run, then `ns-conductor park <id>` and end the session; `ns health-check` resumes the run after the reset, and the resumed session calls `ns-conductor unpause <id>` after its first successful `start`. `start` exit 8 means the same pause: park the same way once no worker runs. `finished <phase> usage-limit escalate: <reason>`: escalate. `finished <phase> transient retry at <time>`: keep calling `wait`; on `retry <phase>` start it again.
 
 A phase with `platform_paths` for a CI platform: dispatch its workflows through the `ci-dispatch` skill before review.
 
@@ -39,10 +39,10 @@ One phase at a time, even when several finish together.
 
 1. `ns-conductor report <id> <phase>`. Exit 1 (not `status=done`, or `head=` differs from the pushed branch): restart once with the printed reason as feedback (write it to `RUN/review-<phase>-0.md`, then `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-0.md`). A second failure: escalate. `status=blocked`: read why; a small, clearly in-phase fix goes back as feedback, anything else is an escalation.
 2. `ns-conductor checks <id> <phase>`. Failing checks go back to the worker as feedback (the printed output), like a review.
-3. Adversarial review: subagent `ns:code-reviewer` with the phase diff `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, never the worker's log. It writes `RUN/review-<phase>-<round>.md` whose last line is `REVIEW verdict=approve|changes`. Ask it specifically: is the diff inside the brief and inside `touches` (a small, explained addition such as a shared test fixture is fine; anything else goes back)? Does it touch files other phases own? Has it disabled, skipped or weakened a test, or deleted an expected failure that belongs to another phase? Does every `acceptance` item have evidence?
-4. `ns-conductor review-round <id> <phase>`. Exit 7 (round budget exceeded): escalate.
+3. Adversarial review: subagent `ns:code-reviewer` with the phase diff `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, never the worker's log. It writes `RUN/review-<phase>-<round>.md`, `<round>` being the phase's `review_rounds` in the ledger plus one, whose last line is `REVIEW verdict=approve|changes head=<sha>`, `<sha>` being the `origin/<phase branch>` commit it reviewed. Ask it specifically: is the diff inside the brief and inside `touches` (a small, explained addition such as a shared test fixture is fine; anything else goes back)? Does it touch files other phases own? Has it disabled, skipped or weakened a test, or deleted an expected failure that belongs to another phase? Does every `acceptance` item have evidence?
+4. `ns-conductor review-round <id> <phase> <verdict>` with the review's verdict (`approve` or `changes`), right after the review and before any restart: it records the verdict and the phase head it reviewed. An `approve` needs `RUN/review-<phase>-<round>.md` of this round ending with `REVIEW verdict=approve head=<sha>` for the current phase head. Exit 9 (the file is missing, has no verdict line, says the other verdict, or names another head): run the review again from step 3; never write or edit a review file yourself. A second exit 9 on the same round: escalate. Exit 7 (`changes` on the last allowed round): escalate.
 5. Verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`, back to section 2.
-6. Verdict `approve`: `ns-conductor merge <id> <phase>`. Exit 1 (conflict or failing checks after the merge): restart the phase with the printed output as feedback (the merge left the feature branch unchanged). Never resolve a semantic conflict yourself and never push the feature branch by hand.
+6. Verdict `approve`: `ns-conductor merge <id> <phase>`. Exit 1 (conflict or failing checks after the merge): restart the phase with the printed output as feedback (the merge left the feature branch unchanged). Exit 8 (no approved review of the current phase head, for example after `report --rerun` or a new push): review the phase again from step 3; never write or edit a review file to get past it. Never resolve a semantic conflict yourself and never push the feature branch by hand.
 7. After a merge, if the phase has `human_gate: true`: write the phase's review material (its `PHASE-REPORT` and what it changed) to `RUN/escalation.md` with the question "approve phase <phase>?" and an empty `## Owner's answer` section, run `ns-conductor gate <id> 1.5 RUN/escalation.md` and end the session. After `ns approve` the resumed session reads the answer. Approval: continue. Requested changes: start a follow-up on the phase with the owner's text as feedback and merge it the same way, then gate again.
 8. Start any phases that just became ready.
 

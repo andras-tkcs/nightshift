@@ -21,6 +21,86 @@ usage() {
   printf "stream to \$NS_CONFIG_DIR/logs/<id>/conductor.jsonl.\n"
 }
 
+# after_conductor: the conductor session ended while the run is still running with no gate. When
+# its own last result is a usage limit (it shares the account with its workers), or wait had
+# already paused the budget on one, park the run so ns health-check resumes it after
+# budget.paused_until; a limit that does not reset escalates to gate 1.5 (R-BUD-2).
+after_conductor() {
+  local state res cls kind=none until=- msg="" now n backoff pu run_dir
+  state=$(ns-ledger get "$ledger" '[.state, (.gate // "-")] | join(" ")')
+  [ "$state" = "running -" ] || return 0
+  res=$(tail -n +"$((lines0 + 1))" "$log" 2>/dev/null | jq -R -c 'fromjson? | select(.type == "result")' 2>/dev/null | tail -n1) || res=""
+  now=$(date -u -d "$(ns_now)" +%s)
+  if [ -n "$res" ]; then
+    cls=$(python3 "$NS_HOME/bin/lib/usage_limit.py" "$now" <<<"$res") || cls=none
+    IFS=$'\t' read -r kind until msg <<<"$cls" || true
+  fi
+  if [ "$kind" = usage ]; then
+    # conductor-side limits since the last progress event; the 4th escalates like a phase's
+    n=$(ns-ledger get "$ledger" '[.events[] | select((.type == "usage-pause" and (.note | startswith("conductor hit"))) or (.type | IN("phase-start", "phase-end", "review", "merge", "gate", "approved", "tier", "triage")))] | reverse | map(.type == "usage-pause") | (index(false) // length)')
+    if [ "$((n + 1))" -gt 3 ]; then
+      kind=usage-final
+      msg="$((n + 1)) conductor usage limits without progress; last: $msg"
+    fi
+  fi
+  case "$kind" in
+    usage-final)
+      ns-conductor stop "$id" >/dev/null || true
+      run_dir="$wt/.nightshift/runs/$id"
+      mkdir -p "$run_dir"
+      {
+        printf '# Escalation: %s is stuck on a usage limit\n\n' "$id"
+        printf 'The conductor session ended on a usage limit that does not reset, or on too many in a row:\n\n> %s\n\n' "$msg"
+        printf 'The run is waiting with its budget paused. Raise the limit or add usage credits, then approve to continue, or stop the run.\n\n'
+        printf "## Owner's answer\n\n"
+      } >"$run_dir/escalation.md"
+      ns-ledger set "$ledger" '.budget.paused = true | .budget.paused_until = null'
+      ns-ledger event "$ledger" usage-pause "conductor hit a usage limit; escalate: $msg"
+      ns-conductor gate "$id" 1.5 RUN/escalation.md
+      ;;
+    usage)
+      if ! [[ $until =~ ^[0-9]+$ ]]; then
+        # 15 min, doubling with each conductor limit since the last progress, at most 4 h
+        backoff=$((900 << n))
+        [ "$backoff" -le 14400 ] || backoff=14400
+        until=$((now + backoff))
+      fi
+      pu=$(ns-ledger get "$ledger" '.budget.paused_until // ""')
+      if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$until" ]; then
+        until=$(date -u -d "$pu" +%s)
+      fi
+      pu=$(date -u -d "@$until" +%Y-%m-%dT%H:%M:%SZ)
+      ns-ledger set "$ledger" ".budget.paused = true | .budget.paused_until = \"$pu\""
+      ns-ledger event "$ledger" usage-pause "conductor hit a usage limit; paused until $pu: $msg"
+      ns-conductor park "$id"
+      ;;
+    *)
+      pu=$(ns-ledger get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end')
+      # park only for a pause still ahead; an expired one was cleared at launch
+      [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -gt "$now" ] || return 0
+      ns-ledger event "$ledger" note "conductor ended during a usage pause until $pu; parked"
+      ns-conductor park "$id"
+      ;;
+  esac
+}
+
+# ns_release_plugin_dirs <release home> <project json>: "<home>/plugins/ns" plus the release's
+# plugin of each stack the project's profile names, colon-separated (NS_PLUGIN_DIRS)
+ns_release_plugin_dirs() {
+  local home="$1" proj="$2" dirs prof name rc=0
+  # a release without its plugin directory keeps the marketplace plugins
+  [ -d "$home/plugins/ns" ] || return 0
+  dirs="$home/plugins/ns"
+  prof=$(ns_profile_json "$(jq -r .path <<<"$proj")" "$(jq -r .prefix <<<"$proj")" "$(jq -r '.branch // ""' <<<"$proj")" 2>/dev/null) || rc=$?
+  if [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; then
+    while IFS= read -r name; do
+      [[ $name =~ ^[a-z][a-z0-9-]*$ ]] && [ -d "$home/plugins/ns-$name" ] || continue
+      dirs="$dirs:$home/plugins/ns-$name"
+    done < <(jq -r '.stacks[]? | if type == "object" then .name else . end' <<<"$prof")
+  fi
+  printf '%s\n' "$dirs"
+}
+
 id=""
 mode=""
 while [ $# -gt 0 ]; do
@@ -52,6 +132,13 @@ repo=$(jq -r .repo <<<"$project")
 ledger=$(ns_run_ledger "$id")
 if [ -f "$ledger" ] && [ -z "${NS_LAUNCH_PINNED:-}" ]; then
   rhome=$(ns_release_home "$ledger") || exit 1
+  # the plugins (agents, skills, guard) come with the release too: the marketplace plugins are
+  # pinned to current, so a run on another release loads its own with --plugin-dir. An explicit
+  # NS_PLUGIN_DIRS (a dev checkout, the e2e harness) wins.
+  if [ -n "$rhome" ] && [ -z "${NS_PLUGIN_DIRS:-}" ] && ! [ "$rhome" -ef "${NS_OPT:-/opt/nightshift}/current" ]; then
+    NS_PLUGIN_DIRS=$(ns_release_plugin_dirs "$rhome" "$project")
+    export NS_PLUGIN_DIRS
+  fi
   if [ -n "$rhome" ] && ! [ "$rhome" -ef "$NS_HOME" ]; then
     NS_HOME="$rhome" NS_LAUNCH_PINNED=1 exec "$rhome/bin/ns-launch" "$id" ${mode:+"$mode"}
   fi
@@ -83,13 +170,35 @@ mapfile -t plugin_args < <(ns_plugin_args)
 
 logdir=$(ns_run_logdir "$id")
 log="$logdir/conductor.jsonl"
+# the conductor's pid, for the live-job guard of bootstrap.sh; gone when the session ends
+pidf="$logdir/conductor.pid"
+printf '%s\n' "$$" >"$pidf"
+# only our own: a newer launch of this run may have taken the file over
+# shellcheck disable=SC2329  # called by the EXIT trap
+drop_pidf() { [ "$(head -c 32 "$pidf" 2>/dev/null)" != "$$" ] || rm -f "$pidf"; }
+trap drop_pidf EXIT
 
 cd "$wt"
+# an expired usage pause ends now: the budget counts again from here (R-BUD-2)
+if [ -f "$ledger" ]; then
+  pu=$(ns-ledger get "$ledger" 'if .budget.paused then (.budget.paused_until // "") else "" end') || pu=""
+  if [ -n "$pu" ] && [ "$(date -u -d "$pu" +%s)" -le "$(date -u -d "$(ns_now)" +%s)" ]; then
+    if ! { ns-ledger set "$ledger" ".budget.paused = false | .budget.paused_until = null | .budget.since = \"$(ns_now)\"" &&
+      ns-ledger event "$ledger" usage-resume "usage pause until $pu has passed"; }; then
+      ns_warn "could not clear the expired usage pause"
+    fi
+  fi
+fi
+lines0=0
+[ ! -f "$log" ] || lines0=$(wc -l <"$log")
 rc=0
 "${NS_CLAUDE:-claude}" -p --permission-mode "$NS_WORKER_MODE" --output-format stream-json --verbose \
   --model "$model" --agent ns:conductor "${plugin_args[@]}" "$prompt" \
   < /dev/null > >(tee -a "$log" | python3 "$NS_HOME/bin/lib/stream-view.py") || rc=$?
 wait || true
+if [ "$mode" != --triage ] && [ -f "$ledger" ]; then
+  after_conductor || ns_warn "could not record the end of the conductor session"
+fi
 # the conductor ended: let the next queued run take the slot
 if [ "$mode" != --triage ]; then
   # clean environment: the ending run's token and ids must not reach other runs' conductors

@@ -11,7 +11,7 @@ conductor_loop_usage() {
   printf '  checks        <id> <phase|feature>\n'
   printf '  report        <id> <phase> [--rerun]\n'
   printf '  note          <id> <text> | --file <file>\n'
-  printf '  review-round  <id> <phase>\n'
+  printf '  review-round  <id> <phase> <approve|changes>\n'
   printf '  merge         <id> <phase>\n'
   printf '  gate          <id> <1|1.5|2> <file>[:<name>]...\n'
   printf '  finish        <id> --pr <url>\n'
@@ -55,6 +55,7 @@ conductor_fix_branch() {
   [ $# -eq 1 ] || ns_usage "ns-conductor fix-branch <id>"
   local base branch dir CREATED=0
   load_run "$1"
+  budget_guard fix-branch || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   branch=$(ns_branch_name "$(jq -r '.git.fix_branch' <<<"$profile")" "$id")
   dir=$(ns_run_worktree_path "$profile" "$id--fix")
@@ -106,6 +107,7 @@ conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
   local base repo prefix fixpat featpat prs top head dir stacked own mout clash others tops closed c own_on own_created clist cands since skipped row msg rem changed chains choices unknown
   load_run "$1"
+  budget_guard stack-base || return
   base=$(jq -r '.git.base_branch' <<<"$profile")
   repo=$(jq -r .repo <<<"$project")
   prefix=$(jq -r .prefix <<<"$project")
@@ -199,7 +201,7 @@ conductor_stack_base() {
     lg event "$ledger" stack "$msg"
   fi
   if [ -z "$top" ]; then
-    lg set "$ledger" ".stacked_on = $(jstr "$base")"
+    lg set "$ledger" ".stacked_on = $(jstr "$base") | .budget.integrate_from = \$now"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
     return 0
@@ -225,7 +227,7 @@ conductor_stack_base() {
     fi
     ns_die "could not merge $head into $own in $dir"
   fi
-  lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+  lg set "$ledger" ".stacked_on = $(jstr "$stacked") | .budget.integrate_from = \$now"
   lg checkpoint "$ledger"
   printf '%s\n' "$head"
 }
@@ -239,16 +241,25 @@ loop_phase_wt() {
   fi
 }
 
-# loop_checks <phase|feature>: run the profile's checks, with the run context loaded.
+# loop_checks <phase|feature> [--budget]: run the profile's checks, with the run context loaded;
+# with --budget the budget check runs first (exit 4 when the budget is used up).
 # Removes <target>.checks.rc at the start and writes the exit code there last
 # (tmp + mv), on every return path, so callers can wait for the file.
 loop_checks() {
-  local target="$1" rc=0 rcf tmp
+  local target="$1" budget="${2:-}" rc=0 rcf tmp
   rcf="$logdir/$target.checks.rc"
   ns_private_dir "$logdir"
   rm -f "$rcf"
   # subshell: an ns_die (exit) in the body must not skip the marker
-  ( loop_checks_body "$target" ) || rc=$?
+  (
+    # checks feature is the integrator's own call (after a stack-base merge or conflict)
+    if [ -n "$budget" ]; then
+      who=""
+      [ "$target" != feature ] || who=integrator
+      budget_guard checks "$who" || exit
+    fi
+    loop_checks_body "$target"
+  ) || rc=$?
   tmp="$rcf.tmp.$$"
   printf '%s\n' "$rc" >"$tmp"
   mv -f "$tmp" "$rcf"
@@ -272,7 +283,7 @@ conductor_checks() {
   [ $# -eq 2 ] || ns_usage "ns-conductor checks <id> <phase|feature>"
   [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "ns-conductor checks <id> <phase|feature>"
   load_run "$1"
-  loop_checks "$2"
+  loop_checks "$2" --budget
 }
 
 conductor_note() {
@@ -301,6 +312,19 @@ conductor_note() {
   printf 'note %s\n' "$n"
 }
 
+# loop_has_changes <dir> <feature ref> <phase ref>: exit 0 when the phase branch changes something
+# against its merge base with the feature branch, 1 when it changes nothing (equal, behind, or
+# commits that cancel out); dies when git fails
+loop_has_changes() {
+  local rc=0
+  git -C "$1" diff --quiet "$2...$3" -- || rc=$?
+  case "$rc" in
+    0) return 1 ;;
+    1) return 0 ;;
+    *) ns_die "git diff $2...$3 failed in $1" ;;
+  esac
+}
+
 conductor_report() {
   local u="ns-conductor report <id> <phase> [--rerun]" rerun=false
   if [ $# -eq 3 ] && [ "$3" = --rerun ]; then
@@ -309,7 +333,7 @@ conductor_report() {
   fi
   [ $# -eq 2 ] || ns_usage "$u"
   valid_phase_id "$2" || ns_usage "$u"
-  local phase="$2" log text rep pbranch want got st hd
+  local phase="$2" log text rep pbranch want got st hd feature
   load_run "$1"
   log="$logdir/$phase.jsonl"
   if [ "$rerun" = true ]; then
@@ -320,9 +344,21 @@ conductor_report() {
       printf 'origin/%s does not exist\n' "$pbranch"
       return 1
     fi
+    # the worker must have pushed something of its own: a phase branch that is the feature
+    # branch head, or behind it, holds no work to certify
+    feature=$(lg get "$ledger" '.feature_branch // empty')
+    [ -n "$feature" ] || ns_die "no feature branch yet"
+    git -C "$wt" fetch -q origin "$feature" || ns_die "could not fetch origin $feature"
+    git -C "$wt" rev-parse -q --verify "origin/$feature" >/dev/null || ns_die "origin/$feature does not exist"
+    if ! loop_has_changes "$wt" "origin/$feature" "origin/$pbranch"; then
+      printf 'origin/%s has no changes of its own against origin/%s: nothing of the worker to report; restart the phase\n' "$pbranch" "$feature"
+      return 1
+    fi
     ns_private_dir "$logdir"
     jq -n -c --arg r "$(printf 'PHASE-REPORT %s status=done head=%s\nregenerated by report --rerun' "$phase" "$want")" \
       '{type: "result", result: $r}' >>"$log"
+    lg event "$ledger" report-rerun "$phase $want"
+    lg checkpoint "$ledger"
   fi
   if [ ! -f "$log" ]; then
     printf 'no log for %s\n' "$phase"
@@ -356,19 +392,93 @@ conductor_report() {
   return 0
 }
 
+# loop_review_refused <message>: print why review-round recorded nothing, and what to do
+loop_review_refused() {
+  printf '%s\n' "$1" >&2
+  printf 'review-round recorded nothing: run the review again; never edit the review file\n' >&2
+}
+
 conductor_review_round() {
-  [ $# -eq 2 ] || ns_usage "ns-conductor review-round <id> <phase>"
-  valid_phase_id "$2" || ns_usage "ns-conductor review-round <id> <phase>"
-  local phase="$2" tier max n
+  local u="ns-conductor review-round <id> <phase> <approve|changes>"
+  [ $# -eq 3 ] || ns_usage "$u"
+  valid_phase_id "$2" || ns_usage "$u"
+  case "$3" in
+    approve | changes) ;;
+    *) ns_usage "$u" ;;
+  esac
+  local phase="$2" verdict="$3" tier max n pbranch head rf rel line fv fh hj
   load_run "$1"
+  budget_guard review-round || return
   tier=$(loop_tier)
   max=$(jq -r --arg t "$tier" '.budgets[$t].review_rounds // 3' <<<"$profile")
-  phase_update "$phase" '.review_rounds += 1'
-  n=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .review_rounds] | .[0]")
-  lg event "$ledger" review "$phase round $n"
+  n=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .review_rounds] | (.[0] // 0)")
+  n=$((n + 1))
+  # the review file of this round must back the verdict: an approval needs
+  # RUN/review-<phase>-<n>.md ending with "REVIEW verdict=approve head=<sha>", <sha> being the
+  # current phase head; a verdict line that says the other verdict refuses either argument
+  # the reviewed branch: the phase branch, or for T0/T1 the run's fix branch (one code branch)
+  case "$tier" in
+    T0 | T1) pbranch=$(lg get "$ledger" '.feature_branch // empty') ;;
+    *) pbranch=$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$phase") ;;
+  esac
+  head=""
+  if [ -n "$pbranch" ]; then
+    if git -C "$wt" fetch -q origin "$pbranch" 2>/dev/null; then
+      head=$(git -C "$wt" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
+    elif [ "$verdict" = approve ]; then
+      # never compare an approval with a stale remote-tracking ref
+      ns_die "could not fetch origin $pbranch"
+    fi
+  fi
+  rf="$wt/.nightshift/runs/$id/review-$phase-$n.md"
+  rel="RUN/review-$phase-$n.md"
+  line="" fv="" fh="" fhbad=0
+  if [ -f "$rf" ]; then
+    line=$(awk '{ sub(/\r$/, "") } NF { l = $0 } END { sub(/[ \t]+$/, "", l); print l }' "$rf")
+    # the verdict first, then the head on its own, so a malformed head gets its own message
+    if [[ $line =~ ^REVIEW\ verdict=(approve|changes)(\ head=(.*))?$ ]]; then
+      fv="${BASH_REMATCH[1]}"
+      fh="${BASH_REMATCH[3]}"
+      if [ -n "${BASH_REMATCH[2]}" ] && ! [[ $fh =~ ^[0-9a-f]{7,64}$ ]]; then
+        fhbad=1
+      fi
+    fi
+  fi
+  if [ "$verdict" = approve ] && [ ! -f "$rf" ]; then
+    loop_review_refused "$rel does not exist: an approval needs the review file of round $n"
+    return 9
+  fi
+  if [ "$verdict" = approve ] && [ -z "$fv" ]; then
+    loop_review_refused "$rel has no REVIEW verdict line: an approval needs one"
+    return 9
+  fi
+  if [ -n "$fv" ] && [ "$fv" != "$verdict" ]; then
+    loop_review_refused "$rel ends with '$line', not verdict $verdict"
+    return 9
+  fi
+  if [ "$verdict" = approve ] && [ "$fhbad" = 1 ]; then
+    loop_review_refused "$rel: head='${fh:0:20}' is not 7 to 64 lowercase hex"
+    return 9
+  fi
+  if [ "$verdict" = approve ]; then
+    if [ -z "$fh" ]; then
+      loop_review_refused "$rel has no head=<sha> on its verdict line: an approval names the head it reviewed"
+      return 9
+    fi
+    if [ -z "$head" ] || [[ $head != "$fh"* ]]; then
+      loop_review_refused "$rel approved head=${fh:0:12}, but origin/$pbranch is ${head:-missing}: the review is of another head"
+      return 9
+    fi
+  fi
+  hj=null
+  [ -z "$head" ] || hj=$(jstr "$head")
+  phase_update "$phase" ".review_rounds = $n | .review_verdict = $(jstr "$verdict") | .reviewed_head = $hj"
+  lg event "$ledger" review "$phase round $n $verdict"
   lg checkpoint "$ledger"
-  if [ "$n" -gt "$max" ]; then
-    printf '%s: review round %s exceeds the %s allowed for %s\n' "$phase" "$n" "$max" "$tier"
+  # The cap counts reviews that ran: an approval always proceeds, and changes on the last
+  # allowed round escalate instead of starting a review the budget does not cover.
+  if [ "$verdict" = changes ] && [ "$n" -ge "$max" ]; then
+    printf '%s: review round %s asked for changes and reaches the cap of %s for %s\n' "$phase" "$n" "$max" "$tier"
     return 7
   fi
   printf '%s: review round %s of %s\n' "$phase" "$n" "$max"
@@ -377,7 +487,7 @@ conductor_review_round() {
 conductor_merge() {
   [ $# -eq 2 ] || ns_usage "ns-conductor merge <id> <phase>"
   valid_phase_id "$2" || ns_usage "ns-conductor merge <id> <phase>"
-  local phase="$2" fw trailer pbranch feature title pre pwt mlog
+  local phase="$2" fw trailer pbranch feature title pre pwt mlog head verdict rhead pj
   load_run "$1"
   fw=$(loop_code_wt)
   [ -d "$fw" ] || ns_die "no feature worktree at $fw"
@@ -392,6 +502,24 @@ conductor_merge() {
     return 0
   fi
   git -C "$fw" fetch -q origin || ns_die "could not fetch origin"
+  head=$(git -C "$fw" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
+  if [ -z "$head" ]; then
+    printf 'origin/%s does not exist\n' "$pbranch"
+    return 1
+  fi
+  if ! loop_has_changes "$fw" "origin/$feature" "origin/$pbranch"; then
+    printf 'origin/%s has no changes of its own against origin/%s: nothing to merge\n' "$pbranch" "$feature"
+    return 1
+  fi
+  # only a review round that approved exactly the current phase head lets the phase in
+  pj=$(jstr "$phase")
+  verdict=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .review_verdict] | (.[0] // \"none\")")
+  rhead=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .reviewed_head] | (.[0] // \"\")")
+  if [ -z "$head" ] || [ "$verdict" != approve ] || [ "$rhead" != "$head" ]; then
+    printf 'no approved review of origin/%s at %s (last review: %s of %s): run a review round on this head first\n' \
+      "$pbranch" "${head:0:12}" "$verdict" "${rhead:0:12}"
+    return 8
+  fi
   title=$(lg get "$ledger" "[.phases[] | select(.id == $(jstr "$phase")) | .title] | (.[0] // $(jstr "$phase"))")
   pre=$(git -C "$fw" rev-parse HEAD)
   if ! git -C "$fw" merge -q --no-ff "origin/$pbranch" -m "Merge $id $phase: $title" -m "$trailer: $phase" >/dev/null 2>&1; then
@@ -424,8 +552,14 @@ conductor_gate() {
   esac
   load_run "$1"
   shift 2
+  # gate 1.5: the question goes into the event note, so each escalation keeps its cause (#118)
+  local note="gate $gate: waiting for the owner" q=""
+  if [ "$gate" = 1.5 ] && [ -f "$wt/.nightshift/runs/$id/escalation.md" ]; then
+    q=$(ns_escalation_question "$wt/.nightshift/runs/$id/escalation.md") || q=""
+  fi
+  [ -z "$q" ] || note="$note: $q"
   lg state "$ledger" waiting --gate "$gate"
-  lg event "$ledger" gate "gate $gate: waiting for the owner"
+  lg event "$ledger" gate "$note"
   lg checkpoint "$ledger" --push
   "$NS_HOME/bin/ns" publish "$id" "$@"
 }
@@ -441,20 +575,30 @@ conductor_finish() {
     *) lg state "$ledger" "done" --note "pull request $url" ;;
   esac
   lg event "$ledger" finish "run finished: $url"
-  # the run report is best effort: a failure here never fails the run
-  local -a docs=()
+  # the run report is best effort: writing or publishing it never fails the run. The
+  # handoff report of a T2/T3 run is not: the owner needs it at gate 2 (#118)
+  local report=false hand=false
   if "$NS_HOME/bin/ns" report "$id" >/dev/null; then
-    docs+=("RUN/run-report.md")
+    report=true
   else
     ns_warn "could not write the run report for $id"
   fi
   handoff="$wt/.nightshift/runs/$id/handoff.html"
   case "$tier" in
-    T2 | T3) [ ! -f "$handoff" ] || docs=("RUN/handoff.html" "${docs[@]}") ;;
+    T2 | T3) [ ! -f "$handoff" ] || hand=true ;;
   esac
   lg checkpoint "$ledger" --push
-  if [ "${#docs[@]}" -gt 0 ]; then
-    "$NS_HOME/bin/ns" publish "$id" "${docs[@]}" || ns_warn "could not publish ${docs[*]}"
+  local -a docs=()
+  [ "$hand" = false ] || docs+=("RUN/handoff.html")
+  [ "$report" = false ] || docs+=("RUN/run-report.md")
+  # one publish (one notification) when both are fine; else each on its own
+  if [ "${#docs[@]}" -gt 0 ] && ! "$NS_HOME/bin/ns" publish "$id" "${docs[@]}"; then
+    if [ "$report" = true ] && { [ "$hand" = false ] || ! "$NS_HOME/bin/ns" publish "$id" RUN/run-report.md; }; then
+      ns_warn "could not publish RUN/run-report.md"
+    fi
+    if [ "$hand" = true ] && ! "$NS_HOME/bin/ns" publish "$id" RUN/handoff.html; then
+      ns_die "could not publish the handoff report: fix RUN/handoff.html, then ns publish $id RUN/handoff.html"
+    fi
   fi
   printf 'finished %s: %s\n' "$id" "$url"
 }
@@ -471,7 +615,7 @@ conductor_pause() {
 conductor_unpause() {
   [ $# -eq 1 ] || ns_usage "ns-conductor unpause <id>"
   load_run "$1"
-  lg set "$ledger" '.budget.paused = false'
+  lg set "$ledger" '.budget.paused = false | .budget.paused_until = null'
   lg event "$ledger" usage-resume "budget resumed"
   lg checkpoint "$ledger"
   printf 'unpaused %s\n' "$id"

@@ -20,7 +20,7 @@ If an argument narrows the test run, say so in the report and mark any row that 
 
 ## 2. Run the commands
 
-Run each command once. Record PASS or FAIL per command. For a FAIL, quote the real error output (the relevant lines, not a paraphrase). A command that cannot run because a tool or credential is missing is reported as FAIL with that reason, not as PASS and not skipped. Never rerun a failed command to get a green row; a second failure on the same commit is real.
+Run each command once. Record PASS or FAIL per command, or SKIP when pytest exits 5 (no tests collected) for the python `test` check or a pytest command, as `ns-conductor checks` does; a SKIP is not a failure, but it stays visible as SKIP so a reviewer can tell whether it was meant. For a FAIL, quote the real error output (the relevant lines, not a paraphrase). A command that cannot run because a tool or credential is missing is reported as FAIL with that reason, not as PASS and not skipped. Never rerun a failed command to get a green row; a second failure on the same commit is real.
 
 ## 3. Conditional rows
 
@@ -36,7 +36,7 @@ One row per check:
 
 | Check | Result | Detail |
 |---|---|---|
-| `<command or item>` | PASS / FAIL / ok / needs attention / n/a | the actual error, or the file and line |
+| `<command or item>` | PASS / FAIL / SKIP / ok / needs attention / n/a | the actual error, or the file and line |
 
 Report only. Never fix, edit or commit anything; this skill reports, it does not repair. When run inside a run (`NS_RUN_ID` is set), also write the table to `RUN/dod.md`.
 
