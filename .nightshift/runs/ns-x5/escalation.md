@@ -8,3 +8,5 @@ Can you run the merge yourself in `/home/ns/Coding/worktrees/nightshift-ns-x5--f
 
 ## Owner's answer
 
+I merged to main the fix. If you pull in main it should be ok now. Pull in main.
+
