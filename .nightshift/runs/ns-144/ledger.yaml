@@ -20,12 +20,12 @@ feature_branch: feature/144
 pr: null
 release: v0.1.8
 created: '2026-10-07T04:46:33Z'
-updated: '2026-10-07T07:49:32Z'
+updated: '2026-10-07T08:15:50Z'
 budget:
-  used: 2.09
+  used: 2.52
   limit: 8
   paused: false
-  since: '2026-10-07T07:49:29Z'
+  since: '2026-10-07T08:15:17Z'
   integrate_from: null
 phases:
 - id: p1-caddy-bootstrap
@@ -78,4 +78,8 @@ events:
 - time: '2026-10-07T07:49:25Z'
   type: phase-end
   note: p1-caddy-bootstrap exit 0
+- time: '2026-10-07T08:15:49Z'
+  type: note
+  note: 'note 1: bootstrap.bats ''step 1 with a failing apt-get'' fails on base 6a21abd
+    on ns-main '
 queued_for_slot: false
