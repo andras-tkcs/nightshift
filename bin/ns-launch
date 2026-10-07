@@ -23,7 +23,7 @@ usage() {
 
 # after_conductor: the conductor session ended while the run is still running with no gate. When
 # its own last result is a usage limit (it shares the account with its workers), or wait had
-# already paused the budget on one, park the run so ns health-check resumes it after
+# already paused the budget on one, park the run so ns check resumes it after
 # budget.paused_until; a limit that does not reset escalates to gate 1.5 (R-BUD-2).
 after_conductor() {
   local state res cls kind=none until=- msg="" now n backoff pu run_dir

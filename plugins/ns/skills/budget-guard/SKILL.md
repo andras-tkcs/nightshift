@@ -17,7 +17,7 @@ user-invocable: false
 A usage-limit pause does not count against wall-clock budgets.
 
 - `ns-conductor wait` prints `finished <phase> usage-limit until <time>` when a worker's final result is a usage-limit error (a report that merely mentions a rate limiter does not count). It has paused the budget until that time and returned the phase to `pending`; `ns-conductor start` exits 8 until then.
-- Do not wait in the session. Keep calling `ns-conductor wait <id>` only while other workers are still running (handle their results as usual; do not start new phases), then `ns-conductor park <id>` and end the session. `ns health-check` resumes the run after the reset time; the resumed session restarts the pending phases and then runs `ns-conductor unpause <id>`.
+- Do not wait in the session. Keep calling `ns-conductor wait <id>` only while other workers are still running (handle their results as usual; do not start new phases), then `ns-conductor park <id>` and end the session. `ns check` resumes the run after the reset time; the resumed session restarts the pending phases and then runs `ns-conductor unpause <id>`.
 - If your own session ends on the limit, `ns-launch` parks the run (or escalates a limit that does not reset) for you.
 - `finished <phase> usage-limit escalate: <reason>` (a limit that does not reset, such as a spend limit or no usage credits, or the fourth limit of one phase): escalate to gate 1.5.
 - `finished <phase> transient retry at <time>` (a capacity 429 or a 529 overload): call `ns-conductor wait <id>` again; with no worker left it sleeps until the retry is due and prints `retry <phase>`; then `ns-conductor start <id> <phase>`. A second transient error of the phase is a normal finish.

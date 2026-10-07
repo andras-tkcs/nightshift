@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `ns health-check` is now `ns check` (the `ns-health.*` systemd units keep their names and run `ns check`). `ns health-check` still works as a deprecated alias (ns-x4).
+
 ## [0.1.8] - 2026-10-06
 
 ### Security

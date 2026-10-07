@@ -6,7 +6,7 @@ Reboots, cleanup, updates, renewals, backup and restore, troubleshooting, and sh
 
 | When | What | How |
 |---|---|---|
-| Every 5 minutes, automatic | Dead or silent run check | the `ns health-check` timer; one ntfy line per incident |
+| Every 5 minutes, automatic | Dead or silent run check | the `ns check` timer; one ntfy line per incident |
 | Daily, automatic | Cleanup, disk check, "reboot required" check | the `ns gc` timer; one ntfy line |
 | When ntfy says so | Reboot | `ns drain`, reboot, `ns up`, `ns resume --all` (below) |
 | Weekly | Glance at the desk index and `ns ls`; approve waiting QA jobs | iPad or the GitHub app |
@@ -43,13 +43,13 @@ ns ls
 ns resume --all
 ```
 
-`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked or crashed run; runs you stopped with `ns stop` or `ns kill` stay stopped (it names them) until you `ns resume <id>` them. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` and `ns health-check` timers come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
+`ns up` runs `ns doctor`, restarts the Remote Control session (tmux `rc`) and lists parked runs. `ns resume --all` restarts every parked or crashed run; runs you stopped with `ns stop` or `ns kill` stay stopped (it names them) until you `ns resume <id>` them. Tailscale, Caddy, cloudflared, SilverBullet and the `ns gc` and `ns check` timers come back on their own. Claude sessions, Nightshift runs and Remote Control are started by you, on purpose, so you see the state before agents spend usage again. A plain interactive Claude session comes back with `claude --continue` in its folder.
 
 ## A run that stopped without telling you
 
 Runs beyond `max_runs` (default 2, in `config.yaml`) wait as `queued`: `ns ls` shows `runs` in WAITING-ON and `ns status` the queue position. They start by themselves when a conductor ends; `ns dequeue` starts them by hand and `ns new --now` skips the queue. After a reboot `ns resume --all` starts as many runs as `max_runs` allows and queues the rest.
 
-`ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to its logs (the JSONL logs, a checks log or `.checks.rc`) for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. A run whose conductor is running `ns-conductor checks` is not silent while the checks have run for less than `NS_CHECKS_MAX_SECS` (default 3600); a check that runs longer may hang and counts as silent again. The `ns-health.timer` runs `ns health-check` every 5 minutes and sends one ntfy message per incident.
+`ns ls` and `ns status` show a run's health next to its state. `dead` means the run is `running` in the ledger but its tmux session is gone: restart it with `ns resume <id>`. `silent <N>m` means the session is alive but nothing has been written to its logs (the JSONL logs, a checks log or `.checks.rc`) for that long (threshold `NS_SILENT_SECS`, default 1200): look with `ns attach <id>`. A run whose conductor is running `ns-conductor checks` is not silent while the checks have run for less than `NS_CHECKS_MAX_SECS` (default 3600); a check that runs longer may hang and counts as silent again. The `ns-health.timer` runs `ns check` every 5 minutes and sends one ntfy message per incident.
 
 ## Cleanup: what `ns gc` drops
 
