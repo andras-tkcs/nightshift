@@ -331,3 +331,91 @@ SHIM
   assert_success
   [ "${lines[1]}" = "$D: \$: Additional properties are not allowed ('odd' was unexpected)" ]
 }
+
+# ---- ns-x7 acceptance tests (RUN/test-strategy.md of ns-x7) ----
+
+# ns_xfail <reason> <command...>: a strict expected failure (bats has no xfail marker).
+# The command runs in a background subshell so errexit stays on inside it. Passes when the
+# command fails; fails with XPASS when it succeeds. Phase p1-note-cli deletes the
+# `ns_xfail "ns:ns-x7 acceptance" ` prefixes in the commit that implements them, then this helper.
+ns_xfail() {
+  local reason="$1" rc=0
+  shift
+  "$@" &
+  wait "$!" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    echo "XPASS ($reason): $* succeeded; the expected failure is gone" >&2
+    return 1
+  fi
+}
+
+# x7_one_note: a valid owner note, read back without a drift warning (owner_notes is in the schema)
+x7_one_note() {
+  ns-ledger set "$L" '.owner_notes = [{time: $now, text: "x", read: false}]'
+  run ns-ledger get "$L" '.owner_notes | length'
+  assert_success
+  [ "$output" = 1 ]
+}
+
+# AC-3: a ledger with notes and one without the field are both valid, with no unknown-field warning
+x7_schema_valid() {
+  init_ledger
+  run ns-ledger validate "$L"
+  assert_success
+  assert_output_not_contains "unknown field"
+  x7_one_note
+  run ns-ledger validate "$L"
+  assert_success
+  assert_output_not_contains "unknown field"
+}
+
+@test "owner_notes is a schema field: a ledger with or without notes validates without drift warnings (ns-x7)" {
+  ns_xfail "ns:ns-x7 acceptance" x7_schema_valid
+}
+
+# AC-3: a note missing text is refused by set and the file stays byte-identical
+x7_schema_missing_text() {
+  init_ledger
+  x7_one_note
+  before="$(sha256sum "$L")"
+  run ns-ledger set "$L" '.owner_notes += [{time: $now, read: false}]'
+  assert_failure 1
+  assert_output_contains "not written"
+  [ "$(sha256sum "$L")" = "$before" ]
+}
+
+@test "set with an owner note missing text exits 1 and leaves the file byte-identical (ns-x7)" {
+  ns_xfail "ns:ns-x7 acceptance" x7_schema_missing_text
+}
+
+# AC-3: a note with an extra key is refused by set and the file stays byte-identical
+x7_schema_extra_key() {
+  init_ledger
+  x7_one_note
+  before="$(sha256sum "$L")"
+  run ns-ledger set "$L" '.owner_notes += [{time: $now, text: "x", read: false, by: "agent"}]'
+  assert_failure 1
+  assert_output_contains "not written"
+  [ "$(sha256sum "$L")" = "$before" ]
+}
+
+@test "set with an owner note with an extra key exits 1 and leaves the file byte-identical (ns-x7)" {
+  ns_xfail "ns:ns-x7 acceptance" x7_schema_extra_key
+}
+
+# AC-3: validate on a file whose note lacks text fails and names owner_notes
+x7_schema_validate_missing_text() {
+  init_ledger
+  printf 'owner_notes:\n- {time: "2026-10-07T21:04:00Z", text: "x", read: false}\n' >>"$L"
+  run ns-ledger validate "$L"
+  assert_success
+  assert_output_not_contains "unknown field"
+  sed -i 's/text: "x", //' "$L"
+  run ns-ledger validate "$L"
+  assert_failure 1
+  assert_output_contains "owner_notes"
+}
+
+@test "validate fails for a ledger whose owner note has no text (ns-x7)" {
+  ns_xfail "ns:ns-x7 acceptance" x7_schema_validate_missing_text
+}
