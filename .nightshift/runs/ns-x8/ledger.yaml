@@ -41,7 +41,7 @@ feature_branch: fix/ns-x8
 pr: null
 release: v0.1.8
 created: '2026-10-07T12:12:05Z'
-updated: '2026-10-07T15:42:44Z'
+updated: '2026-10-07T15:42:52Z'
 budget:
   used: 2.11
   limit: 5
@@ -132,3 +132,5 @@ events:
   type: review
   note: fix round 1 approve
 queued_for_slot: false
+stack_skipped: []
+stacked_on: ns-144
