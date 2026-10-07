@@ -54,7 +54,7 @@ Extend the existing "rendered Caddyfile has the desk..." case only if needed. Do
 
 ## Doc edits
 
-- `docs/adr/README.md`: row `| [0010](0010-desk-serves-self-contained-pages.md) | The desk serves only self-contained pages | Accepted |`.
+- `docs/adr/README.md`: row `| 0010 (file 0010-desk-serves-self-contained-pages.md) | The desk serves only self-contained pages | Accepted |`.
 - `docs/security.md`: after the "What lives where" paragraph at line 34, add a short "The desk" paragraph. It names the CSP header and its value, says `.md` is served as text/plain and that `ns publish` is the first layer, and links `adr/0010-desk-serves-self-contained-pages.md`.
 - `docs/setup.md` step 1 (line 68): CSP header on `:8443` and `:8080`, Markdown as `text/plain`, and `/etc/caddy/Caddyfile.d/*.caddy` for local additions that bootstrap never touches. Add `install -d -m 755 /etc/caddy/Caddyfile.d` to the manual block, and a note that a bad snippet stops the reload.
 - `CHANGELOG.md` `[Unreleased]`: one entry each for #5, #27 and #26.
