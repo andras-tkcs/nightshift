@@ -276,7 +276,7 @@ The draft in `bin/ns-gh` (from the architecture page) is the starting point: `au
 Turns a phase-2 server into a Nightshift runtime. Idempotent. Each step prints `ok`, `changed` or `needs you: …`, and `--check` reports without changing anything.
 
 Steps:
-1. Caddy from its apt repo; `TS_PERMIT_CERT_UID=caddy`; Caddyfile with `get_certificate tailscale` for the desk (:443 → SilverBullet on 127.0.0.1:3000) and `:8443` (HTML, file_server browse), plus `http://127.0.0.1:8080` for the tunnel.
+1. Caddy from its apt repo; `TS_PERMIT_CERT_UID=caddy`; Caddyfile with `get_certificate tailscale` for the desk (:443 → SilverBullet on 127.0.0.1:3000) and `:8443` (HTML, file_server browse), plus `http://127.0.0.1:8080` for the tunnel; the two HTML listeners send the desk CSP header and serve `*.md` as `text/plain` (ADR 0010); the Caddyfile imports `/etc/caddy/Caddyfile.d/*.caddy` last for local additions, which bootstrap creates and lists but never changes.
 2. `/srv/ns-space` owned by `ns:caddy`, mode 2750.
 3. SilverBullet binary for `ns` as a systemd user service bound to 127.0.0.1:3000, data in `~ns/sb-data`.
 4. cloudflared from Cloudflare's release `.deb`; asks for the tunnel token; `cloudflared service install <token>`.
