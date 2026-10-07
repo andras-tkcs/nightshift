@@ -48,12 +48,12 @@ feature_branch: feature/x5
 pr: null
 release: v0.1.8
 created: '2026-10-07T09:16:50Z'
-updated: '2026-10-07T20:10:54Z'
+updated: '2026-10-07T21:18:21Z'
 budget:
-  used: 8.12
+  used: 9.25
   limit: 10
   paused: false
-  since: '2026-10-07T20:10:33Z'
+  since: '2026-10-07T21:18:21Z'
   integrate_from: '2026-10-07T20:10:41Z'
 phases:
 - id: p1-checks-cache
