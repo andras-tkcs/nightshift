@@ -19,12 +19,12 @@ feature_branch: fix/ns-174
 pr: https://github.com/andras-tkcs/nightshift/pull/178
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T09:09:13Z'
+updated: '2026-10-08T09:09:38Z'
 budget:
   used: 1.5
   limit: 2
   paused: false
-  since: '2026-10-08T09:09:13Z'
+  since: '2026-10-08T09:09:38Z'
   integrate_from: null
 phases:
 - id: fix
