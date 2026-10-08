@@ -16,12 +16,12 @@ feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T11:21:17Z'
+updated: '2026-10-08T11:53:56Z'
 budget:
-  used: 1.31
+  used: 1.85
   limit: 2
   paused: false
-  since: '2026-10-08T11:21:06Z'
+  since: '2026-10-08T11:53:30Z'
   integrate_from: '2026-10-08T10:28:43Z'
 phases: []
 events:
@@ -40,6 +40,10 @@ events:
 - time: '2026-10-08T10:03:06Z'
   type: resumed
   note: resumed from running
+- time: '2026-10-08T11:53:55Z'
+  type: note
+  note: 'note 1: kill.bats ''ns_kill_group gives up after about 2 s'' (#58) fails
+    under full-suite '
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
