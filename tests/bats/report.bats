@@ -242,3 +242,21 @@ X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
   grep -qF '| python test | 2 | 15s |' "$RUNDIR/run-report.md"
   grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
 }
+
+@test "ns report: a dead gap starts at the last log activity, not at the last ledger event (#156)" {
+  # review 12:20, resumed from running 12:50; the conductor worked until 12:38
+  rm -rf "$LOGS"; mkdir -p "$LOGS"
+  printf '%s\n' \
+    '{"type":"assistant","timestamp":"2026-10-02T12:25:00.000Z","session_id":"s1","message":{"id":"m1","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":1},"content":[]}}' \
+    '{"type":"user","timestamp":"2026-10-02T12:38:00.000Z","session_id":"s1","message":{"content":[]}}' >"$LOGS/conductor.jsonl"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| Dead or stopped | 12m |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: without logs a dead gap starts at the previous ledger event (#156)" {
+  rm -rf "$LOGS"
+  run ns report sbx-12
+  assert_success
+  grep -qF '| Dead or stopped | 30m |' "$RUNDIR/run-report.md"
+}
