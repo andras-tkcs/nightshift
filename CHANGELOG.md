@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Conductor overhead (issue #174, part 1 of #169): the conductor waits for subagents through the Agent call's return or the task notification and for workers with `ns-conductor wait`, never with fetch, sleep or file-poll loops; it runs no tests, checks or edits in a worktree while an implementer works there (`ns-conductor checks` only after the implementer returned); it skips `ns:triage` when the owner gave the tier. New `ns-conductor risk-check <id>` runs at Sync: it matches the diff against `risk_zones` and `platform_paths`, records the tags and `risk_floor`, and sets `tier_recommended` (named in the ntfy line) only when the floor is above the owner's tier. A checks cache hit appends `== cached <UTC>` to the checks log. The run report's Summary has a `Full suite runs` row (cache hits not counted; flagged for a T0/T1 run with more than one).
+
 ## [0.1.9] - 2026-10-08
 
 ### Security

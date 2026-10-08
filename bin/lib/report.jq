@@ -120,6 +120,7 @@ def minus($waits):
 | ($logs[0].checks // []) as $allchecks
 | ($allchecks | map(select(.last != false))) as $checks
 | ($logs[0] != null and ($logs[0].checks | length) > 0) as $has_checks
+| (if $has_checks then ($logs[0].full_runs // 0) else null end) as $fullruns
 | ($waits | map(select(.gate == "1.5"))) as $esc
 | ($end - $t0) as $wall
 | ($waits | map(.e - .s) | add // 0) as $waiting
@@ -153,7 +154,8 @@ def minus($waits):
     "| Escalations | \($nesc) |",
     "| Checks | \(if $has_checks | not then "no data" else
         ([("PASS", "FAIL", "SKIP") as $k | [$checks[] | select(.result == $k)] | length | select(. > 0) | "\(.) \($k)"]
-         + ([$checks[] | select(.result == null)] | length | if . > 0 then ["\(.) no data"] else [] end)) | join(", ") end) |"
+         + ([$checks[] | select(.result == null)] | length | if . > 0 then ["\(.) no data"] else [] end)) | join(", ") end) |",
+    "| Full suite runs | \(if $fullruns == null then "no data" elif $fullruns > 1 and (.tier == "T0" or .tier == "T1") then "\($fullruns) (more than one for a \(.tier) run)" else "\($fullruns)" end) |"
   ]
   + (if $nesc > 0 then
       ["", "Escalations:", ""]
