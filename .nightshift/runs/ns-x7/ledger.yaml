@@ -17,7 +17,7 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: parked
+state: running
 gate: null
 step: board
 stop_requested: null
@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T04:58:24Z'
+updated: '2026-10-08T10:02:48Z'
 budget:
   used: 8.79
   limit: 12
   paused: false
-  since: '2026-10-08T04:58:24Z'
+  since: '2026-10-08T10:02:46Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -227,4 +227,7 @@ events:
 - time: '2026-10-08T04:57:48Z'
   type: state
   note: 'parked: conductor ended its session'
+- time: '2026-10-08T10:02:47Z'
+  type: resumed
+  note: resumed from parked
 queued_for_slot: false
