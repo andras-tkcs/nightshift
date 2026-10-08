@@ -1,0 +1,32 @@
+version: 1
+id: ns-166
+project: nightshift
+request:
+  issue: 166
+tier: T1
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-166
+feature_branch: null
+pr: null
+release: v0.1.10
+created: '2026-10-08T09:47:13Z'
+updated: '2026-10-08T09:47:14Z'
+budget:
+  used: 0
+  limit: 2
+  paused: false
+  since: '2026-10-08T09:47:14Z'
+phases: []
+events:
+- time: '2026-10-08T09:47:13Z'
+  type: created
+  note: run ns-166 created
+- time: '2026-10-08T09:47:13Z'
+  type: tier
+  note: T1 (owner, 2 h)
