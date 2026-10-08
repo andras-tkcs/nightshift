@@ -19,19 +19,19 @@ tags:
 - sec-compliance
 state: running
 gate: null
-step: board
+step: integrate
 stop_requested: null
 branch: plan/ns-x7
 feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:08:29Z'
+updated: '2026-10-08T11:18:45Z'
 budget:
-  used: 9.88
+  used: 10.05
   limit: 12
   paused: false
-  since: '2026-10-08T11:08:10Z'
+  since: '2026-10-08T11:18:22Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -230,4 +230,7 @@ events:
 - time: '2026-10-08T10:02:47Z'
   type: resumed
   note: resumed from parked
+- time: '2026-10-08T11:18:42Z'
+  type: review
+  note: review board
 queued_for_slot: false
