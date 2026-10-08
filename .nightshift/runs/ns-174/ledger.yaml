@@ -19,12 +19,12 @@ feature_branch: fix/ns-174
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T08:35:24Z'
+updated: '2026-10-08T08:48:06Z'
 budget:
-  used: 0.93
+  used: 1.15
   limit: 2
   paused: false
-  since: '2026-10-08T08:34:54Z'
+  since: '2026-10-08T08:48:06Z'
 phases:
 - id: fix
   title: fix
