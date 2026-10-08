@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:44:43Z'
+updated: '2026-10-08T11:44:47Z'
 budget:
-  used: 10.48
+  used: 10.49
   limit: 12
   paused: false
-  since: '2026-10-08T11:44:10Z'
+  since: '2026-10-08T11:44:46Z'
   integrate_from: '2026-10-08T11:23:43Z'
 phases:
 - id: p1-note-cli
@@ -253,6 +253,9 @@ events:
   type: note
   note: 'note 5: follow-up: ns note folds only CR/LF in note text; other control chars
     and U+0085'
+- time: '2026-10-08T11:44:46Z'
+  type: note
+  note: 'note 6: follow-up: concurrent ns note calls may mislabel event n'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
