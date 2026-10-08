@@ -7,21 +7,21 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: queued
+state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-175
 feature_branch: null
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T09:44:18Z'
+updated: '2026-10-08T09:45:08Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-08T09:44:18Z'
+  since: '2026-10-08T09:45:08Z'
 phases: []
 events:
 - time: '2026-10-08T09:44:16Z'
@@ -30,3 +30,10 @@ events:
 - time: '2026-10-08T09:44:17Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-08T09:44:32Z'
+  type: state
+  note: running
+- time: '2026-10-08T09:44:33Z'
+  type: step
+  note: implement
+queued_for_slot: false
