@@ -16,12 +16,12 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T12:27:01Z'
+updated: '2026-10-08T12:27:03Z'
 budget:
   used: 2.21
   limit: 2
   paused: false
-  since: '2026-10-08T12:27:01Z'
+  since: '2026-10-08T12:27:03Z'
   integrate_from: null
 phases:
 - id: fix
