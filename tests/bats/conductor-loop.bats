@@ -857,7 +857,7 @@ review_phase() {
 }
 
 @test "finish on T2: a failed handoff publish is fatal, the run report is still committed and published (#118)" {
-  printf '<html><script>x()</script></html>\n' >"$RUNDIR/handoff.md"
+  printf 'token ghp_abcdefghijklmnopqrstuvwxyz0123\n' >"$RUNDIR/handoff.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_failure 1
   assert_output_contains "could not publish the handoff report"

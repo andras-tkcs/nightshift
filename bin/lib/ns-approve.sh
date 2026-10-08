@@ -13,7 +13,7 @@ source "$NS_HOME/bin/lib/profile.sh"
 ns_approve_help() {
   printf 'usage: ns approve <id> [--yes]\n\n'
   printf 'Show what you changed on the review desk, commit the desk versions of the\n'
-  printf 'Markdown and YAML documents to the run branch and release the gate. --yes skips\n'
+  printf 'Markdown and YAML documents (not the read-only handoff.md) to the run branch and release the gate. --yes skips\n'
   printf 'the question and is only allowed for projects added with --sandbox. An\n'
   printf 'onboarding run (<prefix>-onboard) opens a pull request instead.\n'
 }
@@ -145,6 +145,7 @@ ns_approve_main() {
   while IFS=$'\t' read -r name src _; do
     [ -n "$name" ] || continue
     case "$name" in
+      handoff.md) continue ;; # the report is read-only by convention (#166)
       *.md | *.yaml) ;;
       *.env) [ "$onboard" = true ] || continue ;;
       *) continue ;;
@@ -161,6 +162,7 @@ ns_approve_main() {
   while IFS=$'\t' read -r name src _; do
     [ -n "$name" ] || continue
     case "$name" in
+      handoff.md) continue ;; # the report is read-only by convention (#166)
       *.md | *.yaml) ;;
       *.env) [ "$onboard" = true ] || continue ;;
       *) continue ;;

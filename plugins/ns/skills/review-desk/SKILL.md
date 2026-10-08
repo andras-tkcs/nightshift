@@ -17,10 +17,10 @@ The desk is the owner's inbox: a folder per repo with one subfolder per run. Gat
 | `acceptance.md` | Markdown | yes | acceptance criteria |
 | `manual-steps.md` | Markdown | yes | steps only a human can do |
 | `escalation.md` | Markdown | yes | what is stuck, the question, an empty `## Owner's answer` section |
-| `handoff.html` | HTML | no, read-only | the report at gate 2 |
+| `handoff.md` | Markdown | no, read-only by convention | the report at gate 2 |
 | `architecture.html` | HTML | no, read-only | diagrams and overview |
 
-Decisions the owner can change are Markdown, so `ns approve` can show a diff and commit them. Reports are HTML and are never committed back.
+Decisions the owner can change are Markdown, so `ns approve` can show a diff and commit them. `handoff.md` and the HTML reports are read-only: approving never commits them back.
 
 ## Publishing and gates
 

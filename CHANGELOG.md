@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The handoff report is Markdown (`RUN/handoff.md`, template `template.md`), so the review desk renders it instead of showing HTML source. `finish` publishes it and still fails when it cannot; approving never commits it back (issue #166).
+
 ## [0.1.10] - 2026-10-08
 
 ### Changed

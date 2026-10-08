@@ -193,15 +193,6 @@ published() {
   published '<p>one = two, see https://x and say "onclick = no"</p>\n'
 }
 
-@test "the filled handoff template passes the check" {
-  sed 's#{{PR_URL}}#https://github.com/o/r/pull/1#g' \
-    "$NS_REPO_ROOT/plugins/ns/skills/handoff-report/template.html" >"$BATS_TEST_TMPDIR/h.html"
-  # shellcheck source=/dev/null
-  source "$NS_REPO_ROOT/bin/lib/desk.sh"
-  run ns_desk_check_html "$BATS_TEST_TMPDIR/h.html"
-  assert_success
-}
-
 @test "a file containing a token is refused" {
   printf 'key %s\n' "$(tok)" >"$RUNDIR/plan.md"
   run ns publish sbx-12 RUN/plan.md

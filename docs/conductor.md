@@ -207,7 +207,7 @@ Sets the run state to `waiting` with the gate, adds an event `gate` with the not
 ns-conductor finish <id> --pr <url>
 ```
 
-Records the pull request URL, sets `step` and the state to `done` and adds an event `finish`. It writes `RUN/run-report.md` with `ns report <id>`, checkpoints and pushes the ledger (the report is committed with it), then publishes the report and, for T2 and T3 runs, `RUN/handoff.html` when that file exists, in one `ns publish`. For T2 and T3 it also sets gate `2`; for T0 and T1 the gate stays unset. The run report is best effort: when writing or publishing it fails, `finish` warns and goes on. The handoff report is not: when publishing it fails, `finish` exits 1 with `could not publish the handoff report` after the ledger is recorded and pushed (state `done`); fix `RUN/handoff.html` and publish it with `ns publish <id> RUN/handoff.html`. Exit 0, or 1 on failure.
+Records the pull request URL, sets `step` and the state to `done` and adds an event `finish`. It writes `RUN/run-report.md` with `ns report <id>`, checkpoints and pushes the ledger (the report is committed with it), then publishes the report and, for T2 and T3 runs, `RUN/handoff.md` when that file exists, in one `ns publish`. For T2 and T3 it also sets gate `2`; for T0 and T1 the gate stays unset. The run report is best effort: when writing or publishing it fails, `finish` warns and goes on. The handoff report is not: when publishing it fails, `finish` exits 1 with `could not publish the handoff report` after the ledger is recorded and pushed (state `done`); fix `RUN/handoff.md` and publish it with `ns publish <id> RUN/handoff.md`. Exit 0, or 1 on failure.
 
 ### pause and unpause
 

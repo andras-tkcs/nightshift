@@ -791,21 +791,21 @@ conductor_finish() {
   else
     ns_warn "could not write the run report for $id"
   fi
-  handoff="$wt/.nightshift/runs/$id/handoff.html"
+  handoff="$wt/.nightshift/runs/$id/handoff.md"
   case "$tier" in
     T2 | T3) [ ! -f "$handoff" ] || hand=true ;;
   esac
   lg checkpoint "$ledger" --push
   local -a docs=()
-  [ "$hand" = false ] || docs+=("RUN/handoff.html")
+  [ "$hand" = false ] || docs+=("RUN/handoff.md")
   [ "$report" = false ] || docs+=("RUN/run-report.md")
   # one publish (one notification) when both are fine; else each on its own
   if [ "${#docs[@]}" -gt 0 ] && ! "$NS_HOME/bin/ns" publish "$id" "${docs[@]}"; then
     if [ "$report" = true ] && { [ "$hand" = false ] || ! "$NS_HOME/bin/ns" publish "$id" RUN/run-report.md; }; then
       ns_warn "could not publish RUN/run-report.md"
     fi
-    if [ "$hand" = true ] && ! "$NS_HOME/bin/ns" publish "$id" RUN/handoff.html; then
-      ns_die "could not publish the handoff report: fix RUN/handoff.html, then ns publish $id RUN/handoff.html"
+    if [ "$hand" = true ] && ! "$NS_HOME/bin/ns" publish "$id" RUN/handoff.md; then
+      ns_die "could not publish the handoff report: fix RUN/handoff.md, then ns publish $id RUN/handoff.md"
     fi
   fi
   printf 'finished %s: %s\n' "$id" "$url"
