@@ -41,22 +41,25 @@ Ledger step: `implement`, then `integrate`.
 
 1. `ns-conductor fix-branch <id>` (prints the fix worktree path; idempotent).
 2. Launch subagent `ns:implementer` in the fix worktree with the request.
-3. Sync (see Sync below).
-4. `ns-conductor checks <id> feature`; the checks of Sync are its first run. On failure launch `ns:implementer` again with the check output and rerun the checks, up to `budgets.T0.review_rounds` times, then Escalate.
+3. Sync (see Sync below; for T0 it runs stack-base and risk-check, not the suite).
+4. `ns-conductor checks <id> feature`: the one full suite run of the change. On failure launch `ns:implementer` again with the check output and rerun the checks, up to `budgets.T0.review_rounds` times, then Escalate.
 5. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T1
 
-Ledger step: `implement`, then `integrate`.
+Ledger step: `implement`, then `integrate`. Order: implement (the implementer runs lint and only the tests covering the changed files), review, then ONE full suite run on the head that goes into the PR. The suite never runs before a review round.
 
-1. Write `RUN/mini-plan.md` yourself, 10 to 30 lines: cause hypothesis, the failing test to add, the fix, files.
+1. Write `RUN/mini-plan.md` yourself, 10 to 30 lines: cause hypothesis, the failing test to add, the fix, files. Tag it `mechanical` (a line `mechanical: true`) when the request or its tags say `mechanical` (a rename, a move, a text-only change).
 2. `ns-conductor fix-branch <id>`.
 3. Implementer step A: launch `ns:implementer` to add a test that reproduces the bug, run only that test and see it fail, commit `test: failing test for <id>` and push.
-4. Implementer step B: launch `ns:implementer` to fix, make the tests covering the change pass and push.
-5. Sync (see Sync below). When its checks fail: launch `ns:implementer` with the output and rerun `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate.
-6. Launch subagent `ns:code-reviewer` with `git diff origin/<pr-base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-fix-<round>.md`, `<round>` being the `review_rounds` of phase `fix` in the ledger plus one (1 at first), last line `REVIEW verdict=approve|changes head=<sha>`.
-7. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve` or `changes`), right after the review. Exit 7 (`changes` on the last allowed round): Escalate. Exit 9 (the review file of this round is missing, has no verdict line, says the other verdict, or approved another head than `origin/<fix branch>`): run the review again from step 6; never edit the review file. A second exit 9 on the same round: Escalate. Verdict `changes`: launch `ns:implementer` with the review, run `ns-conductor checks <id> feature`, then repeat from step 6.
-8. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
+4. Implementer step B: launch `ns:implementer` to fix, make the tests covering the change pass (and lint) and push.
+   Mechanical path (request or mini-plan tagged `mechanical`): steps 3 and 4 are one `ns:implementer` session that makes two separate commits, the failing test (seen failing) first, then the fix, and pushes. Review and the full suite are the same as below.
+5. Sync (see Sync below): stack-base and risk-check only, no suite.
+6. Launch subagent `ns:code-reviewer` (tell it `approve-after-nits` is allowed) with `git diff origin/<pr-base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-fix-<round>.md`, `<round>` being the `review_rounds` of phase `fix` in the ledger plus one (1 at first), last line `REVIEW verdict=approve|approve-after-nits|changes head=<sha>`.
+7. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve`, `approve-after-nits` or `changes`), right after the review. Exit 7 (`changes` on the last allowed round): Escalate. Exit 9 (the review file of this round is missing, has no verdict line, says another verdict, has a blocking finding under `approve-after-nits`, or reviewed another head than `origin/<fix branch>`): run the review again from step 6; never edit the review file. A second exit 9 on the same round: Escalate. Verdict `changes`: launch `ns:implementer` with the review (tests covering the changes and lint only), then repeat from step 6.
+   Lighter review: when a review round has only non-blocking findings the reviewer writes `approve-after-nits`. Launch `ns:implementer` with the review to address the findings (targeted tests and lint), then call `ns-conductor review-round <id> fix approve-after-nits`: no second reviewer round. It is accepted only when the review file marks every finding non-blocking and its head is the branch head or an ancestor of it. A blocking finding needs `changes` and a re-review.
+8. After the last review round approved (`approve`, or `approve-after-nits` once the nits are fixed): `ns-conductor checks <id> feature` on the PR head, the one full suite run. On failure launch `ns:implementer` with the output, then a review round (steps 6 and 7) of the fix, then rerun the checks, up to `budgets.T1.review_rounds` times, then Escalate.
+9. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T2
 
@@ -83,13 +86,13 @@ Ledger step: as T2.
 
 ## Sync
 
-Run by the conductor in its own session, not by a subagent. Where: T0 step 3, T1 step 5, and T2/T3 when every phase is merged (after `step=board`, before the board). On a resumed session that does not know `<pr-base>`, run `stack-base` again; it is idempotent.
+Run by the conductor in its own session, not by a subagent. Where: T0 step 3, T1 step 5 (for T0 and T1 without the suite), and T2/T3 when every phase is merged (after `step=board`, before the board). On a resumed session that does not know `<pr-base>`, run `stack-base` again; it is idempotent.
 
 1. `ns-conductor stack-base <id>`. Exit 0: keep the printed branch as `<pr-base>`. Exit 6: `git -C <code worktree> merge --abort`, `ns-conductor note <id> "stack-base conflict before review; the integrator resolves it"`, and use `<pr-base>` = `<base>`. Exit 7: Escalate. Exit 4: end the session (the run waits at gate 1.5). Any other non-zero exit (for example `could not push`): Escalate with its output.
-2. `ns-conductor checks <id> feature`, following the waiting rule of Start step 4: in the foreground when the Bash timeout bounds it; otherwise in the background, then wait for its task notification (never a polling loop).
+2. T2/T3 only (T0 and T1 run the suite once, after review, in their own steps): `ns-conductor checks <id> feature`, following the waiting rule of Start step 4: in the foreground when the Bash timeout bounds it; otherwise in the background, then wait for its task notification (never a polling loop).
    2a. When `tier_source` is `owner`: `ns-conductor risk-check <id>`. It matches `git diff origin/<base>...origin/<feature>` against the profile's `risk_zones` and `platform_paths`, records the tags (`sec-compliance`, `risk:<zone>`, `platform:<p>`) and `risk_floor`, and, only when the floor is above the owner's tier, records `tier_recommended` and prints `tier_recommended <T>`: send `ns-notify "ns: <id> risk floor <T> is above owner tier <tier>"`. It never changes `tier`.
 3. A `warning:` line in the checks output means the checked worktree lacks pushed code: Escalate with the line, even when the checks passed.
-4. Failing checks: T0 follows the loop of its checks step; T1 launches `ns:implementer` with the output and reruns `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate; T2/T3 turn the failing output into a blocking board finding (`RUN/board-fix-<n>.md`).
+4. Failing checks: T0 and T1 follow the loop of their checks step; T2/T3 turn the failing output into a blocking board finding (`RUN/board-fix-<n>.md`).
 
 ## Review board
 
@@ -107,7 +110,7 @@ Ledger step: set `board` before (T2 and T3 only); set `integrate` after.
 Ledger step: `integrate` before; `ns-conductor finish` sets `done`.
 
 1. Launch subagent `ns:integrator` in the feature (T2/T3) or fix (T0/T1) worktree.
-2. It runs `ns-conductor stack-base <id>` first (exit 4: the run waits at gate 1.5 for its budget, no PR; exit 6: it resolves the conflicts, commits and pushes (the checks then run in `/ns:dod`), or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. stack-base merges the base branch when the code branch is behind it and pushes it. It then runs `/ns:dod` to write `RUN/dod.md` (inside a run `/ns:dod` takes the profile checks from `ns-conductor checks <id> feature`, a cache hit when nothing changed); it never runs the test command directly, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
+2. It runs `ns-conductor stack-base <id>` first (exit 4: the run waits at gate 1.5 for its budget, no PR; exit 6: it resolves the conflicts, commits and pushes (the checks then run in `/ns:dod`), or escalates at gate 1.5 and opens no PR; exit 7, more than one chain of open run PRs: escalate at gate 1.5 and open no PR); the printed branch is the PR base; when stack-base skipped a run PR with failing checks, the PR body says `Stacked on #N (checks failing on #M)`. stack-base merges the base branch when the code branch is behind it and pushes it. It then runs `/ns:dod` to write `RUN/dod.md` (inside a run `/ns:dod` takes the profile checks from `ns-conductor checks <id> feature`, a cache hit when nothing changed, so the integrator and `/ns:dod` reuse the pass of the final head; the owner's tag command keeps its own run); it never runs the test command directly, and, if the PR branch contains `.nightshift/`, runs `git rm -r -q .nightshift` and commits `ns: drop run files from the PR branch`; then it pushes.
 3. T2 and T3: it writes `RUN/handoff.md` from the `handoff-report` template.
 4. It opens the PR (reusing an open PR of the branch on a rerun, `gh pr view` first): `gh pr create --base <pr-base> --head <branch> --title "<id>: <summary>" --body-file RUN/pr-body.md`. The body holds the summary, phase table, checks, non-blocking findings, `manual_after` items as unchecked boxes, a Stack section, a Run report line (from `ns report <id>`) and the desk link.
 5. `ns-conductor finish <id> --pr <url>` (for T2/T3 this also sets gate 2; it writes and commits `RUN/run-report.md` with `ns report` and publishes it, and the handoff report, to the desk; a failed run report is only a warning, a failed handoff publish exits 1: fix `RUN/handoff.md` and run `ns publish <id> RUN/handoff.md`). A run that ends `stopped` or `failed` any other way gets its report from `ns report <id>`. End the session with a one-line summary.

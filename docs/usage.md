@@ -374,7 +374,7 @@ Triage picks a tier from the size of the request and the risk of the paths it to
 | Tier | Typical | Pipeline | Gates | Default budget |
 |---|---|---|---|---|
 | T0 | typo, docs, config value | implementer, checks, PR | PR review only | 30 min, 1 review round |
-| T1 | one bug | mini-plan, failing test, fix, checks, code review, PR | PR review only | 2 h, 3 review rounds |
+| T1 | one bug | mini-plan, failing test, fix, code review, one full suite run, PR | PR review only | 2 h, 3 review rounds |
 | T2 | feature in one area | analysis, plan, tests, gate 1, 1 to 3 phases, review, integration, PR | gate 1, gate 2 | 8 h |
 | T3 | epic | research, analysis, ADR, plan, tests, gate 1, parallel phases, review board, integration, PR | gate 1, gate 1.5 if needed, gate 2 | 36 h |
 

@@ -1277,3 +1277,89 @@ x5_usage() {
   [ "$(grep -c '^== run ' "$log")" = 1 ]
   [ "$(grep -c '^== cached ' "$log")" = 1 ]
 }
+
+# nits_file <phase> <head> [blocking]: write the round-1 review file of an approve-after-nits verdict
+nits_file() {
+  {
+    printf -- '- non-blocking · a.txt:1 · rename · rename it\n'
+    [ -z "${3:-}" ] || printf -- '- blocking · a.txt:2 · wrong · fix it\n'
+    printf '\nREVIEW verdict=approve-after-nits head=%s\n' "$2"
+  } >"$RUNDIR/review-$1-1.md"
+}
+
+@test "review-round approve-after-nits is accepted when every finding is non-blocking and the head moved on top (ns-175)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  a=$(remote_sha feature/12--p1-alpha)
+  nits_file p1-alpha "$a"
+  # the implementer fixed the nits on top of the reviewed head
+  push_phase p1-alpha b.txt beta
+  b=$(remote_sha feature/12--p1-alpha)
+  run ns-conductor review-round sbx-12 p1-alpha approve-after-nits
+  assert_success
+  [ "$(pstate p1-alpha review_verdict)" = approve-after-nits ]
+  [ "$(pstate p1-alpha reviewed_head)" = "$b" ]
+  [ "$(pstate p1-alpha review_rounds)" = 1 ]
+}
+
+@test "review-round approve-after-nits with a blocking finding exits 9 and records nothing (ns-175)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  nits_file p1-alpha "$(remote_sha feature/12--p1-alpha)" blocking
+  events=$(lget '.events | length')
+  run ns-conductor review-round sbx-12 p1-alpha approve-after-nits
+  assert_failure 9
+  assert_output_contains "blocking"
+  [ "$(lget '.events | length')" = "$events" ]
+  [ "$(lget '[.phases[] | select(.id == "p1-alpha")] | length')" = 0 ]
+}
+
+@test "review-round approve-after-nits refuses a head that is not an ancestor of the branch head (ns-175)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  other=$(GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+    git -C "$BARE" commit-tree -p main -m other "main^{tree}")
+  nits_file p1-alpha "$other"
+  events=$(lget '.events | length')
+  run ns-conductor review-round sbx-12 p1-alpha approve-after-nits
+  assert_failure 9
+  assert_output_contains "${other:0:12}"
+  [ "$(lget '.events | length')" = "$events" ]
+  # a nits file whose verdict line says approve is not an approve-after-nits round
+  printf 'REVIEW verdict=approve head=%s\n' "$(remote_sha feature/12--p1-alpha)" >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve-after-nits
+  assert_failure 9
+  [ "$(lget '.events | length')" = "$events" ]
+}
+
+@test "review-round plain approve keeps the exact head check next to approve-after-nits (ns-175)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  a=$(remote_sha feature/12--p1-alpha)
+  push_phase p1-alpha b.txt beta
+  printf 'REVIEW verdict=approve head=%s\n' "$a" >"$RUNDIR/review-p1-alpha-1.md"
+  run ns-conductor review-round sbx-12 p1-alpha approve
+  assert_failure 9
+  assert_output_contains "${a:0:12}"
+  [ "$(lget '[.events[] | select(.type == "review")] | length')" = 0 ]
+}
+
+@test "merge accepts a recorded approve-after-nits verdict of the current head (ns-175)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  a=$(remote_sha feature/12--p1-alpha)
+  nits_file p1-alpha "$a"
+  push_phase p1-alpha b.txt beta
+  b=$(remote_sha feature/12--p1-alpha)
+  run ns-conductor review-round sbx-12 p1-alpha approve-after-nits
+  assert_success
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_success
+  [ "$(pstate p1-alpha state)" = merged ]
+  git -C "$BARE" merge-base --is-ancestor "$b" feature/12
+}
