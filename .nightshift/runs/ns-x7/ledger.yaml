@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T04:40:30Z'
+updated: '2026-10-08T04:41:40Z'
 budget:
-  used: 8.58
+  used: 8.6
   limit: 12
   paused: false
-  since: '2026-10-08T04:40:28Z'
+  since: '2026-10-08T04:41:40Z'
   integrate_from: null
 phases:
 - id: p1-note-cli
@@ -218,4 +218,7 @@ events:
 - time: '2026-10-08T04:40:29Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-08T04:41:01Z'
+  type: state
+  note: running
 queued_for_slot: false
