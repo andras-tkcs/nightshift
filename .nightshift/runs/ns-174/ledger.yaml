@@ -15,11 +15,11 @@ gate: null
 step: implement
 stop_requested: null
 branch: plan/ns-174
-feature_branch: null
+feature_branch: fix/ns-174
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T07:39:53Z'
+updated: '2026-10-08T07:39:56Z'
 budget:
   used: 0.01
   limit: 2
