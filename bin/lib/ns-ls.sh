@@ -9,7 +9,7 @@ source "$NS_HOME/bin/lib/runs.sh"
 ns_ls_help() {
   printf 'usage: ns ls [--all] [--json]\n\n'
   printf 'List the runs in the runs index, oldest first. --all includes archived runs.\n'
-  printf '--json prints an array of {id, project, tier, state, gate, step, phases, created, health,\nelapsed_s, idle_s}.\n'
+  printf -- '--json prints an array of {id, project, tier, state, gate, step, phases, created, health,\nelapsed_s, idle_s}.\n'
 }
 
 ns_ls_main() {

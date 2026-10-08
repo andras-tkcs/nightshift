@@ -38,7 +38,7 @@ A phase with `platform_paths` for a CI platform: dispatch its workflows through 
 One phase at a time, even when several finish together.
 
 1. `ns-conductor report <id> <phase>`. Exit 1 (not `status=done`, or `head=` differs from the pushed branch): restart once with the printed reason as feedback (write it to `RUN/review-<phase>-0.md`, then `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-0.md`). A second failure: escalate. `status=blocked`: read why; a small, clearly in-phase fix goes back as feedback, anything else is an escalation.
-2. `ns-conductor checks <id> <phase>`. Failing checks go back to the worker as feedback (the printed output), like a review.
+2. `ns-conductor checks <id> <phase>`. Failing checks go back to the worker as feedback (the printed output), like a review. Workers ran only the tests covering their files; this is the phase's full-suite run.
 3. Adversarial review: subagent `ns:code-reviewer` with the phase diff `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, never the worker's log. It writes `RUN/review-<phase>-<round>.md`, `<round>` being the phase's `review_rounds` in the ledger plus one, whose last line is `REVIEW verdict=approve|changes head=<sha>`, `<sha>` being the `origin/<phase branch>` commit it reviewed. Ask it specifically: is the diff inside the brief and inside `touches` (a small, explained addition such as a shared test fixture is fine; anything else goes back)? Does it touch files other phases own? Has it disabled, skipped or weakened a test, or deleted an expected failure that belongs to another phase? Does every `acceptance` item have evidence?
 4. `ns-conductor review-round <id> <phase> <verdict>` with the review's verdict (`approve` or `changes`), right after the review and before any restart: it records the verdict and the phase head it reviewed. An `approve` needs `RUN/review-<phase>-<round>.md` of this round ending with `REVIEW verdict=approve head=<sha>` for the current phase head. Exit 9 (the file is missing, has no verdict line, says the other verdict, or names another head): run the review again from step 3; never write or edit a review file yourself. A second exit 9 on the same round: escalate. Exit 7 (`changes` on the last allowed round): escalate.
 5. Verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`, back to section 2.
@@ -52,7 +52,7 @@ Workers stay inside their phase's `brief` and `touches`. If a worker reports wor
 
 ## 5. Review board (T2/T3)
 
-When every phase is `merged`, set `ns-ledger set '.step="board"'` and run these in the feature worktree, each reading the diff `git diff origin/<base>...origin/<feature>`:
+When every phase is `merged`, set `ns-ledger set '.step="board"'`, run the Sync procedure of `/ns:run` (stack-base, then the feature checks; it yields `<pr-base>`) and then run these in the feature worktree, each reading the diff `git diff origin/<pr-base>...origin/<feature>`:
 
 1. Subagent `ns:code-reviewer` writes `RUN/board-code.md`.
 2. Subagent `ns:sec-compliance` writes `RUN/board-sec.md` (always for T3; for T2 only when triage tagged `sec-compliance`).

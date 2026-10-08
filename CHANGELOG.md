@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run report and `ns log` gaps (ns-x6): `ns log` stamps each line with the event's own time; the report timeline of T0 and T1 runs follows `step` events (`ns-ledger set` now appends a `step` event when `.step` changes); a session without a result event gives partial tokens summed from its assistant messages; a subagent without a task notification takes its time from its Agent call to its tool result; a new Checks breakdown table counts runs and total time per check (`ns-conductor checks` now appends to the checks log, each run opening with `== run <UTC>`).
 - The desk through Cloudflare Access no longer fails with "Failed to register a ServiceWorker ... The script resource is behind a redirect": `docs/accounts.md` adds a `Nightshift desk static` Access application with a Bypass policy for SilverBullet's `/service_worker.js` and `/.client/*`, as SilverBullet's authentication proxy notes require. `docs/setup.md` gets a curl check for it, and `docs/security.md` and `docs/operations.md` list the bypass and its teardown.
 
+### Changed
+
+- `ns-conductor checks` takes a per-worktree lock (a second call waits and reports the first call's result), caches a pass by tree SHA, canonical target and the profile's checks (`logs/<id>/<canonical target>.checks.json`; a dirty worktree, a changed tree, a failure or `--force` reruns), treats `fix` as `feature` for T0/T1, and warns on stderr when the worktree's HEAD lacks the run's pushed code branch or an unmerged phase branch; `stack-base` also merges the base branch when the code branch is behind and pushes it, and runs at the end of implement, before review; workers run only the tests covering their files, and the integrator and `/ns:dod` get the full suite from `ns-conductor checks` (ns-x5).
+
 ## [0.1.8] - 2026-10-06
 
 ### Security

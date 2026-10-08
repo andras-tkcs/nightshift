@@ -94,6 +94,7 @@ PRS_TWO='[
   [ -f "$CODE_WT/other.txt" ]
   # a merge commit, never a rebase
   [ "$(git -C "$CODE_WT" rev-list --merges --count origin/main..HEAD)" -ge 1 ]
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
 }
 
 @test "stack-base picks the top of a two-PR stack" {
@@ -198,6 +199,7 @@ PRS_TWO='[
   clone=$(ns_project_path)
   # the profile is read from origin/main, so publish it there
   printf 'project: nightshift-sandbox\nprefix: sbx\ncommands:\n  setup: "true"\n  test: "true"\ngit:\n  base_branch: develop\nstacks: [python]\n' >"$clone/.claude/project-profile.yaml"
+  git -C "$clone" push -q origin "$(git -C "$CODE_WT" rev-parse HEAD):refs/heads/develop"
   git -C "$clone" add -A
   git -C "$clone" commit -q -m "base branch develop"
   git -C "$clone" push -q origin HEAD:main
@@ -843,4 +845,80 @@ skipped() { ns-ledger get "$LEDGER" '(.stack_skipped // []) | map(.number) | sor
   mv "$GH_STUB_RESPONSES/map.new" "$GH_STUB_RESPONSES/map"
   run ns stack sbx
   [ "$(grep -c "could not search the closed PRs" <<<"$output")" -eq 1 ]
+}
+
+# ---- ns-x5 acceptance tests (RUN/test-strategy.md of ns-x5) ----
+
+# x5_main_ahead <file> <content>: one more commit on origin/main
+x5_main_ahead() {
+  local w
+  w=$(mktemp -d "$BATS_TEST_TMPDIR/m.XXXXXX")
+  git clone -q "$REMOTE" "$w"
+  printf '%s\n' "$2" >"$w/$1"
+  git -C "$w" add "$1"
+  git -C "$w" commit -q -m "main: $1"
+  git -C "$w" push -q origin HEAD:main
+  rm -rf "$w"
+}
+
+# AC-6, D8: with no open run PR, stack-base merges origin/main when behind and pushes
+@test "stack-base with no open run PR merges origin/main when behind and pushes the code branch (ns-x5)" {
+  pr_list '[]'
+  # a live run: the ledger drops integrate_from outside the running state
+  ns-ledger state "$LEDGER" running --no-gate
+  x5_main_ahead new.txt x
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  git -C "$CODE_WT" merge-base --is-ancestor origin/main HEAD
+  [ "$(git -C "$CODE_WT" rev-list --merges --count HEAD~1..HEAD)" = 1 ]
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
+  [ "$(ns-ledger get "$LEDGER" .budget.integrate_from)" = "$NS_NOW" ]
+}
+
+# D8: up to date: no merge, nothing pushed; without a code worktree it dies
+@test "stack-base on an up-to-date code branch makes no merge and pushes nothing; it dies without a code worktree (ns-x5)" {
+  pr_list '[]'
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$output" = main ]
+  [ "$(git -C "$CODE_WT" rev-list --merges --count origin/main..HEAD)" = 0 ]
+  ! git -C "$REMOTE" rev-parse -q --verify refs/heads/fix/sbx-12
+  git -C "$WT" worktree remove --force "$CODE_WT"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "no code worktree"
+}
+
+# D8: a conflict with origin/main exits 6 and sets no integrate_from
+@test "stack-base exits 6 on a conflict with origin/main and sets no integrate_from (ns-x5)" {
+  pr_list '[]'
+  printf 'mine\n' >"$CODE_WT/README.md"
+  git -C "$CODE_WT" commit -q -am "mine"
+  x5_main_ahead README.md theirs
+  run ns-conductor stack-base sbx-12
+  assert_failure 6
+  [ -f "$(git -C "$CODE_WT" rev-parse --absolute-git-dir)/MERGE_HEAD" ]
+  [ "$(ns-ledger get "$LEDGER" .stacked_on)" = main ]
+  [ "$(ns-ledger get "$LEDGER" '.budget.integrate_from // "none"')" = none ]
+}
+
+# D8: a refused push undoes the merge; a retry merges and pushes
+@test "stack-base undoes its merge when the push is refused, and a retry pushes (ns-x5)" {
+  local pre
+  pr_list '[]'
+  x5_main_ahead new.txt x
+  pre=$(git -C "$CODE_WT" rev-parse HEAD)
+  printf '#!/bin/sh\nexit 1\n' >"$REMOTE/hooks/pre-receive"
+  chmod +x "$REMOTE/hooks/pre-receive"
+  run ns-conductor stack-base sbx-12
+  assert_failure
+  assert_output_contains "could not push"
+  [ "$(git -C "$CODE_WT" rev-parse HEAD)" = "$pre" ]
+  [ "$(ns-ledger get "$LEDGER" '.budget.integrate_from // "none"')" = none ]
+  rm -f "$REMOTE/hooks/pre-receive"
+  run ns-conductor stack-base sbx-12
+  assert_success
+  [ "$(git -C "$REMOTE" rev-parse refs/heads/fix/sbx-12)" = "$(git -C "$CODE_WT" rev-parse HEAD)" ]
+  git -C "$CODE_WT" merge-base --is-ancestor origin/main HEAD
 }

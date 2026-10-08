@@ -8,7 +8,7 @@ conductor_loop_usage() {
   printf '  fix-branch    <id>\n'
   printf '  feature       <id>\n'
   printf '  stack-base    <id>\n'
-  printf '  checks        <id> <phase|feature>\n'
+  printf '  checks        <id> <phase|feature> [--force]\n'
   printf '  report        <id> <phase> [--rerun]\n'
   printf '  note          <id> <text> | --file <file>\n'
   printf '  review-round  <id> <phase> <approve|changes>\n'
@@ -26,12 +26,35 @@ loop_tier() {
   printf '%s\n' "${t:-T2}"
 }
 
-# loop_code_wt: worktree of the code branch (<id>--fix for T0/T1, <id>--feature otherwise)
+# loop_code_wt: worktree of the code branch. It follows the ledger's feature_branch: <id>--fix when
+# that is the profile's fix branch, <id>--feature when it is anything else; while unset the tier
+# decides (<id>--fix for T0/T1, <id>--feature otherwise), so a retier after fix-branch cannot
+# move it.
 loop_code_wt() {
+  local fb
+  fb=$(lg get "$ledger" '.feature_branch // empty')
+  if [ -n "$fb" ]; then
+    if [ "$fb" = "$(ns_branch_name "$(jq -r '.git.fix_branch' <<<"$profile")" "$id")" ]; then
+      ns_run_worktree_path "$profile" "$id--fix"
+    else
+      ns_run_worktree_path "$profile" "$id--feature"
+    fi
+    return
+  fi
   case "$(loop_tier)" in
     T0 | T1) ns_run_worktree_path "$profile" "$id--fix" ;;
     *) ns_run_worktree_path "$profile" "$id--feature" ;;
   esac
+}
+
+# loop_checks_canon <target>: `fix` is `feature` when both name the code worktree (T0/T1);
+# any other target is unchanged
+loop_checks_canon() {
+  if [ "$1" = fix ] && [ "$(ns_run_worktree_path "$profile" "$id--fix")" = "$(loop_code_wt)" ]; then
+    printf 'feature\n'
+  else
+    printf '%s\n' "$1"
+  fi
 }
 
 # loop_add_worktree <worktree> <branch> <base>: create the worktree on the branch when absent;
@@ -99,9 +122,43 @@ conductor_feature() {
   printf '%s\n' "$dir"
 }
 
-# conductor_stack_base <id>: print the base branch for the run's PR. With open PRs of other
-# runs it merges the top of the stack into the code branch (never a rebase), records
-# stacked_on and prints that branch; exit 6 on a conflict (the merge is left in progress), exit 7
+# loop_stack_merge <dir> <branch> <stacked> <note>: merge origin/<branch> into the code branch in <dir>
+# when HEAD is behind it (never a rebase), then push the code branch. Nothing to merge: nothing pushed.
+# A conflict leaves the merge in progress, records stacked_on <stacked> and exits 6; a refused push
+# undoes the merge so the next call retries merge and push.
+loop_stack_merge() {
+  local dir="$1" branch="$2" stacked="$3" note="$4" own pre clash mout
+  git -C "$dir" fetch -q origin "$branch" || ns_die "could not fetch origin $branch"
+  if git -C "$dir" merge-base --is-ancestor "origin/$branch" HEAD; then
+    return 0
+  fi
+  own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
+  if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
+    ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
+  fi
+  clash=$(comm -12 <(git -C "$dir" ls-files --others --exclude-standard | sort) \
+    <(git -C "$dir" diff --name-only "HEAD...origin/$branch" | sort))
+  [ -z "$clash" ] || ns_die "untracked files in $dir would be overwritten by merging $branch: $(tr '\n' ' ' <<<"$clash")"
+  pre=$(git -C "$dir" rev-parse HEAD)
+  if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $branch into $own$note" "origin/$branch" 2>&1); then
+    printf '%s\n' "$mout" >&2
+    if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
+      lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
+      lg checkpoint "$ledger"
+      printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$branch" "$own" "$dir" >&2
+      exit 6
+    fi
+    ns_die "could not merge $branch into $own in $dir"
+  fi
+  if ! git -C "$dir" push -q origin "HEAD:refs/heads/$own" >/dev/null 2>&1; then
+    git -C "$dir" reset -q --hard "$pre"
+    ns_die "could not push $own; the merge was undone"
+  fi
+}
+
+# conductor_stack_base <id>: print the base branch for the run's PR. It merges the printed branch (the
+# top of the stack of other runs' open PRs, else the base branch) into the code branch when HEAD is
+# behind it (never a rebase), pushes the code branch after a merge, records stacked_on and prints it; exit 6 on a conflict (the merge is left in progress), exit 7
 # when, after pruning red leaves, the open run PRs form more than one chain or a chain's base is unknown.
 conductor_stack_base() {
   [ $# -eq 1 ] || ns_usage "ns-conductor stack-base <id>"
@@ -200,7 +257,9 @@ conductor_stack_base() {
     printf '%s\n' "$msg" >&2
     lg event "$ledger" stack "$msg"
   fi
+  [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
   if [ -z "$top" ]; then
+    loop_stack_merge "$dir" "$base" "$base" ""
     lg set "$ledger" ".stacked_on = $(jstr "$base") | .budget.integrate_from = \$now"
     lg checkpoint "$ledger"
     printf '%s\n' "$base"
@@ -208,25 +267,7 @@ conductor_stack_base() {
   fi
   head=$(jq -r .head <<<"$top")
   stacked=$(jq -r .run <<<"$top")
-  [ -d "$dir" ] || ns_die "no code worktree for $id: run ns-conductor fix-branch or feature first"
-  own=$(git -C "$dir" rev-parse --abbrev-ref HEAD)
-  if ! git -C "$dir" diff --quiet || ! git -C "$dir" diff --cached --quiet; then
-    ns_die "the worktree $dir has uncommitted changes: commit them before stacking"
-  fi
-  git -C "$dir" fetch -q origin "$head" || ns_die "could not fetch origin $head"
-  clash=$(comm -12 <(git -C "$dir" ls-files --others --exclude-standard | sort) \
-    <(git -C "$dir" diff --name-only "HEAD...origin/$head" | sort))
-  [ -z "$clash" ] || ns_die "untracked files in $dir would be overwritten by merging $head: $(tr '\n' ' ' <<<"$clash")"
-  if ! mout=$(git -C "$dir" merge --no-ff -q -m "Merge $head into $own (stacked on $stacked)" "origin/$head" 2>&1); then
-    printf '%s\n' "$mout" >&2
-    if [ -f "$(git -C "$dir" rev-parse --absolute-git-dir)/MERGE_HEAD" ]; then
-      lg set "$ledger" ".stacked_on = $(jstr "$stacked")"
-      lg checkpoint "$ledger"
-      printf 'conflict merging %s into %s in %s: resolve, commit and rerun the checks\n' "$head" "$own" "$dir" >&2
-      exit 6
-    fi
-    ns_die "could not merge $head into $own in $dir"
-  fi
+  loop_stack_merge "$dir" "$head" "$stacked" " (stacked on $stacked)"
   lg set "$ledger" ".stacked_on = $(jstr "$stacked") | .budget.integrate_from = \$now"
   lg checkpoint "$ledger"
   printf '%s\n' "$head"
@@ -241,24 +282,124 @@ loop_phase_wt() {
   fi
 }
 
-# loop_checks <phase|feature> [--budget]: run the profile's checks, with the run context loaded;
-# with --budget the budget check runs first (exit 4 when the budget is used up).
-# Removes <target>.checks.rc at the start and writes the exit code there last
-# (tmp + mv), on every return path, so callers can wait for the file.
+# loop_wt_clean <dir>: succeeds when the worktree has no staged, unstaged or untracked (non-ignored)
+# changes; a git failure counts as dirty
+loop_wt_clean() {
+  local s
+  s=$(git -C "$1" status --porcelain) || return 1
+  [ -z "$s" ]
+}
+
+# loop_checks_key <dir> <canon>: the cache key as compact JSON: the tree of HEAD, the canonical
+# target and the sha256 of the profile's checks
+loop_checks_key() {
+  local tree sha
+  tree=$(git -C "$1" rev-parse 'HEAD^{tree}') || ns_die "could not read the tree of $1"
+  sha=$(jq -cS '.checks // []' <<<"$profile" | sha256sum | cut -d' ' -f1)
+  jq -nc --arg t "$tree" --arg g "$2" --arg s "$sha" '{tree: $t, target: $g, checks_sha: $s}'
+}
+
+# loop_checks_same <json file> <key>: succeeds when the stored record has the key's tree, target and
+# checks_sha (a missing or unparsable file is no match)
+loop_checks_same() {
+  jq -e --argjson k "$2" \
+    '.tree == $k.tree and .target == $k.target and .checks_sha == $k.checks_sha' "$1" >/dev/null 2>&1
+}
+
+# loop_checks_warn <canon> <dir>: warn on stderr when <dir> lacks the run's latest pushed code.
+# Always returns 0.
+loop_checks_warn() {
+  local canon="$1" dir="$2" head br feature phases p ref sha refs=""
+  if ! git -C "$dir" fetch -q origin >/dev/null 2>&1; then
+    printf 'checks: could not fetch origin; target check skipped\n' >&2
+    return 0
+  fi
+  head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || return 0
+  br=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null) || br=HEAD
+  feature=$(lg get "$ledger" '.feature_branch // empty')
+  if [ "$canon" = feature ]; then
+    if [ -n "$feature" ]; then
+      refs="origin/$feature"
+      if [ "$feature" != "$br" ]; then
+        printf 'warning: %s is on %s, but the run'"'"'s code branch is %s\n' "$dir" "$br" "$feature" >&2
+      fi
+    fi
+    phases=$(lg get "$ledger" '[(.phases // [])[] | select(.state != "merged") | .id | select(test("^fix-[0-9]+$") | not)] | join(" ")')
+    for p in $phases; do
+      refs="$refs origin/$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$p")"
+    done
+  else
+    refs="origin/$(ns_branch_name "$(jq -r '.git.phase_branch' <<<"$profile")" "$id" "$canon")"
+  fi
+  for ref in $refs; do
+    sha=$(git -C "$dir" rev-parse -q --verify "$ref^{commit}" 2>/dev/null) || continue
+    if ! git -C "$dir" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+      printf 'warning: %s HEAD (%s %s) does not contain %s %s\n' "$dir" "$br" "${head:0:12}" "$ref" "${sha:0:12}" >&2
+    fi
+  done
+  return 0
+}
+
+# loop_checks <phase|feature> [--budget] [--force]: run the profile's checks, with the run context
+# loaded. --budget marks an explicit `checks` call: the budget check runs first (exit 4 when the
+# budget is used up) and the wrong-target warning is printed. Per canonical target a lock
+# serializes calls (a waiter replays the result of the call it waited for), and a pass is cached
+# by tree (--force reruns). Removes <target>.checks.rc at the start and writes the exit code there
+# last (tmp + mv), on every return path, so callers can wait for the file.
 loop_checks() {
-  local target="$1" budget="${2:-}" rc=0 rcf tmp
+  local target="$1" budget="" force="" a rc=0 rcf tmp
+  shift
+  for a in "$@"; do
+    case "$a" in
+      --budget) budget=1 ;;
+      --force) force=1 ;;
+    esac
+  done
   rcf="$logdir/$target.checks.rc"
   ns_private_dir "$logdir"
   rm -f "$rcf"
   # subshell: an ns_die (exit) in the body must not skip the marker
   (
+    local canon who dir lockf lfd start waited=0 clean=0 key json
+    canon=$(loop_checks_canon "$target")
     # checks feature is the integrator's own call (after a stack-base merge or conflict)
     if [ -n "$budget" ]; then
       who=""
-      [ "$target" != feature ] || who=integrator
+      [ "$canon" != feature ] || who=integrator
       budget_guard checks "$who" || exit
     fi
-    loop_checks_body "$target"
+    dir=$(loop_phase_wt "$canon")
+    [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
+    [ -z "$budget" ] || loop_checks_warn "$canon" "$dir"
+    lockf="$logdir/$canon.checks.lock"
+    json="$logdir/$canon.checks.json"
+    start=$(date +%s)
+    exec {lfd}>"$lockf"
+    if ! flock -n "$lfd"; then
+      printf 'checks: another run of %s in %s is in progress; waiting\n' "$canon" "$dir" >&2
+      waited=1
+      if ! flock -w 3600 "$lfd"; then
+        printf 'checks busy: %s in %s is still locked after 3600 s\n' "$canon" "$dir" >&2
+        exit 1
+      fi
+    fi
+    ! loop_wt_clean "$dir" || clean=1
+    key=$(loop_checks_key "$dir" "$canon")
+    if [ -z "$force" ] && [ "$clean" = 1 ] && loop_checks_same "$json" "$key"; then
+      if [ "$waited" = 1 ] && jq -e --argjson s "$start" \
+        '.finished_epoch >= $s and (.rc != 0 or .cacheable == true)' "$json" >/dev/null 2>&1; then
+        loop_checks_show "$json" "checks: result of the concurrent run on tree $(jq -r '.tree' <<<"$key"): $(jq -r 'if .rc == 0 then "PASS" else "FAIL" end' "$json")"
+        if jq -e '.rc != 0' "$json" >/dev/null 2>&1; then
+          tail -n 40 "$logdir/$canon.checks.log"
+        fi
+        exit "$(jq -r '.rc' "$json")"
+      fi
+      if jq -e '.rc == 0 and .cacheable == true' "$json" >/dev/null 2>&1; then
+        loop_checks_show "$json" "checks: cached PASS for tree $(jq -r '.tree' <<<"$key") ($canon, $(jq -r '.finished' "$json")); --force reruns"
+        exit 0
+      fi
+    fi
+    loop_checks_body "$canon" "$dir" "$key" "$clean" "$lfd"
   ) || rc=$?
   tmp="$rcf.tmp.$$"
   printf '%s\n' "$rc" >"$tmp"
@@ -266,24 +407,49 @@ loop_checks() {
   return "$rc"
 }
 
+# loop_checks_show <json file> <header>: print the header, then the stored per-check lines
+loop_checks_show() {
+  printf '%s\n' "$2"
+  jq -r '.results[]?' "$1"
+}
+
+# loop_checks_body <canon> <dir> <key> <clean> <lockfd>: run the checks, print their lines, record
+# the result in <canon>.checks.json
 loop_checks_body() {
-  local target="$1" dir log
-  dir=$(loop_phase_wt "$target")
-  [ -d "$dir" ] || ns_die "no worktree for $target at $dir"
+  local canon="$1" dir="$2" key="$3" clean="$4" lfd="$5" log res tmp rc=0 cacheable=false tree json
+  json="$logdir/$canon.checks.json"
   ns_private_dir "$logdir"
-  log="$logdir/$target.checks.log"
-  if ! ns_profile_checks_run "$dir" "$profile" "$log"; then
-    tail -n 40 "$log"
-    return 1
+  log="$logdir/$canon.checks.log"
+  res=$(mktemp "$logdir/.checks-res.XXXXXX")
+  rm -f "$json"
+  # {lfd}>&- : the check commands (and any process they leave running) do not inherit the lock
+  ns_profile_checks_run "$dir" "$profile" "$log" >"$res" {lfd}>&- || rc=$?
+  cat "$res"
+  [ "$rc" -eq 0 ] || tail -n 40 "$log"
+  tree=$(git -C "$dir" rev-parse 'HEAD^{tree}' 2>/dev/null) || tree=""
+  if [ "$clean" = 1 ] && [ "$tree" = "$(jq -r '.tree' <<<"$key")" ] && loop_wt_clean "$dir"; then
+    cacheable=true
   fi
-  return 0
+  tmp=$(mktemp "$logdir/.checks-json.XXXXXX")
+  if jq -n --argjson k "$key" --argjson rc "$rc" --argjson c "$cacheable" \
+    --arg head "$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)" --arg fin "$(ns_now)" \
+    --argjson ep "$(date +%s)" --rawfile r "$res" \
+    '$k + {rc: $rc, cacheable: $c, head: $head, finished: $fin, finished_epoch: $ep,
+      results: ($r | split("\n") | map(select(length > 0)))}' >"$tmp"; then
+    mv -f "$tmp" "$json"
+  else
+    rm -f "$tmp"
+  fi
+  rm -f "$res"
+  return "$rc"
 }
 
 conductor_checks() {
-  [ $# -eq 2 ] || ns_usage "ns-conductor checks <id> <phase|feature>"
-  [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "ns-conductor checks <id> <phase|feature>"
+  local u="ns-conductor checks <id> <phase|feature> [--force]"
+  { [ $# -eq 2 ] || { [ $# -eq 3 ] && [ "$3" = --force ]; }; } || ns_usage "$u"
+  [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "$u"
   load_run "$1"
-  loop_checks "$2" --budget
+  loop_checks "$2" --budget ${3:+"$3"}
 }
 
 conductor_note() {
