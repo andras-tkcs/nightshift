@@ -7,22 +7,22 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: running
+state: done
 gate: null
-step: integrate
+step: done
 stop_requested: null
 branch: plan/ns-175
 feature_branch: fix/ns-175
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/185
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T14:12:49Z'
+updated: '2026-10-08T14:24:11Z'
 budget:
-  used: 2.26
+  used: 2.45
   limit: 4
   paused: false
-  since: '2026-10-08T14:12:36Z'
-  integrate_from: '2026-10-08T14:12:37Z'
+  since: '2026-10-08T14:24:11Z'
+  integrate_from: null
 phases:
 - id: fix
   title: fix
@@ -109,6 +109,15 @@ events:
 - time: '2026-10-08T14:12:01Z'
   type: resumed
   note: resumed from running
+- time: '2026-10-08T14:24:08Z'
+  type: step
+  note: done
+- time: '2026-10-08T14:24:09Z'
+  type: state
+  note: 'done: pull request https://github.com/andras-tkcs/nightshift/pull/185'
+- time: '2026-10-08T14:24:09Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/185'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-166
