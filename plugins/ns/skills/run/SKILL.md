@@ -17,13 +17,14 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 2. Continue at `step`; never repeat a finished step. Map: `intake` or `triage` to Triage; `discovery` and `gate1` to T2 or T3; `implement` to T0 or T1; `phases` to the T2 phases loop; `board` to Review board; `integrate` to Integrate; `onboard` to Onboarding; `done` means print a one-line summary and end.
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
 4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
-   Waiting rule: run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc` (it holds the exit code). Never write `pgrep`/`ps` loops on process names: they match their own shell and never end. The full suite runs only through `ns-conductor checks`; implementers run only the tests covering their files.
+   Waiting rule: wait for a subagent through the Agent call's own return (foreground) or its task notification (background), and for workers through `ns-conductor wait`. Never write, run or use `git fetch` loops, file-check loops, `sleep` loops or `pgrep`/`ps` loops (they match their own shell and never end) to wait: each poll burns a turn and tokens. Run `ns-conductor checks` in the foreground (bounded by the Bash timeout); if you background it, its task notification tells you when it ended, and `logs/<id>/<target>.checks.rc` holds the exit code. The full suite runs only through `ns-conductor checks`; implementers run only the tests covering their files.
+   Hands off a worktree in use: while an implementer works in a worktree, run no tests, checks or edits there. Run `ns-conductor checks` only after the implementer has returned (its Agent call returned or its notification arrived).
 5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 
 ## Triage
 
-Ledger step: set `triage` before; set `discovery` (T2, T3) or `implement` (T0, T1) after. Always runs, also when the owner gave `--tier`, so the recommendation is recorded.
+Ledger step: set `triage` before; set `discovery` (T2, T3) or `implement` (T0, T1) after. Runs only when the owner gave no tier: with `tier_source` `owner` never launch `ns:triage` (skip this section, set `step` to `discovery` (T2, T3) or `implement` (T0, T1), and let Sync's `ns-conductor risk-check` record the risk floor); with no tier given, triage runs and records the recommendation.
 
 1. `ns-ledger set "$NS_LEDGER" '.step="triage"'`.
 2. Gather the request: `gh issue view <n> --json title,body,labels` (issue runs) or the ledger's `request.text`. Gather a survey: `git ls-files | head -200` and the README. The resolved profile is the project's profile for this branch.
@@ -85,8 +86,9 @@ Ledger step: as T2.
 Run by the conductor in its own session, not by a subagent. Where: T0 step 3, T1 step 5, and T2/T3 when every phase is merged (after `step=board`, before the board). On a resumed session that does not know `<pr-base>`, run `stack-base` again; it is idempotent.
 
 1. `ns-conductor stack-base <id>`. Exit 0: keep the printed branch as `<pr-base>`. Exit 6: `git -C <code worktree> merge --abort`, `ns-conductor note <id> "stack-base conflict before review; the integrator resolves it"`, and use `<pr-base>` = `<base>`. Exit 7: Escalate. Exit 4: end the session (the run waits at gate 1.5). Any other non-zero exit (for example `could not push`): Escalate with its output.
-2. `ns-conductor checks <id> feature`, following the waiting rule of Start step 4: in the foreground only when the Bash timeout bounds it; otherwise remove `logs/<id>/feature.checks.rc`, run it in the background and wait for that file.
-3. A `warning:` line in its output means the checked worktree lacks pushed code: Escalate with the line, even when the checks passed.
+2. `ns-conductor checks <id> feature`, following the waiting rule of Start step 4: in the foreground when the Bash timeout bounds it; otherwise in the background, then wait for its task notification (never a polling loop).
+   2a. When `tier_source` is `owner`: `ns-conductor risk-check <id>`. It matches `git diff origin/<base>...origin/<feature>` against the profile's `risk_zones` and `platform_paths`, records the tags (`sec-compliance`, `risk:<zone>`, `platform:<p>`) and `risk_floor`, and, only when the floor is above the owner's tier, records `tier_recommended` and prints `tier_recommended <T>`: send `ns-notify "ns: <id> risk floor <T> is above owner tier <tier>"`. It never changes `tier`.
+3. A `warning:` line in the checks output means the checked worktree lacks pushed code: Escalate with the line, even when the checks passed.
 4. Failing checks: T0 follows the loop of its checks step; T1 launches `ns:implementer` with the output and reruns `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate; T2/T3 turn the failing output into a blocking board finding (`RUN/board-fix-<n>.md`).
 
 ## Review board

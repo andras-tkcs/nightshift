@@ -20,6 +20,7 @@
 | Review rounds | 2 |
 | Escalations | 1 |
 | Checks | 2 PASS, 1 FAIL, 1 SKIP, 2 no data |
+| Full suite runs | 3 |
 
 Escalations:
 

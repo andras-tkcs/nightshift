@@ -44,9 +44,14 @@ def minus($waits):
     else . end)) as $w
 | ($w.list + (if $w.open then [$w.open + {e: $end}] else [] end)) as $waits
 | ($waits | map([.s, .e])) as $wi
-# dead gaps: a resume that is not the hand-off from the queue follows a gap with nothing running
+# dead gaps: a resume that is not the hand-off from the queue follows a gap with nothing running;
+# the gap starts at the last log activity before the resume (never before the previous ledger
+# event), or at the previous ledger event when there are no logs
+| ($logs[0].activity // []) as $act
 | ([range(1; $n) | select($ev[.].type == "resumed" and ($ev[.].note != "resumed from queued"))
-    | [$ev[. - 1].t, $ev[.].t] | minus($wi)[]]) as $dead
+    | $ev[.].t as $r
+    | ([$ev[. - 1].t] + [$act[] | select(. < $r)] | max) as $from
+    | [$from, $r] | minus($wi)[]]) as $dead
 | (.created | ep) as $t0
 | ($t0) as $start
 # planning ends at gate 1, else at the first phase-start or review, else at the end
@@ -120,6 +125,7 @@ def minus($waits):
 | ($logs[0].checks // []) as $allchecks
 | ($allchecks | map(select(.last != false))) as $checks
 | ($logs[0] != null and ($logs[0].checks | length) > 0) as $has_checks
+| (if $has_checks then ($logs[0].full_runs // 0) else null end) as $fullruns
 | ($waits | map(select(.gate == "1.5"))) as $esc
 | ($end - $t0) as $wall
 | ($waits | map(.e - .s) | add // 0) as $waiting
@@ -153,7 +159,8 @@ def minus($waits):
     "| Escalations | \($nesc) |",
     "| Checks | \(if $has_checks | not then "no data" else
         ([("PASS", "FAIL", "SKIP") as $k | [$checks[] | select(.result == $k)] | length | select(. > 0) | "\(.) \($k)"]
-         + ([$checks[] | select(.result == null)] | length | if . > 0 then ["\(.) no data"] else [] end)) | join(", ") end) |"
+         + ([$checks[] | select(.result == null)] | length | if . > 0 then ["\(.) no data"] else [] end)) | join(", ") end) |",
+    "| Full suite runs | \(if $fullruns == null then "no data" elif $fullruns > 1 and (.tier == "T0" or .tier == "T1") then "\($fullruns) (more than one for a \(.tier) run)" else "\($fullruns)" end) |"
   ]
   + (if $nesc > 0 then
       ["", "Escalations:", ""]

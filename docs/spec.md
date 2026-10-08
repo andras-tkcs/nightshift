@@ -200,7 +200,7 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 | T3 | epic | researcher, product-analyst, architect (ADR), planner, test-architect, sec pre-review → gate 1 → parallel phases → review board → integrator → PR | gate 1, gate 1.5 if needed, gate 2 | 36 h |
 
 - **R-TRI-1** `tier = max(size_tier, risk_floor)`. Risk floor: any `risk_zones` path → at least T1 plus sec-compliance; a `platform_paths` match for a non-local platform → at least T1 plus that platform's CI dispatch; a new trust boundary → T3.
-- **R-TRI-2** The owner can override with `--tier`. Triage records the override and its own recommendation.
+- **R-TRI-2** The owner can override with `--tier`. With `--tier`, triage is skipped; `ns-conductor risk-check` records the risk floor at Sync and sets `tier_recommended` only when the floor is above the owner's tier.
 - **R-TRI-3** Triage must finish in under 5 minutes and under a small token budget, so a T0 never costs more than the work.
 - **R-BUD-1** Budgets are wall-clock hours and review rounds. Exceeding one triggers gate 1.5: an escalation document on the desk, an ntfy message, and the run parks. The wall-clock check is deterministic on every tier (`ns-conductor budget-check`, run by `should-stop` after every step and by `start`, `fix-branch`, `checks`, `review-round` and `stack-base`, and by the `budget` and `checkpoint` hooks), not left to the model; it escalates once `used` reaches the limit.
 - **R-BUD-2** A usage-limit pause doesn't count against wall-clock budgets.
