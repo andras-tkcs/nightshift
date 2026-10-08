@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-10-08
+
 ### Changed
 
 - Conductor overhead (issue #174, part 1 of #169): the conductor waits for subagents through the Agent call's return or the task notification and for workers with `ns-conductor wait`, never with fetch, sleep or file-poll loops; it runs no tests, checks or edits in a worktree while an implementer works there (`ns-conductor checks` only after the implementer returned); it skips `ns:triage` when the owner gave the tier. New `ns-conductor risk-check <id>` runs at Sync: it matches the diff against `risk_zones` and `platform_paths`, records the tags and `risk_floor`, and sets `tier_recommended` (named in the ntfy line) only when the floor is above the owner's tier. A checks cache hit appends `== cached <UTC>` to the checks log. The run report's Summary has a `Full suite runs` row (cache hits not counted; flagged for a T0/T1 run with more than one).
@@ -200,7 +202,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - End-to-end harness: `tests/e2e/run.sh` with scenarios t0, t1, t2, t3 and resume against `andras-tkcs/nightshift-sandbox`, run with `--keep` in Build A (ADR 0009); results in `tests/e2e/results.md`.
 - Documentation: the specification, build plan, architecture, usage, ledger, conductor, agents, projects, accounts, server, operations, security, setup and development guides, and architecture decision records 0001 to 0009. The `v0.1.0` tag is set by the owner after merge (ADR 0007).
 
-[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/andras-tkcs/nightshift/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/andras-tkcs/nightshift/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/andras-tkcs/nightshift/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/andras-tkcs/nightshift/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/andras-tkcs/nightshift/compare/v0.1.6...v0.1.7
