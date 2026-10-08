@@ -5,23 +5,28 @@ request:
   issue: 156
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
-state: queued
+tier_recommended: T1
+tags:
+- python
+- jq
+- bash
+- bats
+- docs
+state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-156
 feature_branch: null
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:09:34Z'
+updated: '2026-10-08T07:10:23Z'
 budget:
   used: 0
   limit: 2
   paused: false
-  since: '2026-10-08T07:09:34Z'
+  since: '2026-10-08T07:09:52Z'
 phases: []
 events:
 - time: '2026-10-08T07:09:33Z'
@@ -30,3 +35,13 @@ events:
 - time: '2026-10-08T07:09:33Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-08T07:09:52Z'
+  type: state
+  note: running
+- time: '2026-10-08T07:09:53Z'
+  type: step
+  note: triage
+- time: '2026-10-08T07:10:23Z'
+  type: step
+  note: implement
+queued_for_slot: false
