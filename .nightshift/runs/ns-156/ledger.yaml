@@ -21,14 +21,23 @@ feature_branch: fix/ns-156
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:34:15Z'
+updated: '2026-10-08T07:34:19Z'
 budget:
   used: 0.4
   limit: 2
   paused: false
   since: '2026-10-08T07:33:52Z'
   integrate_from: '2026-10-08T07:13:25Z'
-phases: []
+phases:
+- id: fix
+  title: fix
+  state: pending
+  branch: null
+  worktree: null
+  attempts: 0
+  review_rounds: 1
+  review_verdict: approve
+  reviewed_head: c65da5e70df4ef5b483190bc9f65387400aa0c7c
 events:
 - time: '2026-10-08T07:09:33Z'
   type: created
@@ -45,6 +54,9 @@ events:
 - time: '2026-10-08T07:10:23Z'
   type: step
   note: implement
+- time: '2026-10-08T07:34:18Z'
+  type: review
+  note: fix round 1 approve
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
