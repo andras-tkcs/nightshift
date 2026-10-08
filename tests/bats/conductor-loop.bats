@@ -2,20 +2,30 @@
 
 load helpers
 
-setup() {
-  ns_test_setup
+fixture_vars() {
   FIX="$BATS_TEST_TMPDIR/fixture"
   BARE="$GH_STUB_REMOTES/andras-tkcs/nightshift-sandbox.git"
+  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
+  RUNDIR="$WT/.nightshift/runs/sbx-12"
+  LEDGER="$RUNDIR/ledger.yaml"
+  FWT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12--feature"
+}
+
+# the slow part of the setup, run once per file (ns_cached_fixture)
+fixture_build() {
+  fixture_vars
   mkdir -p "$FIX/.claude"
   printf '# sandbox\n' >"$FIX/README.md"
   write_profile_to "$FIX/.claude/project-profile.yaml" true
   make_remote andras-tkcs/nightshift-sandbox "$FIX"
   "$NS_REPO_ROOT/bin/ns" project add andras-tkcs/nightshift-sandbox --prefix sbx >/dev/null
   "$NS_REPO_ROOT/bin/ns" new sbx-12 --tier T2 --yes >/dev/null
-  WT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12"
-  RUNDIR="$WT/.nightshift/runs/sbx-12"
-  LEDGER="$RUNDIR/ledger.yaml"
-  FWT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12--feature"
+}
+
+setup() {
+  ns_test_setup
+  ns_cached_fixture fixture_build
+  fixture_vars
 }
 
 write_profile_to() {
@@ -883,4 +893,12 @@ assert not any(ord(c) < 32 or ord(c) == 127 for c in q), repr(q)
 assert len(q) == 200, len(q)
 assert q.startswith("Why not [31mred? a"), repr(q[:30])
 PY2
+}
+
+@test "checks twice leaves two == run lines in the checks log (ns-x6)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  [ "$(grep -c '^== run ' "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log")" = 2 ]
 }

@@ -85,3 +85,12 @@ The last run of `ns-conductor checks` for each target.
 | p2-docs | python test | FAIL | 1m | 2026-10-02 12:21 |
 
 SKIP (pytest collected no tests; not a failure, but check it was meant): feature python test.
+
+### Checks breakdown
+
+Every run of each check in the run's checks logs, with the total time of the runs that have times.
+
+| Check | Runs | Total time |
+|---|---|---|
+| python lint | 3 | at least 6s |
+| python test | 3 | at least 1m |

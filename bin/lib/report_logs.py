@@ -45,6 +45,7 @@ import sys
 
 ATTEMPT = re.compile(r"^(?P<phase>.+)--attempt(?P<n>[0-9]+)$")
 HEADER = re.compile(r"^== (?P<stack>\S+) (?P<name>\S+): ")
+RUN = re.compile(r"^== run \S+$")
 START = re.compile(r"^== start (?P<stack>\S+) (?P<name>\S+) (?P<t>\S+)$")
 END = re.compile(r"^== end (?P<stack>\S+) (?P<name>\S+) (?P<t>\S+) (?P<r>PASS|FAIL|SKIP) exit (?P<rc>[0-9]+)$")
 WEIGHT = {"in": 1.0, "out": 5.0, "cr": 0.1, "cw": 1.25}
@@ -112,6 +113,10 @@ def read_session_log(path):
     subs = {}  # tool use id (or a counter) -> subagent run
     agent_types = {}  # Agent tool use id -> subagent_type
     durations = {}  # tool use id -> seconds, from task_notification
+    last_asst = 0  # epoch of the latest assistant message
+    use_t = {}  # Agent tool use id -> epoch of the call
+    result_t = {}  # tool use id -> epoch of its tool_result
+    launched = set()  # tool use ids of background launches (their result comes at once)
     anon = 0
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
@@ -153,7 +158,12 @@ def read_session_log(path):
                 if (isinstance(c, dict) and c.get("type") == "tool_use" and isinstance(c.get("id"), str)
                         and isinstance(c.get("input"), dict) and isinstance(c["input"].get("subagent_type"), str)):
                     agent_types[c["id"]] = c["input"]["subagent_type"]
+                    ut = epoch(e.get("timestamp"))
+                    if ut is not None:
+                        use_t[c["id"]] = ut
             t = epoch(e.get("timestamp"))
+            if t is not None and t > last_asst:
+                last_asst = t
             tok = tokens(m.get("usage"), 1)
             if t is None or tok is None:
                 continue
@@ -164,6 +174,12 @@ def read_session_log(path):
             # the last event of a message carries its final usage
             msgs[mid] = {"t": t, "sid": sid, "model": model, "tok": tok}
         elif typ == "user":
+            um = e.get("message")
+            rt = epoch(e.get("timestamp"))
+            for c in (um.get("content") if isinstance(um, dict) and isinstance(um.get("content"), list) else []):
+                if (rt is not None and isinstance(c, dict) and c.get("type") == "tool_result"
+                        and isinstance(c.get("tool_use_id"), str)):
+                    result_t.setdefault(c["tool_use_id"], rt)
             r = e.get("tool_use_result")
             if not isinstance(r, dict):
                 continue
@@ -182,6 +198,8 @@ def read_session_log(path):
                 subs[key] = {"type": r["agentType"], "by": label, "model": model,
                              "s": int(ms / 1000) if ms is not None else None, "tid": tid}
             elif r.get("status") == "async_launched" and isinstance(r.get("resolvedModel"), str):
+                if tid:
+                    launched.add(tid)
                 subs.setdefault(key, {"type": None, "by": label, "model": model, "s": None, "tid": tid})
         elif typ == "system" and e.get("subtype") == "task_notification":
             u = e.get("usage")
@@ -200,6 +218,14 @@ def read_session_log(path):
             x["type"] = agent_types.get(tid, "unknown")
         if x["s"] is None and tid in durations:
             x["s"] = durations[tid]
+        elif (x["s"] is None and tid in use_t and tid in result_t and tid not in launched
+              and result_t[tid] >= use_t[tid]):
+            # no task notification: the time from the Agent call to its result
+            x["s"] = int(result_t[tid] - use_t[tid])
+        elif (x["s"] is None and tid in use_t and tid not in result_t and tid not in launched
+              and last_asst >= use_t[tid]):
+            # cut off, no result: to the latest assistant message
+            x["s"] = int(last_asst - use_t[tid])
         sub_list.append(x)
 
     # per session and model: tokens and cost of the last result
@@ -219,7 +245,7 @@ def read_session_log(path):
                 c = num(d.get("costUSD"))
                 m = models.setdefault(str(name), {"tok": {k: 0 for k in KEYS}, "cost": 0.0})
                 m["tok"] = add(m["tok"], tk)
-                m["cost"] += float(c) if c is not None else 0.0
+                m["cost"] = (m["cost"] or 0.0) + (float(c) if c is not None else 0.0)
                 tot = add(tot, tk)
                 session_model_cost[(sid, str(name))] = float(c) if c is not None else 0.0
                 session_model_tok[(sid, str(name))] = tk
@@ -250,6 +276,17 @@ def read_session_log(path):
     for mid in order:
         m = msgs[mid]
         weight[m["key"]] = weight.get(m["key"], 0.0) + sum(WEIGHT[k] * m["tok"][k] for k in KEYS)
+    # sessions with messages but no result: their tokens, summed over the messages, are partial
+    partial_tok = {k: 0 for k in KEYS}
+    partial = False
+    for mid in order:
+        m = msgs[mid]
+        # only a log with no result at all falls back to the messages
+        if m["key"] not in session_model_cost and not sessions:
+            partial = True
+            partial_tok = add(partial_tok, m["tok"])
+            pm = models.setdefault(m["model"], {"tok": {k: 0 for k in KEYS}, "cost": None})
+            pm["tok"] = add(pm["tok"], m["tok"])
     out_msgs = []
     for mid in order:
         m = msgs[mid]
@@ -268,7 +305,8 @@ def read_session_log(path):
         "attempt": attempt,
         "sessions": len(sessions),
         "turns": turns,
-        "tok": tot if sessions else None,
+        "tok": add(tot, partial_tok) if (sessions or partial) else None,
+        "partial": partial,
         "cost": cost if sessions else None,
         "models": models,
         "bad": bad,
@@ -282,12 +320,16 @@ def read_checks_log(path):
     target = os.path.basename(path)[: -len(".checks.log")]
     rows = []
     cur = None
+    run = 0  # a log without `== run` lines is one run
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
     except OSError:
         return []
     for line in lines:
+        if RUN.match(line):
+            run += 1
+            continue
         m = START.match(line)
         if m and cur and (m["stack"], m["name"]) == (cur["stack"], cur["name"]):
             cur["start"] = epoch(m["t"])
@@ -301,8 +343,11 @@ def read_checks_log(path):
             continue
         m = HEADER.match(line)
         if m:
-            cur = {"target": target, "stack": m["stack"], "name": m["name"], "start": None, "end": None, "result": None}
+            cur = {"target": target, "run": run, "stack": m["stack"], "name": m["name"], "start": None, "end": None, "result": None}
             rows.append(cur)
+    last = max((r["run"] for r in rows), default=0)
+    for r in rows:
+        r["last"] = r["run"] == last
     return rows
 
 
@@ -338,17 +383,20 @@ def main():
     models = {}
     for a in agents:
         for name, m in a["models"].items():
-            x = models.setdefault(name, {"model": name, "tok": {k: 0 for k in KEYS}, "cost": 0.0})
+            x = models.setdefault(name, {"model": name, "tok": {k: 0 for k in KEYS}, "cost": None})
             x["tok"] = add(x["tok"], m["tok"])
-            x["cost"] += m["cost"]
+            if m["cost"] is not None:
+                x["cost"] = (x["cost"] or 0.0) + m["cost"]
         del a["models"]
-    costed = [a for a in agents if a["cost"] is not None]
+    withtok = [a for a in agents if a["tok"] is not None]
     total = None
-    if costed:
+    if withtok:
         tok = {k: 0 for k in KEYS}
-        for a in costed:
+        for a in withtok:
             tok = add(tok, a["tok"])
-        total = {"tok": tok, "cost": sum(a["cost"] for a in costed)}
+        costed = [a for a in agents if a["cost"] is not None]
+        total = {"tok": tok, "cost": sum(a["cost"] for a in costed) if costed else None,
+                 "partial": any(a["partial"] for a in agents)}
 
     grouped = {}
     for s in subs:

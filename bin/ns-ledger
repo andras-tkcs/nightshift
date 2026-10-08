@@ -136,7 +136,8 @@ cmd_get() {
 cmd_set() {
   local ledger="$1" prog="${2:?usage: ns-ledger set <ledger> <jq-program>}"
   ns_ledger_read "$ledger" |
-    jq -c --arg now "$(ns_now)" "$BUDGET_TX . as \$old | ($prog) | budget_tx(\$old; \$now) | .updated = \$now" |
+    jq -c --arg now "$(ns_now)" "$BUDGET_TX . as \$old | ($prog) | budget_tx(\$old; \$now) | .updated = \$now
+      | if .step != \$old.step then .events += [{time: \$now, type: \"step\", note: (.step | tostring)}] else . end" |
     ns_ledger_write "$ledger"
 }
 

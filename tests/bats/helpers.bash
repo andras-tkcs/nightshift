@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Shared helpers for every bats file. Written in full by p01; never edited afterwards.
+# Shared helpers for every bats file. Written in full by p01; later phases only add helpers.
 
 NS_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export NS_REPO_ROOT
@@ -101,4 +101,42 @@ fake_bootstrap() {
   bash -c "exec -a /opt/nightshift/current/bin/bootstrap.sh sleep 300" 3>&- >/dev/null 2>&1 &
   # shellcheck disable=SC2034  # read by the test files that load this one
   FAKE_BS_PID=$!
+}
+
+# ns_cached_fixture <function>: the slow, filesystem-only part of a setup() (git remotes, project
+# registration, a first run) runs once per bats file, in a scratch directory standing in for
+# BATS_TEST_TMPDIR. Every test then gets its own copy of the result, with the scratch path
+# rewritten to its own BATS_TEST_TMPDIR (ns-x8). <function> runs after ns_test_setup in a
+# subshell and must only create files under BATS_TEST_TMPDIR; variables it sets are lost, so set
+# those in a separate function that setup() calls too. Exports that change what <function> does
+# must be made before the call. Nothing is shared between tests: each one gets a fresh copy.
+# shellcheck disable=SC2030,SC2031  # BATS_TEST_TMPDIR is overridden on purpose inside the build subshell
+ns_cached_fixture() {
+  local fn="$1" key build tpl l t
+  key="$({ declare -f "$fn"; printf '%s\n' "${GH_STUB_RESPONSES//"$BATS_TEST_TMPDIR"/T}"; } | sha1sum | cut -c1-12)"
+  build="$BATS_FILE_TMPDIR/build-$key"
+  tpl="$build.done"
+  (
+    flock 8
+    [ -d "$tpl" ] && exit 0
+    rm -rf "$build"
+    mkdir -p "$build"
+    # a background subshell keeps errexit on inside (a subshell whose status is tested ignores it)
+    (
+      set -e
+      BATS_TEST_TMPDIR="$build"
+      ns_test_setup
+      "$fn"
+    ) >/dev/null 3>&- 8>&- &
+    wait $! || exit 1
+    mv "$build" "$tpl"
+  ) 8>"$BATS_FILE_TMPDIR/fixture.lock" || return 1
+  cp -a "$tpl"/. "$BATS_TEST_TMPDIR"/
+  grep -rlIF -- "$build" "$BATS_TEST_TMPDIR" | xargs -r sed -i "s|$build|$BATS_TEST_TMPDIR|g" || true
+  while IFS= read -r l; do
+    t="$(readlink "$l")"
+    case "$t" in
+      "$build"*) ln -sfn "$BATS_TEST_TMPDIR${t#"$build"}" "$l" ;;
+    esac
+  done < <(find "$BATS_TEST_TMPDIR" -type l)
 }

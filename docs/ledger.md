@@ -44,7 +44,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, owner-note, push-failed, note, stack` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence).
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, owner-note, push-failed, note, stack, step` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence; `step`: the note is the new step).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 
@@ -85,6 +85,8 @@ ns-ledger set <ledger> <jq-program>
 ```
 
 Applies the jq program to the ledger, sets `updated`, validates and writes. If the result is invalid it exits 1 with `ledger <path>: <first error>; not written`.
+
+When the program changes `.step`, it also appends a `step` event whose note is the new step (the run report builds its timeline from them; a ledger without `step` events still reports).
 
 ```
 ns-ledger set "$NS_LEDGER" '.step = "phases" | .feature_branch = "feature/12"'
