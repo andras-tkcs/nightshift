@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:44:24Z'
+updated: '2026-10-08T11:44:33Z'
 budget:
   used: 10.48
   limit: 12
@@ -237,6 +237,10 @@ events:
   type: note
   note: 'note 1: follow-up: ledger.bats:160 clean-tree assertion never failed first;
     tighten it'
+- time: '2026-10-08T11:44:32Z'
+  type: note
+  note: 'note 2: follow-up: bin/ns-ledger ~228 push-failed commit via git_retry can
+    exit non-zero'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
