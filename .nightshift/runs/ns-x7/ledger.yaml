@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:44:36Z'
+updated: '2026-10-08T11:44:40Z'
 budget:
   used: 10.48
   limit: 12
@@ -245,6 +245,10 @@ events:
   type: note
   note: 'note 3: follow-up: AC-4 library-code guard message says ''is the owner''s
     to run'' (plan Q2'
+- time: '2026-10-08T11:44:39Z'
+  type: note
+  note: 'note 4: follow-up: ns-conductor owner-notes can be run by any agent or worker
+    including '
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
