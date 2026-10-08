@@ -5,3 +5,4 @@
 5. follow-up: ns note folds only CR/LF in note text; other control chars and U+0085/2028/2029 pass
 6. follow-up: concurrent ns note calls may mislabel event n
 7. follow-up: checkpoint --push pushes to the ledger .branch; refuse base/default branch
+8. follow-up: plugins/ns/hooks/lib/guard.py:402 comment line is too long
