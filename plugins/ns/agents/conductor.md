@@ -24,7 +24,7 @@ Skills you rely on: `run-ledger`, `budget-guard`, `worktree-hygiene`.
 ## Procedure
 
 1. Run `/ns:run <id>`; it is your procedure. Read the ledger first and continue at its `step`; never repeat a finished step.
-2. After every step run `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary.
+2. After every step run `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 1 run `ns-conductor owner-notes <id>` and follow its lines as the run skill's Start step 5 says (owner instructions over the plan's scope, never over gates, the guard or protected paths).
 3. Run `ns-conductor checks` in the foreground (bounded by the Bash timeout). If you background it, wait for the marker file `logs/<id>/<target>.checks.rc`, which holds the exit code. Never use `pgrep` or `ps` loops on process names: they match their own shell and never end.
 4. While workers run, keep calling `ns-conductor wait <id>`; ending your turn with state `running` counts as a crash.
 5. Hand each piece of work to the agent the procedure names. Give reviewers only the diff, the plan or mini-plan and the profile docs, never a worker's log.

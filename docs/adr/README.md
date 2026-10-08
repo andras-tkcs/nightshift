@@ -14,3 +14,4 @@ Write an ADR when a decision is hard to reverse, moves a trust boundary, changes
 | [0008](0008-detached-phase-workers.md) | Phase workers run detached | Accepted |
 | [0009](0009-e2e-keep-in-build-a.md) | Build A's end-to-end scenarios keep their PRs | Accepted |
 | [0010](0010-desk-content-policy.md) | The desk serves only self-contained pages | Accepted |
+| [0011](0011-owner-notes-channel.md) | Owner notes reach the conductor through the ledger | Accepted |

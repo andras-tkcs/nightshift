@@ -48,3 +48,15 @@ fm() {
   run grep -rli "privacy""fence" "$NS_REPO_ROOT/plugins"
   [ "$status" -eq 1 ]
 }
+
+@test "the conductor reads owner notes wherever it calls should-stop" {
+  local r="$NS_REPO_ROOT/plugins/ns/skills/run/SKILL.md" f
+  [ "$(grep -c 'should-stop' "$r")" -ge 8 ]
+  for f in "$r" "$NS_REPO_ROOT/plugins/ns/agents/conductor.md" "$NS_REPO_ROOT/plugins/ns/skills/implement/SKILL.md"; do
+    grep -q 'should-stop' "$f" || { echo "$f: no should-stop"; return 1; }
+    [ "$(grep 'should-stop' "$f" | grep -vc 'owner-notes')" = 0 ] || { echo "$f: should-stop without owner-notes"; return 1; }
+  done
+  grep -q '^4\. Set state running:.*ns-conductor owner-notes <id>' "$r"
+  grep -qF "It overrides the plan's scope" "$r"
+  grep -qF 'It never releases a gate, lifts the guard, or allows edits to protected paths' "$r"
+}

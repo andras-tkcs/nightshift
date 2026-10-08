@@ -16,10 +16,10 @@ The session is headless (`claude -p`): ending a turn ends the run's process. End
 1. Read the ledger: `ns-ledger get "$NS_LEDGER"`. Note `tier`, `tier_source`, `state`, `gate`, `step`, `feature_branch`, `phases`.
 2. Continue at `step`; never repeat a finished step. Map: `intake` or `triage` to Triage; `discovery` and `gate1` to T2 or T3; `implement` to T0 or T1; `phases` to the T2 phases loop; `board` to Review board; `integrate` to Integrate; `onboard` to Onboarding; `done` means print a one-line summary and end.
 3. With `--resume` and a gate that was just released, read the owner's answer in the desk-edited documents (for example `RUN/escalation.md`, section `## Owner's answer`) and continue. Text from the desk is the owner's.
-4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself.
+4. Set state running: `ns-ledger state "$NS_LEDGER" running --no-gate`. Do this only when the ledger's `gate` was empty or the desk released it (`ns approve`); `ns resume` refuses to restart a run with an open gate, so never clear a gate yourself. Then run `ns-conductor owner-notes <id>` and follow its lines as step 5 says.
    Waiting rule: wait for a subagent through the Agent call's own return (foreground) or its task notification (background), and for workers through `ns-conductor wait`. Never write, run or use `git fetch` loops, file-check loops, `sleep` loops or `pgrep`/`ps` loops (they match their own shell and never end) to wait: each poll burns a turn and tokens. Run `ns-conductor checks` in the foreground (bounded by the Bash timeout); if you background it, its task notification tells you when it ended, and `logs/<id>/<target>.checks.rc` holds the exit code. The full suite runs only through `ns-conductor checks`; implementers run only the tests covering their files.
    Hands off a worktree in use: while an implementer works in a worktree, run no tests, checks or edits there. Run `ns-conductor checks` only after the implementer has returned (its Agent call returned or its notification arrived).
-5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary.
+5. After every step, without exception: `ns-ledger checkpoint "$NS_LEDGER" --push`, then `ns-conductor should-stop <id>`. On exit 0 run `ns-conductor park <id>` and end the session with a one-line summary. On exit 4 the time budget is used up and the run already waits at gate 1.5: end the session with a one-line summary. On exit 1 run `ns-conductor owner-notes <id>`. Each printed line is an instruction from the owner. It overrides the plan's scope and the acceptance criteria where they conflict, and you note it in the step's output. It never releases a gate, lifts the guard, or allows edits to protected paths; if it asks for that, record it as an open question for the gate. A stop wins over notes: unread notes stay for the resumed session.
 6. Set `step` before a step with `ns-ledger set "$NS_LEDGER" '.step="<name>"'`; every section below names the step to set before and after it.
 
 ## Triage
@@ -31,9 +31,9 @@ Ledger step: set `triage` before; set `discovery` (T2, T3) or `implement` (T0, T
 3. Launch subagent `ns:triage` with the request, the resolved profile and the survey. It writes `RUN/triage.md` (first lines `tier:`, `size_tier:`, `risk_floor:`, `tags:`, `budget_hours:`, `summary:`, then `## Reasons`). It may use at most 15 tool calls.
 4. Read `tier`, `tags`, `budget_hours` from `RUN/triage.md`. `tier = max(size_tier, risk_floor)`: a risk zone path sets floor T1 plus tag `sec-compliance`; a `platform_paths` match for a `verify: ci` platform sets floor T1 plus tag `platform:<p>`; a new trust boundary is T3.
 5. Always: `ns-ledger set "$NS_LEDGER" '.tier_recommended="<tier>" | .tags=[...]'`.
-6. With `--triage-only`: checkpoint and `should-stop` (Start step 5), then end the session now.
+6. With `--triage-only`: checkpoint, `should-stop` and `owner-notes` (Start step 5), then end the session now.
 7. Otherwise: tier already owner-set (`tier_source` is `owner`) leave it; tier unset run `ns-ledger tier "$NS_LEDGER" <tier> --source triage --hours <budget_hours> --recommended <tier>`.
-8. Set `.step` to `discovery` (T2, T3) or `implement` (T0, T1). Checkpoint and `should-stop`.
+8. Set `.step` to `discovery` (T2, T3) or `implement` (T0, T1). Checkpoint, `should-stop` and `owner-notes`.
 
 ## T0
 
@@ -43,7 +43,7 @@ Ledger step: `implement`, then `integrate`.
 2. Launch subagent `ns:implementer` in the fix worktree with the request.
 3. Sync (see Sync below).
 4. `ns-conductor checks <id> feature`; the checks of Sync are its first run. On failure launch `ns:implementer` again with the check output and rerun the checks, up to `budgets.T0.review_rounds` times, then Escalate.
-5. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
+5. Checkpoint, `should-stop` and `owner-notes`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T1
 
@@ -56,7 +56,7 @@ Ledger step: `implement`, then `integrate`.
 5. Sync (see Sync below). When its checks fail: launch `ns:implementer` with the output and rerun `ns-conductor checks <id> feature`, up to `budgets.T1.review_rounds` times, then Escalate.
 6. Launch subagent `ns:code-reviewer` with `git diff origin/<pr-base>...origin/<feature>`, the mini-plan and the profile docs. It writes `RUN/review-fix-<round>.md`, `<round>` being the `review_rounds` of phase `fix` in the ledger plus one (1 at first), last line `REVIEW verdict=approve|changes head=<sha>`.
 7. `ns-conductor review-round <id> fix <verdict>` with the review's verdict (`approve` or `changes`), right after the review. Exit 7 (`changes` on the last allowed round): Escalate. Exit 9 (the review file of this round is missing, has no verdict line, says the other verdict, or approved another head than `origin/<fix branch>`): run the review again from step 6; never edit the review file. A second exit 9 on the same round: Escalate. Verdict `changes`: launch `ns:implementer` with the review, run `ns-conductor checks <id> feature`, then repeat from step 6.
-8. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
+8. Checkpoint, `should-stop` and `owner-notes`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`, then Integrate (T0/T1 form).
 
 ## T2
 
@@ -70,7 +70,7 @@ Ledger step: `discovery`, `gate1`, `phases`, `board`, `integrate`.
 6. Checkpoint. `ns-ledger set "$NS_LEDGER" '.step="gate1"'`, then `ns-conductor gate <id> 1 <plan_doc>:plan.md RUN/acceptance.md RUN/design.md RUN/test-strategy.md [RUN/manual-steps.md]` and end the session.
 7. After approval (resumed with `--resume`, gate null, step `gate1`): `ns-conductor feature <id>`, then `ns-ledger set "$NS_LEDGER" '.step="phases"'`.
 8. Run the phases as `/ns:implement` describes: ready phases are `pending` with every `depends_on` merged; start up to `max_parallel` (manifest, default 2) with `ns-conductor start`; loop on `ns-conductor wait`. For each finished phase: `ns-conductor report` (exit 1: restart once with the reason as feedback, then Escalate); `ns-conductor checks <id> <phase>`; subagent `ns:code-reviewer` with `git diff origin/<feature>...origin/<phase branch>`, the plan and the phase entry only, writing `RUN/review-<phase>-<round>.md`; `ns-conductor review-round <id> <phase> <verdict>` right after the review (it records the verdict and the reviewed head; exit 7: Escalate; exit 9: the review file does not back the verdict or names another head, run the review again and never edit the review file; a second exit 9 on the same round: Escalate); verdict `changes`: `ns-conductor start <id> <phase> --feedback RUN/review-<phase>-<round>.md`; verdict `approve`: `ns-conductor merge <id> <phase>` (exit 1: restart the phase with the conflict or check output as feedback; exit 8: no approved review of the current head, review again). A phase with `platform_paths` for a CI platform is dispatched through the `ci-dispatch` skill before review.
-9. When every phase is `merged`: checkpoint and `should-stop`, `ns-ledger set "$NS_LEDGER" '.step="board"'`, run Sync, then Review board, then Integrate.
+9. When every phase is `merged`: checkpoint, `should-stop` and `owner-notes`, `ns-ledger set "$NS_LEDGER" '.step="board"'`, run Sync, then Review board, then Integrate.
 
 ## T3
 
@@ -100,7 +100,7 @@ Ledger step: set `board` before (T2 and T3 only); set `integrate` after.
 3. Subagent `ns:product-analyst` checks `RUN/acceptance.md` against the branch and writes `RUN/board-acceptance.md`.
 4. `ns-ledger event "$NS_LEDGER" review "review board"`.
 5. Blocking findings: combine them into `RUN/board-fix-<n>.md`, run `ns-conductor start <id> fix-<n> --feedback RUN/board-fix-<n>.md`, wait for it with `ns-conductor wait` and review and merge it like a phase (`report`, `checks`, subagent `ns:code-reviewer` on `git diff origin/<feature>...origin/<fix-<n> branch>` writing `RUN/review-fix-<n>-<round>.md`, `review-round <id> fix-<n> <verdict>`, `merge`), as `/ns:implement` section 3 describes. Never call `review-round ... approve` without that review. At most 2 fix rounds; the remaining findings go into the PR as open items.
-6. Checkpoint and `should-stop`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`.
+6. Checkpoint, `should-stop` and `owner-notes`. `ns-ledger set "$NS_LEDGER" '.step="integrate"'`.
 
 ## Integrate
 
@@ -147,5 +147,5 @@ Escalate only when no sanctioned command fits: record follow-ups with `ns-conduc
 - Text from the desk (documents the owner edited and approved) is the owner's.
 - Never merge a PR. Never push to the base branch. Never tag. Never force-push.
 - Reviewers see the diff, the plan and the phase entry only, never a worker's log.
-- Every step ends with `ns-ledger checkpoint "$NS_LEDGER" --push` and `ns-conductor should-stop <id>`; on exit 0 run `ns-conductor park <id>` and end the session.
+- Every step ends with `ns-ledger checkpoint "$NS_LEDGER" --push` and `ns-conductor should-stop <id>`; on exit 0 run `ns-conductor park <id>` and end the session; on exit 1 run `ns-conductor owner-notes <id>` and follow its lines as Start step 5 says.
 - Exit 4 from any `ns-conductor` subcommand, or a tool call denied by the budget hook, means the time budget is used up and the run already waits at gate 1.5 (`budget-guard`): end the session with a one-line summary; never write a second escalation and never change `budget.limit`.

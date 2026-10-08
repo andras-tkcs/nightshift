@@ -468,7 +468,8 @@ EOF"
     "bin/lib/ns-desk.sh" "/opt/nightshift/current/bin/lib/ns-approve.sh" "sh -c 'source /x/bin/lib/ns-gc.sh'" \
     "source bin/lib/config.sh; ns_token_export acme" "ns_kill_teardown sbx-12 l n" "ns_stack_drop sbx-13" \
     "ns_desk_main import a b" "gc_run_inner '{}'" "ns-launch sbx-12" "/opt/nightshift/current/bin/ns-launch sbx-12" \
-    "ns-gh apply andras-tkcs/nightshift" "env ns-gh apply andras-tkcs/nightshift --yes"
+    "ns-gh apply andras-tkcs/nightshift" "env ns-gh apply andras-tkcs/nightshift --yes" \
+    "bash bin/lib/ns-note.sh" "source bin/lib/ns-note.sh" "ns_note_main sbx-12 x"
 }
 
 @test "the other owner-only ns commands are blocked: approve, project, rm, purge, gc, new --allow-outside" {
@@ -713,4 +714,13 @@ EOF" "cp /tmp/h .git/hooks/pre-push" "echo x >> .git/config"
   # library code in the program text itself is still refused
   blocked_all "is the owner's to run" "python3 -c 'import os; os.system(\"bash bin/lib/ns-kill.sh\")'" \
     "awk 'BEGIN { system(\"ns_stack_merge sbx\") }'" "vim -c '!source bin/lib/ns-stack.sh; ns_stack_merge' x"
+}
+
+@test "ns note is blocked for agents" {
+  blocked_all "ns note is the owner's command" \
+    "ns note sbx-12 \"use sqlite\"" "NS_X=1 ns note sbx-12 x" "cd /tmp && ns note sbx-12 x" \
+    "/usr/local/bin/ns note sbx-12 x" "/opt/nightshift/current/bin/ns note sbx-12 x" '"$NS_HOME/bin/ns" note sbx-12 x' \
+    "env ns note sbx-12 x" "bash -c 'ns note sbx-12 x'" 'echo $(ns note sbx-12 x)'
+  allowed_all "ns note --help" "ns stop sbx-12" "ns-conductor note sbx-12 \"follow-up\"" \
+    "ns-conductor owner-notes sbx-12" "ns-ledger event \"\$NS_LEDGER\" note \"x\"" "git commit -m \"add a note\""
 }

@@ -225,6 +225,8 @@ cmd_checkpoint() {
     if ! err="$(git -C "$wt" push -q origin "HEAD:refs/heads/$branch" 2>&1)"; then
       err="${err%%$'\n'*}"
       ns_ledger_read "$ledger" | event_filter push-failed "${err:-push failed}" | ns_ledger_write "$ledger"
+      git_retry -C "$wt" add -- "$dir"
+      git_retry -C "$wt" commit -q -m "ns-ledger: $id $state (push failed)" -- "$dir"
       ns_warn "push failed: $err"
     fi
   fi

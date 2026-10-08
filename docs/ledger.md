@@ -26,6 +26,7 @@ state: running                   # queued|running|waiting|parked|stopped|done|fa
 gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
 stop_requested: null             # null | stopped | parked
+owner_notes: []                  # optional; ns note appends {time, text, read: false}, ns-conductor owner-notes sets read: true
 branch: plan/sbx-12
 release: v0.1.0                 # Nightshift release the run started on (set only when NS_HOME is ${NS_OPT:-/opt/nightshift}/<tag>); null for a dev checkout. Resume and workers use it, scripts and plugins
 feature_branch: null             # feature/12 (T2/T3) or fix/sbx-12 (T0/T1), set when created
@@ -44,7 +45,7 @@ events:
   - {time: 2026-10-02T21:00:00Z, type: created, note: "..."}
 ```
 
-Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, push-failed, note, stack, step` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence; `step`: the note is the new step).
+Phase states are `pending|queued|running|review|merged|failed|blocked`. An event `type` matches `^[a-z][a-z0-9-]*$`; the types in use are `created, triage, tier, state, gate, approved, phase-start, phase-end, review, merge, escalation, usage-pause, usage-resume, resumed, recovered, stop-requested, owner-note, push-failed, note, stack, step` (`stack`: stack-base skipped a red PR; the note is the `Stacked on #N (checks failing on #M)` sentence; `step`: the note is the new step).
 
 `ns report <id>` turns these events into a timeline; see docs/usage.md.
 
@@ -136,7 +137,7 @@ ns-ledger checkpoint <ledger> [--push]
 
 Updates the budget: if the state is `running` and the budget is not paused, `used` grows by the whole steps of 0.01 h (36 seconds) since `budget.since`, and `since` moves forward by exactly the time charged, so the remainder is carried to the next checkpoint and frequent checkpoints lose nothing; otherwise `since` is set to now (see [The budget clock](#the-budget-clock)). It then stages the ledger directory and, if anything is staged there, commits only that directory with the message `ns-ledger: <id> <state>`. Other modified files in the worktree are left alone. A commit that hits a git `index.lock` is retried three times, one second apart.
 
-With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event and still exits 0; the next checkpoint commits that event.
+With `--push` it runs `git push -q origin HEAD:<branch>`. If the push fails it appends a `push-failed` event, commits it locally (`ns-ledger: <id> <state> (push failed)`, not pushed) and still exits 0; the next successful push carries it.
 
 ```
 ns-ledger checkpoint "$NS_LEDGER" --push

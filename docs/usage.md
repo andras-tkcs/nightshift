@@ -17,6 +17,7 @@ Some commands are yours alone. The guard hook refuses them when an agent runs th
 | `ns desk` (every subcommand) | opens a pull request in the project with the project owner's token |
 | `ns stack merge`, `ns stack drop` | merge pull requests into the base branch, or close one and push a revert, with the project owner's token |
 | `ns approve` | releases a gate: the gates are where you decide; for an onboarding run it also opens the pull request |
+| `ns note` | sends the run an instruction the conductor follows over the plan's scope |
 | `ns project` | registers a project, clones it with the owner's token and starts its onboarding run |
 | `ns rm` (and `ns purge`) | deletes worktrees and branches, with `--remote` remote branches too, and closes pull requests |
 | `ns gc` | the daily housekeeping: deletes worktrees and remote branches of merged runs |
@@ -152,6 +153,14 @@ ns stop <id>
 ```
 
 `ns stop` asks a run to stop at its next checkpoint: it sets `stop_requested` in the ledger, records a `stop-requested` event and commits the ledger. The conductor notices at its next check, parks its workers and ends the session with state `stopped`. A run with no live conductor (no tmux session, for example one waiting at a gate or one that died) is stopped at once: workers are reset, the state becomes `stopped` and `stop_requested` stays empty. A run parked on a usage limit (`budget.paused_until` set) is stopped at once and `paused_until` is cleared, so `ns check` does not resume it. Any other run that is already `stopped`, `parked`, `done` or `failed` prints `<id> is already <state>` and nothing changes.
+
+### ns note
+
+```
+ns note <id> "text"
+```
+
+`ns note` sends a run an instruction. It appends `{time, text, read: false}` to `owner_notes` in the ledger, records an `owner-note` event, commits the ledger and pushes it (a failed push is recorded as a `push-failed` event and `ns note` still succeeds). It prints `note <n> sent to <id>; it is read at the next checkpoint`. The conductor reads unread notes after every step (`ns-conductor owner-notes`), follows them over the plan's scope and acceptance criteria, and marks them read; a note never releases a gate, lifts the guard or allows edits to protected paths. It works on a run in any state: a run with no live conductor reads the note at the start of its resumed session. `ns report <id>` lists the notes. Agents cannot run it: the guard hook blocks it.
 
 ### ns kill
 

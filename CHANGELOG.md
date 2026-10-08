@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ns note <id> "text"` sends a running run an instruction. It is appended to the new ledger field `owner_notes`, committed and pushed; the conductor reads unread notes after every step with `ns-conductor owner-notes <id>`, follows them over the plan's scope, and marks them read. `ns report` lists them under `## Owner notes`. Agents cannot run it (guard) (ns-x7).
+
 ## [0.1.10] - 2026-10-08
 
 ### Changed
