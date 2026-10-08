@@ -19,14 +19,14 @@ tags:
 - sec-compliance
 state: running
 gate: null
-step: phases
+step: board
 stop_requested: null
 branch: plan/ns-x7
 feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T04:31:48Z'
+updated: '2026-10-08T04:31:54Z'
 budget:
   used: 8.56
   limit: 12
