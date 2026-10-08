@@ -16,12 +16,12 @@ feature_branch: fix/ns-166
 pr: https://github.com/andras-tkcs/nightshift/pull/184
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T12:27:27Z'
+updated: '2026-10-08T12:27:53Z'
 budget:
   used: 2.42
   limit: 2
   paused: false
-  since: '2026-10-08T12:27:27Z'
+  since: '2026-10-08T12:27:53Z'
   integrate_from: null
 phases:
 - id: fix
