@@ -16,7 +16,7 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T13:53:12Z'
+updated: '2026-10-08T13:53:22Z'
 budget:
   used: 2.22
   limit: 4
@@ -100,6 +100,10 @@ events:
 - time: '2026-10-08T13:52:59Z'
   type: note
   note: 'note 2: stack-base conflict before review; the integrator resolves it'
+- time: '2026-10-08T13:53:22Z'
+  type: risk-check
+  note: risk_floor T0
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-166
+risk_floor: T0
