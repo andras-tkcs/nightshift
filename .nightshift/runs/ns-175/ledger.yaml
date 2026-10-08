@@ -16,7 +16,7 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T10:10:26Z'
+updated: '2026-10-08T10:10:30Z'
 budget:
   used: 0.15
   limit: 2
