@@ -14,3 +14,5 @@ Allow the conductor to (a) register `p3-retire` in the ledger by hand-editing `p
 
 ## Owner's answer
 
+Booytstrap bats already fixed on main. Pull it in.
+
