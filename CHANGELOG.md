@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- T1 flow (issue #175, part 2 of #169): for T0 and T1 the full suite runs once, on the head that goes into the PR, after the last review round approved; implementers and review-fix rounds run lint and only the tests covering the changed files, and Sync no longer runs the suite before review. A suite failure goes back to `ns:implementer` (then a review round before the rerun) up to `budgets.T1.review_rounds`, then Escalate. The integrator and `/ns:dod` reuse the cached pass.
+- New review verdict `approve-after-nits` (lighter review): `ns-conductor review-round` accepts it only when the review file marks every finding non-blocking (exit 9 with a blocking finding) and its head is the branch head or an ancestor of it; `merge` accepts it for the current head. The ledger schema allows it as `review_verdict`.
+- Mechanical path: a request or mini-plan tagged `mechanical` runs one implementer session with two commits, the failing test and then the fix.
+
 ## [0.1.10] - 2026-10-08
 
 ### Changed
