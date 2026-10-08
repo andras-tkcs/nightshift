@@ -12,14 +12,14 @@ tags:
 - docs
 state: running
 gate: null
-step: implement
+step: integrate
 stop_requested: null
 branch: plan/ns-174
 feature_branch: fix/ns-174
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T08:48:10Z'
+updated: '2026-10-08T08:48:12Z'
 budget:
   used: 1.15
   limit: 2
@@ -60,6 +60,9 @@ events:
 - time: '2026-10-08T08:48:09Z'
   type: review
   note: fix round 2 approve
+- time: '2026-10-08T08:48:11Z'
+  type: step
+  note: integrate
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-156
