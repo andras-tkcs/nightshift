@@ -189,7 +189,7 @@ The cap is `budgets.<tier>.review_rounds` of the profile (R-CON-3) and counts th
 
 For T0 and T1 the full suite runs once, on the head that goes into the PR: the implementer runs lint and only the tests covering the changed files, Sync runs `stack-base` and `risk-check` but not the suite, the reviewer reviews, and after the last review round approved `ns-conductor checks <id> feature` runs the suite. A failure goes back to `ns:implementer` with the output, up to `budgets.T1.review_rounds` times, then the run escalates; a fix after a failure gets a review round before the suite reruns. The run report's `Full suite runs` is 1 for a T1 that passes first time, also with a review round of changes (the review rounds run no suite). The integrator and `/ns:dod` reuse the cached pass for that tree (a cache hit), and `ns tag` keeps its own run.
 
-Lighter review: when round 1 has only non-blocking findings, the reviewer writes `REVIEW verdict=approve-after-nits head=<sha>`, the implementer addresses them, and the conductor calls `review-round <id> fix approve-after-nits` with no second reviewer round. A blocking finding still needs `changes` and a re-review.
+Lighter review: when a review round has only non-blocking findings, the reviewer writes `REVIEW verdict=approve-after-nits head=<sha>`, the implementer addresses them, and the conductor calls `review-round <id> fix approve-after-nits` with no second reviewer round. A blocking finding still needs `changes` and a re-review.
 
 Mechanical path: when the request or the mini-plan is tagged `mechanical` (rename, move, text-only change), one implementer session writes the failing test and the fix as two separate commits, so test-first stays visible in history. Review and suite are as above.
 
