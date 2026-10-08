@@ -16,12 +16,12 @@ feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T09:48:02Z'
+updated: '2026-10-08T09:48:06Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-08T09:47:29Z'
+  since: '2026-10-08T09:48:05Z'
 phases: []
 events:
 - time: '2026-10-08T09:47:13Z'
