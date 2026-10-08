@@ -4,3 +4,4 @@
 4. follow-up: ns-conductor owner-notes can be run by any agent or worker including marking notes read; consider refusing when NS_WORKER is set
 5. follow-up: ns note folds only CR/LF in note text; other control chars and U+0085/2028/2029 pass
 6. follow-up: concurrent ns note calls may mislabel event n
+7. follow-up: checkpoint --push pushes to the ledger .branch; refuse base/default branch
