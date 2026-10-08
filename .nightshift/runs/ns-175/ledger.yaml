@@ -1,0 +1,32 @@
+version: 1
+id: ns-175
+project: nightshift
+request:
+  issue: 175
+tier: T1
+tier_source: owner
+tier_recommended: null
+tags: []
+state: queued
+gate: null
+step: intake
+stop_requested: null
+branch: plan/ns-175
+feature_branch: null
+pr: null
+release: v0.1.10
+created: '2026-10-08T09:44:16Z'
+updated: '2026-10-08T09:44:18Z'
+budget:
+  used: 0
+  limit: 2
+  paused: false
+  since: '2026-10-08T09:44:18Z'
+phases: []
+events:
+- time: '2026-10-08T09:44:16Z'
+  type: created
+  note: run ns-175 created
+- time: '2026-10-08T09:44:17Z'
+  type: tier
+  note: T1 (owner, 2 h)
