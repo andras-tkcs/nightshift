@@ -14,19 +14,19 @@ tags:
 - docs
 state: running
 gate: null
-step: implement
+step: integrate
 stop_requested: null
 branch: plan/ns-156
 feature_branch: fix/ns-156
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:34:26Z'
+updated: '2026-10-08T07:34:28Z'
 budget:
-  used: 0.4
+  used: 0.41
   limit: 2
   paused: false
-  since: '2026-10-08T07:33:52Z'
+  since: '2026-10-08T07:34:28Z'
   integrate_from: '2026-10-08T07:13:25Z'
 phases:
 - id: fix
@@ -57,6 +57,9 @@ events:
 - time: '2026-10-08T07:34:18Z'
   type: review
   note: fix round 1 approve
+- time: '2026-10-08T07:34:27Z'
+  type: step
+  note: integrate
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
