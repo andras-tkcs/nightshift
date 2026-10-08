@@ -84,7 +84,7 @@ The specialist agents (database expert, data analyst, UI/UX designer) are Build 
 - Inputs: the ledger, the plan, the review and board files.
 - Stacking: runs `ns-conductor stack-base <id>` first and opens the PR against the branch it prints; on a merge conflict (exit 6) it resolves, commits and pushes; the checks run in `/ns:dod`, or escalates at gate 1.5 and opens no PR; on exit 7 (more than one chain of open run PRs) it escalates at gate 1.5, offering the base branch and the chain tops that stack-base names, and opens no PR; when stack-base skipped a red PR it copies the `Stacked on #N (checks failing on #M)` line into the PR body.
 - It no longer merges the base branch itself (`stack-base` does) and runs no test command directly.
-- Outputs: `RUN/dod.md`, `RUN/pr-body.md`, `RUN/handoff.html` (T2 and T3), the pull request and the finished ledger (skills `dod`, `handoff-report`).
+- Outputs: `RUN/dod.md`, `RUN/pr-body.md`, `RUN/handoff.md` (T2 and T3), the pull request and the finished ledger (skills `dod`, `handoff-report`).
 
 ## Skills
 

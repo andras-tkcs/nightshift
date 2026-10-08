@@ -98,11 +98,11 @@ Your time goes to the evening before and the evening after. Everything between r
 4. **Build loop.** Per phase: implement, tests, review, at most three rounds, then merge into the feature branch. Independent phases run in parallel workers.
 5. **Gate 1.5: escalation, only if needed.** A stuck or over-budget phase writes `escalation.md`; you answer on the desk and run `ns approve`.
 6. **Verify.** The review board: code-reviewer on the whole branch, sec-compliance post-review, product-analyst against the acceptance criteria. Blocking findings get at most two fix rounds.
-7. **Gate 2: final review.** The integrator runs the definition of done, writes the HTML handoff report and opens the pull request. You read the report and merge yourself. Nightshift never merges.
+7. **Gate 2: final review.** The integrator runs the definition of done, writes the Markdown handoff report and opens the pull request. You read the report and merge yourself. Nightshift never merges.
 
 ## The review desk
 
-Agents publish every gate document into one folder on `ns-main` (`/srv/ns-space`). Markdown is for things you decide on and may edit (plan, ADR, acceptance criteria, manual steps). HTML is for things you only read (the handoff report). A web server shows both inside your tailnet, and a Cloudflare tunnel with Cloudflare Access shows them from a work laptop. Git stays the source of truth: the desk holds working copies, and `ns approve` is the only way edited Markdown goes back into the run's branch; it shows you the diff first. See [usage.md](usage.md), "The review desk".
+Agents publish every gate document into one folder on `ns-main` (`/srv/ns-space`). Markdown is for things you decide on and may edit (plan, ADR, acceptance criteria, manual steps). HTML is for things you only read (the architecture overview); the handoff report is Markdown but read-only by convention. A web server shows both inside your tailnet, and a Cloudflare tunnel with Cloudflare Access shows them from a work laptop. Git stays the source of truth: the desk holds working copies, and `ns approve` is the only way edited Markdown goes back into the run's branch; it shows you the diff first. See [usage.md](usage.md), "The review desk".
 
 ## Guardrails
 

@@ -182,7 +182,7 @@ All agents are plugin subagents in `plugins/ns/agents/`. Models are defaults tha
 | implementer | sonnet | yes | One phase in one worktree until its checks pass. |
 | code-reviewer | opus | no | Read-only review of a diff against plan, profile docs and checklists. |
 | sec-compliance | opus | no | Threat-model delta, secure-code review, compliance mapping. Mandatory for risk zones. |
-| integrator | sonnet | merges only | Merge phases, run the full gate (`/ns:dod`), write the HTML handoff report. |
+| integrator | sonnet | merges only | Merge phases, run the full gate (`/ns:dod`), write the Markdown handoff report. |
 
 - **R-AG-1** Reviewers (code-reviewer, sec-compliance) never see the implementer's reasoning. They see only the diff, the plan and the referenced docs.
 - **R-AG-2** Each agent's file states its inputs, outputs (file names) and stop conditions.
@@ -225,7 +225,7 @@ Triage reads the request (issue body or text), the profile and a quick repo surv
 
 ## 10. Review desk and notifications
 
-- **R-DSK-1** Layout: `/srv/ns-space/<repo>/index.md` and `/srv/ns-space/<repo>/runs/<id>/…`. Editable decisions are Markdown (`plan.md`, `adr-*.md`, `acceptance.md`, `manual-steps.md`, `escalation.md`). Read-only reports are HTML (`handoff.html`, `architecture.html`).
+- **R-DSK-1** Layout: `/srv/ns-space/<repo>/index.md` and `/srv/ns-space/<repo>/runs/<id>/…`. Editable decisions are Markdown (`plan.md`, `adr-*.md`, `acceptance.md`, `manual-steps.md`, `escalation.md`). The handoff report is Markdown (`handoff.md`), read-only by convention: approving never commits it back. Other read-only reports are HTML (`architecture.html`).
 - **R-DSK-2** HTML reports are self-contained: no external scripts, inline CSS, readable on a phone.
 - **R-DSK-3** Two owner-run paths lead from the desk back into git: `ns approve` (gate documents of a run) and `ns desk import` (a desk note, by pull request only; Nightshift never merges it). Nothing else copies desk files into git (R-CLI table).
 - **R-DSK-4** On merge, `ns gc` moves `runs/<id>` to `archive/<yyyy-mm>/<id>` and deletes archives older than 90 days.
