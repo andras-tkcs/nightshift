@@ -16,7 +16,7 @@ feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T11:53:56Z'
+updated: '2026-10-08T11:54:02Z'
 budget:
   used: 1.85
   limit: 2
@@ -44,6 +44,10 @@ events:
   type: note
   note: 'note 1: kill.bats ''ns_kill_group gives up after about 2 s'' (#58) fails
     under full-suite '
+- time: '2026-10-08T11:54:01Z'
+  type: risk-check
+  note: risk_floor T0
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
+risk_floor: T0
