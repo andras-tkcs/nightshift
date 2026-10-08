@@ -10,22 +10,22 @@ tags:
 - bash
 - python
 - docs
-state: running
+state: done
 gate: null
-step: integrate
+step: done
 stop_requested: null
 branch: plan/ns-174
 feature_branch: fix/ns-174
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/178
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T09:08:50Z'
+updated: '2026-10-08T09:09:13Z'
 budget:
-  used: 1.49
+  used: 1.5
   limit: 2
   paused: false
-  since: '2026-10-08T09:08:30Z'
-  integrate_from: '2026-10-08T09:08:49Z'
+  since: '2026-10-08T09:09:13Z'
+  integrate_from: null
 phases:
 - id: fix
   title: fix
@@ -64,6 +64,15 @@ events:
 - time: '2026-10-08T08:48:11Z'
   type: step
   note: integrate
+- time: '2026-10-08T09:09:10Z'
+  type: step
+  note: done
+- time: '2026-10-08T09:09:11Z'
+  type: state
+  note: 'done: pull request https://github.com/andras-tkcs/nightshift/pull/178'
+- time: '2026-10-08T09:09:12Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/178'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-156
