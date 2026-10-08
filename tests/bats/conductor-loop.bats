@@ -895,10 +895,375 @@ assert q.startswith("Why not [31mred? a"), repr(q[:30])
 PY2
 }
 
+# ---- ns-x5 acceptance tests (RUN/test-strategy.md of ns-x5) ----
+
+# x5_count: how often the counting check command ran (0 when never)
+x5_count() {
+  if [ -f "$BATS_TEST_TMPDIR/count" ]; then
+    echo $(($(wc -l <"$BATS_TEST_TMPDIR/count")))
+  else
+    echo 0
+  fi
+}
+
+# x5_wait_count: wait (up to 20 s) until the counting check command has started once
+x5_wait_count() {
+  local i
+  for i in $(seq 200); do
+    [ ! -s "$BATS_TEST_TMPDIR/count" ] || return 0
+    sleep 0.1
+  done
+  echo "the first checks call never started its check" >&2
+  return 1
+}
+
+# x5_sbx12: plan, feature worktree and the counting check command (plus an optional tail)
+x5_sbx12() {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  set_test_cmd "echo x >>$BATS_TEST_TMPDIR/count${1:-}"
+}
+
+# x5_sbx13: a T1 run sbx-13 with its --fix worktree and the counting check command
+x5_sbx13() {
+  "$NS_REPO_ROOT/bin/ns" new sbx-13 --tier T1 --yes >/dev/null
+  set_test_cmd "echo x >>$BATS_TEST_TMPDIR/count${1:-}"
+  ns-conductor fix-branch sbx-13 >/dev/null
+  XWT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13--fix"
+  L13="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-13/.nightshift/runs/sbx-13/ledger.yaml"
+}
+
+# x5_hold: shell text for a check command that blocks until the test creates the release file
+x5_hold() {
+  echo "while [ ! -e $BATS_TEST_TMPDIR/release ]; do sleep 0.1; done"
+}
+
+# x5_two_calls: start a checks call that holds the lock, start a second one, release the first once
+# the second says it waits; sets ra, rb (their exit codes) and output (the second call's output)
+x5_two_calls() {
+  local pa pb i
+  ra=0 rb=0
+  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/a.out" 2>&1 3>&- &
+  pa=$!
+  x5_wait_count
+  ns-conductor checks sbx-12 feature >"$BATS_TEST_TMPDIR/b.out" 2>&1 3>&- &
+  pb=$!
+  for i in $(seq 200); do
+    ! grep -q "another run of feature" "$BATS_TEST_TMPDIR/b.out" || break
+    sleep 0.1
+  done
+  : >"$BATS_TEST_TMPDIR/release"
+  wait "$pa" || ra=$?
+  wait "$pb" || rb=$?
+  output=$(cat "$BATS_TEST_TMPDIR/b.out")
+}
+
+# AC-1: a concurrent second call waits and reports the first call's PASS
+x5_lock_pass() {
+  x5_sbx12 "; $(x5_hold)"
+  x5_two_calls
+  [ "$(x5_count)" -eq 1 ]
+  [ "$ra" -eq 0 ]
+  [ "$rb" -eq 0 ]
+  assert_output_contains "another run of feature"
+  assert_output_contains "result of the concurrent run on tree"
+  assert_output_contains "PASS"
+}
+
+@test "checks: a concurrent second call waits and reports the first call's PASS (ns-x5)" {
+  x5_lock_pass
+}
+
+# AC-1: the same with a failing check: both exit 1, the check ran once
+x5_lock_fail() {
+  x5_sbx12 "; $(x5_hold); false"
+  x5_two_calls
+  [ "$(x5_count)" -eq 1 ]
+  [ "$ra" -eq 1 ]
+  [ "$rb" -eq 1 ]
+  assert_output_contains "result of the concurrent run on tree"
+  assert_output_contains "FAIL"
+}
+
+@test "checks: a concurrent second call reports the first call's FAIL and exit code (ns-x5)" {
+  x5_lock_fail
+}
+
+# AC-1 (D4): a process a check leaves running does not hold the lock
+x5_no_lock_leak() {
+  local lockf="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.lock" rc=0
+  x5_sbx12 "; setsid sleep 30 </dev/null >/dev/null 2>&1 3>&- & echo \$! >$BATS_TEST_TMPDIR/sleep.pid"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  [ -f "$lockf" ] || rc=1
+  [ "$rc" -eq 0 ] && { flock -n "$lockf" true || rc=1; }
+  kill "$(cat "$BATS_TEST_TMPDIR/sleep.pid")" 2>/dev/null || true
+  [ "$rc" -eq 0 ]
+}
+
+@test "checks: a process a check leaves running does not hold the checks lock (ns-x5)" {
+  x5_no_lock_leak
+}
+
+# AC-1: a lock file left by a killed holder does not block a later call
+x5_stale_lock() {
+  local lockf="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.lock" pid i
+  x5_sbx12
+  mkdir -p "$(dirname "$lockf")"
+  (
+    exec 9>"$lockf"
+    flock 9
+    exec sleep 60
+  ) 3>&- &
+  pid=$!
+  for i in $(seq 200); do
+    flock -n "$lockf" true || break
+    sleep 0.1
+  done
+  ! flock -n "$lockf" true
+  kill -9 "$pid"
+  wait "$pid" 2>/dev/null || true
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  assert_output_not_contains "waiting"
+  # the call went through the locked path of D3 and recorded its result (D6)
+  [ -f "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.json" ]
+}
+
+@test "checks: a lock left by a killed process does not block a later call (ns-x5)" {
+  x5_stale_lock
+}
+
+# AC-2: a second call on the same tree is a cache hit
+x5_cache_hit() {
+  local tree
+  x5_sbx12
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  tree=$(git -C "$FWT" rev-parse 'HEAD^{tree}')
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  assert_output_contains "cached PASS for tree $tree"
+  [ "$(cat "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.rc")" = 0 ]
+}
+
+@test "checks: a second call on the same clean tree is a cache hit and writes rc 0 (ns-x5)" {
+  x5_cache_hit
+}
+
+# x5_pass_then_hit: one pass and one cache hit (count 1), so a later rerun is caused by the change
+x5_pass_then_hit() {
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_contains "cached PASS for tree"
+  [ "$(x5_count)" -eq 1 ]
+}
+
+# AC-3 (a): a new commit changes the tree
+x5_miss_commit() {
+  x5_sbx12
+  x5_pass_then_hit
+  printf 'new\n' >"$FWT/new.txt"
+  git -C "$FWT" add new.txt
+  git -C "$FWT" commit -q -m "new file"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_not_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+}
+
+@test "checks: a new commit reruns the checks (ns-x5)" {
+  x5_miss_commit
+}
+
+# AC-3 (c): a failure is never a cache hit, but it is recorded (for replay)
+x5_miss_failure() {
+  x5_sbx12 "; false"
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  run ns-conductor checks sbx-12 feature
+  assert_failure 1
+  assert_output_not_contains "cached PASS"
+  assert_output_not_contains "PASS python test"
+  [ "$(x5_count)" -eq 2 ]
+  jq -e '.rc == 1 and .target == "feature"' "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.json" >/dev/null
+}
+
+@test "checks: an earlier failure reruns the checks and is never reported as a pass (ns-x5)" {
+  x5_miss_failure
+}
+
+# AC-3 (d): --force reruns
+x5_miss_force() {
+  x5_sbx12
+  x5_pass_then_hit
+  run ns-conductor checks sbx-12 feature --force
+  assert_success
+  assert_output_not_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+}
+
+@test "checks: --force reruns the checks after a pass (ns-x5)" {
+  x5_miss_force
+}
+
+# AC-3 (e): an untracked non-ignored file makes the worktree dirty
+x5_miss_untracked() {
+  x5_sbx12
+  x5_pass_then_hit
+  printf 'u\n' >"$FWT/untracked.txt"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_not_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+}
+
+@test "checks: an untracked file in the worktree reruns the checks (ns-x5)" {
+  x5_miss_untracked
+}
+
+# AC-3 (e): a modified tracked file makes the worktree dirty
+x5_miss_modified() {
+  x5_sbx12
+  x5_pass_then_hit
+  printf 'x\n' >>"$FWT/README.md"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_not_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+}
+
+@test "checks: a modified tracked file reruns the checks (ns-x5)" {
+  x5_miss_modified
+}
+
+# AC-3 (e), D6: a pass made on a dirty tree is not cacheable; the next clean pass is
+x5_dirty_pass_not_cached() {
+  x5_sbx12
+  printf 'u\n' >"$FWT/untracked.txt"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  rm -f "$FWT/untracked.txt"
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_not_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+  run ns-conductor checks sbx-12 feature
+  assert_success
+  assert_output_contains "cached PASS"
+  [ "$(x5_count)" -eq 2 ]
+}
+
+@test "checks: a pass made while an untracked file was present is not cached (ns-x5)" {
+  x5_dirty_pass_not_cached
+}
+
+# D1: for T1, checks <id> fix is checks <id> feature (same lock, cache and log)
+x5_canon_fix() {
+  local logs="$NS_CONFIG_DIR/logs/sbx-13"
+  x5_sbx13
+  run ns-conductor checks sbx-13 feature
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  run ns-conductor checks sbx-13 fix
+  assert_success
+  assert_output_contains "cached PASS"
+  [ "$(x5_count)" -eq 1 ]
+  [ "$(cat "$logs/fix.checks.rc")" = 0 ]
+  [ ! -e "$logs/fix.checks.log" ]
+}
+
+@test "checks: for a T1 run, checks fix is a cache hit of checks feature (ns-x5)" {
+  x5_canon_fix
+}
+
+# D1: the code worktree follows feature_branch, not a tier changed after fix-branch
+x5_code_wt_after_retier() {
+  x5_sbx13 "; pwd >$BATS_TEST_TMPDIR/cwd"
+  ns-ledger set "$L13" '.tier = "T2"'
+  run ns-conductor checks sbx-13 feature
+  assert_success
+  [ "$(cat "$BATS_TEST_TMPDIR/cwd")" = "$XWT" ]
+}
+
+@test "checks: a run retiered after fix-branch still checks its --fix worktree (ns-x5)" {
+  x5_code_wt_after_retier
+}
+
+# AC-4: a warning when the worktree lacks the pushed code branch; none when nothing is pushed
+x5_wrong_target() {
+  local c="$BATS_TEST_TMPDIR/wrong-clone"
+  x5_sbx13
+  run ns-conductor checks sbx-13 feature
+  assert_success
+  assert_output_not_contains "warning:"
+  git clone -q "$BARE" "$c"
+  git -C "$c" checkout -q -b fix/sbx-13 origin/main
+  printf 'elsewhere\n' >"$c/elsewhere.txt"
+  git -C "$c" add elsewhere.txt
+  git -C "$c" commit -q -m "code pushed from elsewhere"
+  git -C "$c" push -q origin fix/sbx-13
+  run ns-conductor checks sbx-13 feature
+  assert_output_contains "warning:"
+  assert_output_contains "does not contain origin/fix/sbx-13"
+  assert_output_contains "$XWT"
+}
+
+@test "checks: warns when the worktree lacks the run's pushed code branch, and not before (ns-x5)" {
+  x5_wrong_target
+}
+
+# AC-4, D2/D5: merge's internal checks never warn, while an explicit call on the same tree
+# warns about the unmerged phase branch
+x5_merge_no_warning() {
+  local PWT="$NS_CODING_DIR/worktrees/nightshift-sandbox-sbx-12--p1-alpha"
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  mkphase p1-alpha a.txt alpha
+  mkphase p2-beta b.txt beta
+  git -C "$WT" fetch -q origin
+  git -C "$WT" worktree add -q -b feature/12--p1-alpha "$PWT" origin/feature/12--p1-alpha
+  review_phase p2-beta changes
+  review_phase p1-alpha approve
+  run ns-conductor merge sbx-12 p1-alpha
+  assert_success
+  assert_output_contains "PASS python test"
+  assert_output_not_contains "warning:"
+  run ns-conductor checks sbx-12 feature
+  assert_output_contains "warning:"
+  assert_output_contains "does not contain origin/feature/12--p2-beta"
+}
+
+@test "checks: merge's internal checks print no warning; an explicit call does (ns-x5)" {
+  x5_merge_no_warning
+}
+
+# D2: --force is the only accepted third argument
+x5_usage() {
+  x5_sbx12
+  run ns-conductor checks sbx-12 feature --force
+  assert_success
+  [ "$(x5_count)" -eq 1 ]
+  run ns-conductor checks sbx-12 feature --bogus
+  assert_failure 2
+  assert_output_contains "[--force]"
+}
+
+@test "checks: accepts --force as the third argument and rejects anything else with exit 2 (ns-x5)" {
+  x5_usage
+}
+
 @test "checks twice leaves two == run lines in the checks log (ns-x6)" {
   commit_plan
   ns-conductor feature sbx-12 >/dev/null
   ns-conductor checks sbx-12 feature >/dev/null
-  ns-conductor checks sbx-12 feature >/dev/null
+  ns-conductor checks sbx-12 feature --force >/dev/null
   [ "$(grep -c '^== run ' "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log")" = 2 ]
 }

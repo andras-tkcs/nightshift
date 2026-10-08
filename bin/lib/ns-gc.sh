@@ -19,7 +19,7 @@ ns_gc_help() {
   printf 'only the local work; the remote branches stay),\n'
   printf 'archives their desk folders, drops desk archives older than 90 days, and reports\n'
   printf 'work that needs you. --monthly (or day 01) also clears the stacks gc targets.\n'
-  printf '--dry-run prints "would remove" lines and changes nothing.\n'
+  printf -- '--dry-run prints "would remove" lines and changes nothing.\n'
 }
 
 GC_DRY=0

@@ -60,6 +60,7 @@ The specialist agents (database expert, data analyst, UI/UX designer) are Build 
 - Model: sonnet.
 - Called: T0 (the whole change), T1 (a failing test, then the fix), T2 and T3 (one detached worker per phase, in its own worktree).
 - Inputs: the task or phase entry, the plan, review feedback when given.
+- Checks: runs only the tests covering its files; the full suite runs through `ns-conductor checks`.
 - Outputs: commits on its own branch, pushed; a phase worker ends with a `PHASE-REPORT <phase> status=<done|blocked> head=<sha>` line.
 
 ## code-reviewer
@@ -81,7 +82,8 @@ The specialist agents (database expert, data analyst, UI/UX designer) are Build 
 - Model: sonnet.
 - Called: last, at every tier, after the review board (T2, T3) or the implementer (T0, T1).
 - Inputs: the ledger, the plan, the review and board files.
-- Stacking: runs `ns-conductor stack-base <id>` first and opens the PR against the branch it prints; on a merge conflict (exit 6) it resolves and rechecks, or escalates at gate 1.5 and opens no PR; on exit 7 (more than one chain of open run PRs) it escalates at gate 1.5, offering the base branch and the chain tops that stack-base names, and opens no PR; when stack-base skipped a red PR it copies the `Stacked on #N (checks failing on #M)` line into the PR body.
+- Stacking: runs `ns-conductor stack-base <id>` first and opens the PR against the branch it prints; on a merge conflict (exit 6) it resolves, commits and pushes; the checks run in `/ns:dod`, or escalates at gate 1.5 and opens no PR; on exit 7 (more than one chain of open run PRs) it escalates at gate 1.5, offering the base branch and the chain tops that stack-base names, and opens no PR; when stack-base skipped a red PR it copies the `Stacked on #N (checks failing on #M)` line into the PR body.
+- It no longer merges the base branch itself (`stack-base` does) and runs no test command directly.
 - Outputs: `RUN/dod.md`, `RUN/pr-body.md`, `RUN/handoff.html` (T2 and T3), the pull request and the finished ledger (skills `dod`, `handoff-report`).
 
 ## Skills
