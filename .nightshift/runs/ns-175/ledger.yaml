@@ -7,8 +7,8 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: implement
 stop_requested: null
 branch: plan/ns-175
@@ -16,12 +16,12 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T12:27:03Z'
+updated: '2026-10-08T13:52:18Z'
 budget:
   used: 2.21
-  limit: 2
+  limit: 4
   paused: false
-  since: '2026-10-08T12:27:03Z'
+  since: '2026-10-08T13:52:18Z'
   integrate_from: null
 phases:
 - id: fix
@@ -85,6 +85,12 @@ events:
 - time: '2026-10-08T12:26:39Z'
   type: gate
   note: 'gate 1.5: waiting for the owner: budget used up: 2.2 h of 2 h'
+- time: '2026-10-08T13:52:15Z'
+  type: budget
+  note: owner set the budget to 4 h
+- time: '2026-10-08T13:52:17Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
