@@ -35,12 +35,12 @@ gate_setup() {
   LEDGER="$RUNDIR/ledger.yaml"
   DESK="$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12"
   printf '# Plan\n\nDo the thing.\n' >"$RUNDIR/plan.md"
-  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  printf '# handoff\n' >"$RUNDIR/handoff.md"
   OLEDGER=$(python3 "$NS_REPO_ROOT/bin/lib/nsyaml.py" to-json "$NS_CONFIG_DIR/runs.yaml" | jq -r ".runs[] | select(.id == \"oth-3\") | .worktree + \"/.nightshift/runs/oth-3/ledger.yaml\"")
   printf '# Plan\n' >"$(dirname "$OLEDGER")/plan.md"
   ns-ledger state "$LEDGER" waiting --gate 1
   ns-ledger state "$OLEDGER" waiting --gate 1
-  ns publish sbx-12 RUN/plan.md RUN/handoff.html >/dev/null
+  ns publish sbx-12 RUN/plan.md RUN/handoff.md >/dev/null
   ns publish oth-3 RUN/plan.md >/dev/null
 }
 
@@ -82,13 +82,13 @@ lget() { ns-ledger get "$LEDGER" "$1"; }
 @test "--yes on the sandbox project commits the edit, releases the gate and resumes" {
   gate_setup
   printf '# Plan\n\nDo the other thing.\n' >"$DESK/plan.md"
-  printf '<html><body>changed on the desk</body></html>\n' >"$DESK/handoff.html"
+  printf '# changed on the desk\n' >"$DESK/handoff.md"
   run ns approve sbx-12 --yes
   assert_success
   assert_output_contains "approved gate 1 of sbx-12"
   grep -q 'Do the other thing' "$RUNDIR/plan.md"
-  grep -q 'handoff' "$RUNDIR/handoff.html"
-  ! grep -q 'changed on the desk' "$RUNDIR/handoff.html"
+  grep -q 'handoff' "$RUNDIR/handoff.md"
+  ! grep -q 'changed on the desk' "$RUNDIR/handoff.md"
   git -C "$WT" log --format=%B -n 20 | grep -qx 'Approved-By: owner'
   git -C "$WT" log --format=%s | grep -qx 'ns: approve sbx-12 gate 1'
   [ "$(lget '.gate // "none"')" = none ]

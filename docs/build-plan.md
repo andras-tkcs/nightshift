@@ -25,7 +25,7 @@ Workstreams in dependency order. The planner cuts them into phases and waves.
 | A7 | Triage and T0/T1 | triage agent, triage-rubric skill, implementer and code-reviewer agents, review-checklist skill, `/ns:run` for T0/T1, `ns-python` stack (`stack.yaml`, three skills) | §6, §7 | A2, A3, A5 |
 | A8 | Planning and gates | Port the seed `make-plan` into `/ns:plan` (profile keys replace PrivacyFence facts), product-analyst, architect, test-architect, planner agents, gate 1 via the desk | §6, §7 | A4, A7 |
 | A9 | Conductor | `bin/ns-conductor`: workers as headless `claude -p`, worker pool, budgets, review-loop cap, escalation (gate 1.5), auto-mode check | §9, R-BUD-* | A5, A7 |
-| A10 | T2/T3 execution | `/ns:implement` (ported from the seed orchestrator onto the conductor), integrator agent, `/ns:dod` (ported), ci-dispatch skill (ported from steward), researcher and sec-compliance agents, HTML handoff report template | §6, §9, R-CON-5/6 | A8, A9 |
+| A10 | T2/T3 execution | `/ns:implement` (ported from the seed orchestrator onto the conductor), integrator agent, `/ns:dod` (ported), ci-dispatch skill (ported from steward), researcher and sec-compliance agents, Markdown handoff report template | §6, §9, R-CON-5/6 | A8, A9 |
 | A11 | Operations | `ns drain`, `up`, `resume`, `gc` (with `--dry-run`), `doctor`, systemd user unit and timer files | §5, §12 | A9 |
 | A12 | GitHub settings | `bin/ns-gh` from the draft, gh stub, tests | §13 | A1 |
 | A13 | Bootstrap | `bin/bootstrap.sh` with `--check` and `--upgrade <tag>`, release install under `/opt/nightshift/<tag>`, tests of `--check`, Caddyfile and unit templates | §14, R-BS-* | A4, A11 |

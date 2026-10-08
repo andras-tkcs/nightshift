@@ -24,7 +24,7 @@ scenario_main() {
   e2e_assert "two phases ran with overlapping intervals" e2e_ledger_has "$E2E_ID" "$T3_OVERLAP" || return 1
   e2e_assert "each Plan-Phase trailer appears exactly once" e2e_each_trailer_once "$E2E_ID" || return 1
   e2e_assert "ledger has the review board event" e2e_ledger_has "$E2E_ID" 'any(.events[]; .type == "review" and (.note | contains("review board")))' || return 1
-  e2e_assert "handoff.html is on the desk" test -f "$(e2e_desk_dir "$E2E_ID")/handoff.html" || return 1
+  e2e_assert "handoff.md is on the desk" test -f "$(e2e_desk_dir "$E2E_ID")/handoff.md" || return 1
   e2e_assert "PR is open against the base" e2e_pr_open_against_base "$E2E_ID" || return 1
   e2e_assert "PR checks are green" e2e_pr_checks_green "$E2E_ID" 20 || return 1
 }

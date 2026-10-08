@@ -475,14 +475,14 @@ review_phase() {
 }
 
 @test "finish on T2 sets pr, done, gate 2 and publishes the handoff" {
-  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  printf '# Handoff\n' >"$RUNDIR/handoff.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_success
   [ "$(lget .state)" = done ]
   [ "$(lget .gate)" = 2 ]
   [ "$(lget .step)" = done ]
   [ "$(lget .pr)" = https://github.com/andras-tkcs/nightshift-sandbox/pull/1 ]
-  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.md" ]
 }
 
 @test "finish on T0 leaves the gate null" {
@@ -846,18 +846,18 @@ review_phase() {
 }
 
 @test "finish commits and pushes RUN/run-report.md and publishes it next to the handoff (#118)" {
-  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  printf '# Handoff\n' >"$RUNDIR/handoff.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_success
   git -C "$WT" ls-files --error-unmatch .nightshift/runs/sbx-12/run-report.md >/dev/null
   [ -z "$(git -C "$WT" status --porcelain -- .nightshift/runs/sbx-12/run-report.md)" ]
   git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md | grep -q '^- State: done$'
   [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
-  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.md" ]
 }
 
 @test "finish on T2: a failed handoff publish is fatal, the run report is still committed and published (#118)" {
-  printf '<html><script>x()</script></html>\n' >"$RUNDIR/handoff.html"
+  printf 'token ghp_abcdefghijklmnopqrstuvwxyz0123\n' >"$RUNDIR/handoff.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_failure 1
   assert_output_contains "could not publish the handoff report"
@@ -865,17 +865,17 @@ review_phase() {
   [ "$(lget '.events[-1].type')" = finish ]
   git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md >/dev/null
   [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
-  [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+  [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.md" ]
 }
 
 @test "finish on T2: a failed run report publish only warns, the handoff is published (#118)" {
-  printf '<html><body>handoff</body></html>\n' >"$RUNDIR/handoff.html"
+  printf '# Handoff\n' >"$RUNDIR/handoff.md"
   # a directory in the way on the desk: copying the run report fails, the handoff copy does not
   mkdir -p "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md"
   run ns-conductor finish sbx-12 --pr https://github.com/andras-tkcs/nightshift-sandbox/pull/1
   assert_success
   assert_output_contains "could not publish RUN/run-report.md"
-  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.html" ]
+  [ -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/handoff.md" ]
   [ ! -f "$NS_DESK_DIR/nightshift-sandbox/runs/sbx-12/run-report.md" ]
   git -C "$BARE" show plan/sbx-12:.nightshift/runs/sbx-12/run-report.md >/dev/null
 }
