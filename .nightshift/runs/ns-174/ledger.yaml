@@ -5,23 +5,26 @@ request:
   issue: 174
 tier: T1
 tier_source: owner
-tier_recommended: null
-tags: []
-state: queued
+tier_recommended: T2
+tags:
+- bash
+- python
+- docs
+state: running
 gate: null
-step: intake
+step: implement
 stop_requested: null
 branch: plan/ns-174
 feature_branch: null
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T07:38:47Z'
+updated: '2026-10-08T07:39:32Z'
 budget:
   used: 0
   limit: 2
   paused: false
-  since: '2026-10-08T07:38:47Z'
+  since: '2026-10-08T07:39:06Z'
 phases: []
 events:
 - time: '2026-10-08T07:38:46Z'
@@ -30,3 +33,13 @@ events:
 - time: '2026-10-08T07:38:47Z'
   type: tier
   note: T1 (owner, 2 h)
+- time: '2026-10-08T07:39:06Z'
+  type: state
+  note: running
+- time: '2026-10-08T07:39:06Z'
+  type: step
+  note: triage
+- time: '2026-10-08T07:39:31Z'
+  type: step
+  note: implement
+queued_for_slot: false
