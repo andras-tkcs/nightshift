@@ -19,7 +19,7 @@ feature_branch: fix/ns-174
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T07:56:37Z'
+updated: '2026-10-08T07:56:43Z'
 budget:
   used: 0.29
   limit: 2
@@ -43,3 +43,5 @@ events:
   type: step
   note: implement
 queued_for_slot: false
+stack_skipped: []
+stacked_on: ns-156
