@@ -26,7 +26,7 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:44:40Z'
+updated: '2026-10-08T11:44:43Z'
 budget:
   used: 10.48
   limit: 12
@@ -249,6 +249,10 @@ events:
   type: note
   note: 'note 4: follow-up: ns-conductor owner-notes can be run by any agent or worker
     including '
+- time: '2026-10-08T11:44:42Z'
+  type: note
+  note: 'note 5: follow-up: ns note folds only CR/LF in note text; other control chars
+    and U+0085'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
