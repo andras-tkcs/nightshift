@@ -21,12 +21,12 @@ feature_branch: null
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:10:27Z'
+updated: '2026-10-08T07:10:44Z'
 budget:
-  used: 0
+  used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-08T07:09:52Z'
+  since: '2026-10-08T07:10:28Z'
 phases: []
 events:
 - time: '2026-10-08T07:09:33Z'
