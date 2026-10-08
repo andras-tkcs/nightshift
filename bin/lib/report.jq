@@ -44,9 +44,14 @@ def minus($waits):
     else . end)) as $w
 | ($w.list + (if $w.open then [$w.open + {e: $end}] else [] end)) as $waits
 | ($waits | map([.s, .e])) as $wi
-# dead gaps: a resume that is not the hand-off from the queue follows a gap with nothing running
+# dead gaps: a resume that is not the hand-off from the queue follows a gap with nothing running;
+# the gap starts at the last log activity before the resume (never before the previous ledger
+# event), or at the previous ledger event when there are no logs
+| ($logs[0].activity // []) as $act
 | ([range(1; $n) | select($ev[.].type == "resumed" and ($ev[.].note != "resumed from queued"))
-    | [$ev[. - 1].t, $ev[.].t] | minus($wi)[]]) as $dead
+    | $ev[.].t as $r
+    | ([$ev[. - 1].t] + [$act[] | select(. < $r)] | max) as $from
+    | [$from, $r] | minus($wi)[]]) as $dead
 | (.created | ep) as $t0
 | ($t0) as $start
 # planning ends at gate 1, else at the first phase-start or review, else at the end

@@ -43,6 +43,7 @@ import os
 import re
 import sys
 
+ACTIVITY = set()  # epoch seconds of every assistant/user event, over all session logs
 ATTEMPT = re.compile(r"^(?P<phase>.+)--attempt(?P<n>[0-9]+)$")
 HEADER = re.compile(r"^== (?P<stack>\S+) (?P<name>\S+): ")
 RUN = re.compile(r"^== run \S+$")
@@ -136,6 +137,10 @@ def read_session_log(path):
             bad += 1
             continue
         typ = e.get("type")
+        if typ in ("assistant", "user"):
+            at = epoch(e.get("timestamp"))
+            if at is not None:
+                ACTIVITY.add(at)
         sid = e.get("session_id") if isinstance(e.get("session_id"), str) else ""
         if typ == "result":
             t = num(e.get("num_turns"))
@@ -410,7 +415,7 @@ def main():
     sub_rows = [grouped[k] for k in sorted(grouped, key=lambda k: (akey_label(k[0], agents), k[1], k[2]))]
 
     json.dump({"agents": agents, "models": [models[k] for k in sorted(models)], "total": total,
-               "messages": messages, "subagents": sub_rows, "checks": checks}, sys.stdout)
+               "messages": messages, "activity": sorted(ACTIVITY), "subagents": sub_rows, "checks": checks}, sys.stdout)
     sys.stdout.write("\n")
     return 0
 

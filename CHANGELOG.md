@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `ns report`: the dead or stopped gap before a `resumed` event starts at the last assistant or user message in the session logs, not at the previous ledger event, so work done before the crash is no longer counted as dead time. Without logs the ledger rule stays (issue #156).
+
 ## [0.1.9] - 2026-10-08
 
 ### Security
