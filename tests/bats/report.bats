@@ -242,3 +242,53 @@ X6="$BATS_TEST_DIRNAME/../fixtures/report/ns-x6"
   grep -qF '| python test | 2 | 15s |' "$RUNDIR/run-report.md"
   grep -qF '| python lint | 2 | 8s |' "$RUNDIR/run-report.md"
 }
+
+# Full suite runs (ns-174): the Summary counts the real runs of `ns-conductor checks`, i.e. the
+# `== run <UTC>` blocks of the checks logs. A cache hit runs nothing and leaves a `== cached <UTC>`
+# line only, which is not counted. A T0/T1 run with more than one is flagged in the same row:
+# `| Full suite runs | 2 (more than one for a T1 run) |`.
+full_suite_log() {
+  rm -f "$LOGS"/*.checks.log
+  local n=0 t
+  for t in "$@"; do
+    case "$t" in
+      run)
+        n=$((n + 1))
+        printf '== run 2026-10-02T12:%02d:00Z\n== python test: pytest -q\n== start python test 2026-10-02T12:%02d:01Z\nok\n== end python test 2026-10-02T12:%02d:09Z PASS exit 0\n' "$n" "$n" "$n" ;;
+      cached) printf '== cached 2026-10-02T12:59:00Z\n' ;;
+    esac
+  done >"$LOGS/feature.checks.log"
+}
+
+@test "ns report: Full suite runs is 1 for one real run and one cache hit (ns-174)" {
+  full_suite_log run cached
+  run ns report sbx-12
+  assert_success
+  grep -qxF '| Full suite runs | 1 |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: Full suite runs counts two real runs without flagging a T2 run (ns-174)" {
+  full_suite_log run cached run
+  run ns report sbx-12
+  assert_success
+  grep -qxF '| Full suite runs | 2 |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: a T1 run with two full suite runs is flagged in the Summary (ns-174)" {
+  full_suite_log run run
+  ns-ledger set "$RUNDIR/ledger.yaml" '.tier = "T1"'
+  run ns report sbx-12
+  assert_success
+  grep -qxF '| Full suite runs | 2 (more than one for a T1 run) |' "$RUNDIR/run-report.md"
+  full_suite_log run cached
+  run ns report sbx-12
+  assert_success
+  grep -qxF '| Full suite runs | 1 |' "$RUNDIR/run-report.md"
+}
+
+@test "ns report: Full suite runs says no data without a checks log (ns-174)" {
+  rm -f "$LOGS"/*.checks.log
+  run ns report sbx-12
+  assert_success
+  grep -qxF '| Full suite runs | no data |' "$RUNDIR/run-report.md"
+}
