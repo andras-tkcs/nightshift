@@ -35,6 +35,8 @@ Checks logs (<target>.checks.log, ns-conductor checks):
   ...output...
   == end <stack> <name> <UTC time> <PASS|FAIL|SKIP> exit <rc>
 An older log without start and end lines gives the check with no result and no times.
+Each real run opens with `== run <UTC>`; a cache hit appends `== cached <UTC>` only, which is
+not counted in full_runs.
 """
 import datetime
 import json
@@ -43,6 +45,7 @@ import os
 import re
 import sys
 
+ACTIVITY = set()  # epoch seconds of every assistant/user event, over all session logs
 ATTEMPT = re.compile(r"^(?P<phase>.+)--attempt(?P<n>[0-9]+)$")
 HEADER = re.compile(r"^== (?P<stack>\S+) (?P<name>\S+): ")
 RUN = re.compile(r"^== run \S+$")
@@ -136,6 +139,10 @@ def read_session_log(path):
             bad += 1
             continue
         typ = e.get("type")
+        if typ in ("assistant", "user"):
+            at = epoch(e.get("timestamp"))
+            if at is not None:
+                ACTIVITY.add(at)
         sid = e.get("session_id") if isinstance(e.get("session_id"), str) else ""
         if typ == "result":
             t = num(e.get("num_turns"))
@@ -316,6 +323,18 @@ def read_session_log(path):
     return agent, out_msgs, sub_list
 
 
+def count_full_runs(path):
+    """Real runs in a checks log: its `== run` lines. `== cached` lines (a cache hit) are not runs."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        n = sum(1 for line in lines if RUN.match(line))
+        # an older log without `== run` lines is one run
+        return n or (1 if any(HEADER.match(line) for line in lines) else 0)
+    except OSError:
+        return 0
+
+
 def read_checks_log(path):
     target = os.path.basename(path)[: -len(".checks.log")]
     rows = []
@@ -361,6 +380,7 @@ def main():
     except OSError:
         names = []
     agents, messages, subs, checks = [], [], [], []
+    full_runs = 0
     for n in names:
         p = os.path.join(d, n)
         if not os.path.isfile(p):
@@ -372,6 +392,7 @@ def main():
             subs += s
         elif n.endswith(".checks.log"):
             checks += read_checks_log(p)
+            full_runs += count_full_runs(p)
 
     # conductor first, then the workers by phase and attempt (the latest attempt last)
     def akey(a):
@@ -410,7 +431,7 @@ def main():
     sub_rows = [grouped[k] for k in sorted(grouped, key=lambda k: (akey_label(k[0], agents), k[1], k[2]))]
 
     json.dump({"agents": agents, "models": [models[k] for k in sorted(models)], "total": total,
-               "messages": messages, "subagents": sub_rows, "checks": checks}, sys.stdout)
+               "messages": messages, "activity": sorted(ACTIVITY), "subagents": sub_rows, "checks": checks, "full_runs": full_runs}, sys.stdout)
     sys.stdout.write("\n")
     return 0
 

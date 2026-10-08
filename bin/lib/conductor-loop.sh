@@ -9,6 +9,7 @@ conductor_loop_usage() {
   printf '  feature       <id>\n'
   printf '  stack-base    <id>\n'
   printf '  checks        <id> <phase|feature> [--force]\n'
+  printf '  risk-check    <id>\n'
   printf '  report        <id> <phase> [--rerun]\n'
   printf '  note          <id> <text> | --file <file>\n'
   printf '  review-round  <id> <phase> <approve|changes>\n'
@@ -395,6 +396,7 @@ loop_checks() {
         exit "$(jq -r '.rc' "$json")"
       fi
       if jq -e '.rc == 0 and .cacheable == true' "$json" >/dev/null 2>&1; then
+        printf '== cached %s\n' "$(ns_now)" >>"$logdir/$canon.checks.log"
         loop_checks_show "$json" "checks: cached PASS for tree $(jq -r '.tree' <<<"$key") ($canon, $(jq -r '.finished' "$json")); --force reruns"
         exit 0
       fi
@@ -450,6 +452,46 @@ conductor_checks() {
   [ "$2" = feature ] || valid_phase_id "$2" || ns_usage "$u"
   load_run "$1"
   loop_checks "$2" --budget ${3:+"$3"}
+}
+
+# risk-check <id>: at Sync, match the diff origin/<base>...<feature branch> against the profile's
+# risk_zones and platform_paths. Records the tags and risk_floor (T0 no match, T1 a match); sets
+# tier_recommended and prints "tier_recommended <T>" only when the floor is above the run's tier.
+# Never changes tier or tier_source.
+conductor_risk_check() {
+  local u="ns-conductor risk-check <id>" base fb ref dir res floor tier tags rec=""
+  [ $# -eq 1 ] || ns_usage "$u"
+  load_run "$1"
+  base=$(jq -r '.git.base_branch' <<<"$profile")
+  fb=$(lg get "$ledger" '.feature_branch // empty')
+  [ -n "$fb" ] || ns_die "run $id has no feature branch"
+  dir=$(loop_code_wt)
+  [ -d "$dir" ] || dir="$wt"
+  git -C "$dir" fetch -q origin 2>/dev/null || true
+  ref="origin/$fb"
+  git -C "$dir" rev-parse -q --verify "$ref^{commit}" >/dev/null || ref="$fb"
+  git -C "$dir" rev-parse -q --verify "$ref^{commit}" >/dev/null || ns_die "no branch $fb"
+  local pf
+  pf=$(mktemp "${TMPDIR:-/tmp}/ns-risk.XXXXXX")
+  printf '%s\n' "$profile" >"$pf"
+  res=$(git -C "$dir" diff --name-only "origin/$base...$ref" | python3 -I "$NS_HOME/bin/lib/riskcheck.py" "$pf") || {
+    rm -f "$pf"
+    ns_die "could not compute the risk floor of $id"
+  }
+  rm -f "$pf"
+  floor=$(jq -r .floor <<<"$res")
+  tags=$(jq -c .tags <<<"$res")
+  tier=$(loop_tier)
+  if [[ "$floor" > "$tier" ]]; then
+    rec="$floor"
+  fi
+  lg set "$ledger" ".risk_floor = \"$floor\" | .tags = (((.tags // []) + $tags) | unique)${rec:+ | .tier_recommended = \"$rec\"}"
+  local ev="risk_floor $floor"
+  [ "$tags" = "[]" ] || ev="$ev tags $(jq -r 'join(",")' <<<"$tags")"
+  lg event "$ledger" risk-check "$ev"
+  lg checkpoint "$ledger"
+  printf 'risk_floor %s\n' "$floor"
+  [ -z "$rec" ] || printf 'tier_recommended %s\n' "$rec"
 }
 
 conductor_note() {
@@ -796,6 +838,7 @@ conductor_loop_dispatch() {
     feature) conductor_feature "$@" ;;
     stack-base) conductor_stack_base "$@" ;;
     checks) conductor_checks "$@" ;;
+    risk-check) conductor_risk_check "$@" ;;
     report) conductor_report "$@" ;;
     note) conductor_note "$@" ;;
     review-round) conductor_review_round "$@" ;;

@@ -19,8 +19,9 @@ project: nightshift-sandbox
 request: {issue: 12}             # or {text: "..."}; exactly one key
 tier: T2                         # null | T0..T3
 tier_source: owner               # null | triage | owner   (owner = --tier)
-tier_recommended: T2             # null | T0..T3, triage's own recommendation
-tags: [python, "risk:policy"]    # from triage
+tier_recommended: T2             # null | T0..T3, triage's own recommendation, or the risk floor when it is above an owner tier (ns-conductor risk-check)
+risk_floor: T1                   # optional, T0 | T1: set at Sync by ns-conductor risk-check
+tags: [python, "risk:policy"]    # from triage or ns-conductor risk-check
 state: running                   # queued|running|waiting|parked|stopped|done|failed
 gate: null                       # null | "1" | "1.5" | "2"
 step: phases                     # intake|triage|discovery|gate1|implement|phases|board|integrate|onboard|done
