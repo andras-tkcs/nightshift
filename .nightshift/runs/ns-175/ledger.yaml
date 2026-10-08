@@ -7,8 +7,8 @@ tier: T1
 tier_source: owner
 tier_recommended: null
 tags: []
-state: waiting
-gate: '1.5'
+state: queued
+gate: null
 step: implement
 stop_requested: null
 branch: plan/ns-175
@@ -16,12 +16,12 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T10:31:11Z'
+updated: '2026-10-08T10:43:20Z'
 budget:
   used: 0.49
   limit: 2
   paused: false
-  since: '2026-10-08T10:31:11Z'
+  since: '2026-10-08T10:43:20Z'
   integrate_from: null
 phases: []
 events:
@@ -48,6 +48,9 @@ events:
   note: 'gate 1.5: waiting for the owner: The full suite does not finish inside the
     tool time limit (10 min foreground, 10 min background). How should I proceed:
     run it outside the conductor session (for example `ns check`), or allow a longer'
+- time: '2026-10-08T10:43:19Z'
+  type: approved
+  note: gate 1.5
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
