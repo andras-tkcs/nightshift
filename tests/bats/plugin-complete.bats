@@ -16,7 +16,7 @@ setup() { ns_test_setup; P="$NS_REPO_ROOT/plugins/ns"; }
     compliance-mapping research-notes worktree-hygiene budget-guard handoff-report ci-dispatch review-desk; do
     [ -f "$P/skills/$s/SKILL.md" ] || { echo "missing skill $s"; return 1; }
   done
-  [ -f "$P/skills/handoff-report/template.html" ]
+  [ -f "$P/skills/handoff-report/template.md" ]
 }
 
 @test "every executable named in hooks.json exists and is executable" {
