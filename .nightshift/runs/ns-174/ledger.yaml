@@ -19,13 +19,22 @@ feature_branch: fix/ns-174
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:38:46Z'
-updated: '2026-10-08T08:18:08Z'
+updated: '2026-10-08T08:18:13Z'
 budget:
   used: 0.65
   limit: 2
   paused: false
   since: '2026-10-08T08:18:06Z'
-phases: []
+phases:
+- id: fix
+  title: fix
+  state: pending
+  branch: null
+  worktree: null
+  attempts: 0
+  review_rounds: 1
+  review_verdict: changes
+  reviewed_head: 20741f997a643ed931e5015529fe845f07e69ca5
 events:
 - time: '2026-10-08T07:38:46Z'
   type: created
@@ -45,6 +54,9 @@ events:
 - time: '2026-10-08T07:56:47Z'
   type: note
   note: 'note 1: stack-base conflict before review; the integrator resolves it'
+- time: '2026-10-08T08:18:12Z'
+  type: review
+  note: fix round 1 changes
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-156
