@@ -12,11 +12,11 @@ gate: null
 step: implement
 stop_requested: null
 branch: plan/ns-166
-feature_branch: null
+feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T09:47:40Z'
+updated: '2026-10-08T09:47:43Z'
 budget:
   used: 0
   limit: 2
