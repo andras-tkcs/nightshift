@@ -16,12 +16,13 @@ feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T09:48:06Z'
+updated: '2026-10-08T10:03:07Z'
 budget:
   used: 0.01
   limit: 2
   paused: false
-  since: '2026-10-08T09:48:05Z'
+  since: '2026-10-08T10:03:06Z'
+  integrate_from: null
 phases: []
 events:
 - time: '2026-10-08T09:47:13Z'
@@ -36,4 +37,7 @@ events:
 - time: '2026-10-08T09:47:29Z'
   type: step
   note: implement
+- time: '2026-10-08T10:03:06Z'
+  type: resumed
+  note: resumed from running
 queued_for_slot: false
