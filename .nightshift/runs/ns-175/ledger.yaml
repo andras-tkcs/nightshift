@@ -16,12 +16,12 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T11:55:26Z'
+updated: '2026-10-08T11:55:36Z'
 budget:
-  used: 1.68
+  used: 1.69
   limit: 2
   paused: false
-  since: '2026-10-08T11:54:52Z'
+  since: '2026-10-08T11:55:28Z'
   integrate_from: '2026-10-08T10:43:57Z'
 phases:
 - id: fix
@@ -30,9 +30,9 @@ phases:
   branch: null
   worktree: null
   attempts: 0
-  review_rounds: 1
-  review_verdict: changes
-  reviewed_head: e49a88ec8346ad4c6c85c74d71307ad9fedbf940
+  review_rounds: 2
+  review_verdict: approve
+  reviewed_head: 45ff0578554fad1378b8a68a80719408b175e78b
 events:
 - time: '2026-10-08T09:44:16Z'
   type: created
@@ -73,6 +73,9 @@ events:
   type: note
   note: 'note 1: kill.bats test 9 (ns_kill_group 2 s give-up, <=5 s wall) failed once
     in the full'
+- time: '2026-10-08T11:55:34Z'
+  type: review
+  note: fix round 2 approve
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
