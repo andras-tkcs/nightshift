@@ -12,22 +12,22 @@ tags:
 - bash
 - bats
 - docs
-state: running
+state: done
 gate: null
-step: integrate
+step: done
 stop_requested: null
 branch: plan/ns-156
 feature_branch: fix/ns-156
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/177
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:34:49Z'
+updated: '2026-10-08T07:35:15Z'
 budget:
-  used: 0.41
+  used: 0.42
   limit: 2
   paused: false
-  since: '2026-10-08T07:34:28Z'
-  integrate_from: '2026-10-08T07:34:43Z'
+  since: '2026-10-08T07:35:15Z'
+  integrate_from: null
 phases:
 - id: fix
   title: fix
@@ -60,6 +60,15 @@ events:
 - time: '2026-10-08T07:34:27Z'
   type: step
   note: integrate
+- time: '2026-10-08T07:35:12Z'
+  type: step
+  note: done
+- time: '2026-10-08T07:35:13Z'
+  type: state
+  note: 'done: pull request https://github.com/andras-tkcs/nightshift/pull/177'
+- time: '2026-10-08T07:35:14Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/177'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
