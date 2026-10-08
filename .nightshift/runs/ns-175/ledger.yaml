@@ -16,13 +16,13 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T13:54:52Z'
+updated: '2026-10-08T14:12:02Z'
 budget:
   used: 2.25
   limit: 4
   paused: false
-  since: '2026-10-08T13:54:48Z'
-  integrate_from: '2026-10-08T13:54:49Z'
+  since: '2026-10-08T14:12:00Z'
+  integrate_from: null
 phases:
 - id: fix
   title: fix
@@ -106,6 +106,9 @@ events:
 - time: '2026-10-08T13:53:23Z'
   type: step
   note: integrate
+- time: '2026-10-08T14:12:01Z'
+  type: resumed
+  note: resumed from running
 queued_for_slot: false
 stack_skipped: []
 stacked_on: ns-166
