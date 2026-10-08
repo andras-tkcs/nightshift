@@ -17,22 +17,22 @@ tags:
 - python
 - risk:hooks
 - sec-compliance
-state: running
-gate: null
-step: integrate
+state: done
+gate: '2'
+step: done
 stop_requested: null
 branch: plan/ns-x7
 feature_branch: feature/x7
-pr: null
+pr: https://github.com/andras-tkcs/nightshift/pull/183
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:44:55Z'
+updated: '2026-10-08T12:18:13Z'
 budget:
-  used: 10.49
+  used: 11.05
   limit: 12
   paused: false
-  since: '2026-10-08T11:44:46Z'
-  integrate_from: '2026-10-08T11:23:43Z'
+  since: '2026-10-08T12:18:13Z'
+  integrate_from: null
 phases:
 - id: p1-note-cli
   title: ns note, the owner_notes schema, ns-conductor owner-notes and the report
@@ -264,6 +264,12 @@ events:
   type: note
   note: 'note 8: follow-up: plugins/ns/hooks/lib/guard.py:402 comment line is too
     long'
+- time: '2026-10-08T12:18:09Z'
+  type: state
+  note: 'done gate 2: pull request https://github.com/andras-tkcs/nightshift/pull/183'
+- time: '2026-10-08T12:18:11Z'
+  type: finish
+  note: 'run finished: https://github.com/andras-tkcs/nightshift/pull/183'
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main

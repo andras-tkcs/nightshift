@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handoff ns-x7</title>
+<style>
+:root { --bg:#fbfbfa; --fg:#1d1d1b; --muted:#5f5f5a; --line:#d9d9d4; --card:#fff; --ok:#1a7f37; --bad:#b42318; --link:#0b5cad; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16161a; --fg:#e8e8e4; --muted:#a0a09a; --line:#34343a; --card:#1e1e23; --ok:#4cc26b; --bad:#ff7b72; --link:#79b8ff; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+main { max-width:52rem; margin:0 auto; padding:16px; }
+h1 { font-size:1.4rem; margin:0 0 4px; overflow-wrap:anywhere; }
+h2 { font-size:1.1rem; margin:1rem 0 .5rem; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.meta { color:var(--muted); font-size:.9rem; margin:0 0 1rem; }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:4px 14px 12px; margin:12px 0; }
+.scroll { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; font-size:.92rem; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+th { color:var(--muted); font-weight:600; }
+ul { padding-left:1.2rem; margin:.4rem 0; }
+li { margin:.25rem 0; overflow-wrap:anywhere; }
+a { color:var(--link); overflow-wrap:anywhere; }
+.ok { color:var(--ok); font-weight:600; }
+.bad { color:var(--bad); font-weight:600; }
+</style>
+</head>
+<body>
+<main>
+<h1>ns-x7: ns note, an owner-only instruction channel to a running run</h1>
+<p class="meta">Run ns-x7</p>
+
+<section>
+<h2>Summary</h2>
+<p>Adds <code>ns note &lt;id&gt; "text"</code>, an owner-only command that appends a timestamped note to the new ledger field <code>owner_notes</code> and an <code>owner-note</code> event. The conductor reads unread notes at its between-step checkpoints with <code>ns-conductor owner-notes</code>, follows them over the plan scope, marks them read, and <code>ns report</code> lists them. The guard blocks agents from running it.</p><p>Tier T2; p1 took 3 review rounds, p2 took 2. All three boards approved at 608f011. Phase p3 (ADR, changelog, retire plan) was not registered by owner decision and was done directly during integration as ADR 0011.</p>
+</section>
+
+<section>
+<h2>Pull request</h2>
+<p><a href="https://github.com/andras-tkcs/nightshift/pull/183">https://github.com/andras-tkcs/nightshift/pull/183</a></p>
+</section>
+
+<section>
+<h2>Phases</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Phase</th><th>Title</th><th>Merge</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>p1-note-cli</td><td>ns note, owner_notes schema, ns-conductor owner-notes, report section</td><td>056cab2</td><td>merged</td></tr><tr><td>p2-guard-skill</td><td>Block ns note for agents; conductor reads owner notes</td><td>58b95c3</td><td>merged</td></tr><tr><td>integration</td><td>ADR 0011, changelog, security.md wording, plan retired</td><td>486e74a</td><td>done</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section>
+<h2>Checks</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Check</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>tests/lint</td><td><span class="ok">pass</span></td></tr><tr><td>tests/docs-check --final</td><td><span class="ok">pass</span></td></tr><tr><td>bats tests/bats</td><td><span class="bad">fail</span>: 909 ok, 1 timing flake (kill.bats:200) under load average 22; passes alone</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section>
+<h2>Open findings</h2>
+<ul><li>board-code.md: tests/bats/ledger.bats:160 clean-tree assertion never failed first</li><li>board-code.md: bin/ns-ledger ~228 push-failed commit via git_retry can exit non-zero, contradicting "still exits 0"</li><li>board-acceptance.md: AC-4 library-code guard message differs ("is the owner's to run"), per plan Q2</li><li>board-sec.md: ns-conductor owner-notes runnable by any agent or worker; only CR/LF folded in note text; concurrent ns note may mislabel event n; checkpoint --push pushes to the ledger .branch</li><li>board-code.md: plugins/ns/hooks/lib/guard.py:402 comment line long</li></ul>
+</section>
+
+<section>
+<h2>Manual steps after merge</h2>
+<p>None.</p>
+</section>
+
+<section>
+<h2>Files on the desk</h2>
+<ul><li>acceptance.md</li><li>design.md</li><li>test-strategy.md</li><li>board-code.md</li><li>board-sec.md</li><li>board-acceptance.md</li></ul>
+</section>
+</main>
+</body>
+</html>
