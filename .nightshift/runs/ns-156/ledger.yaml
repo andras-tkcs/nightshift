@@ -21,13 +21,13 @@ feature_branch: fix/ns-156
 pr: null
 release: v0.1.9
 created: '2026-10-08T07:09:33Z'
-updated: '2026-10-08T07:34:38Z'
+updated: '2026-10-08T07:34:44Z'
 budget:
   used: 0.41
   limit: 2
   paused: false
   since: '2026-10-08T07:34:28Z'
-  integrate_from: '2026-10-08T07:13:25Z'
+  integrate_from: '2026-10-08T07:34:43Z'
 phases:
 - id: fix
   title: fix
