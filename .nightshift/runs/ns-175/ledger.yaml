@@ -16,7 +16,7 @@ feature_branch: fix/ns-175
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:44:16Z'
-updated: '2026-10-08T13:52:26Z'
+updated: '2026-10-08T13:52:45Z'
 budget:
   used: 2.21
   limit: 4
@@ -94,6 +94,9 @@ events:
 - time: '2026-10-08T13:52:25Z'
   type: resumed
   note: resumed from queued
+- time: '2026-10-08T13:52:44Z'
+  type: state
+  note: running
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
