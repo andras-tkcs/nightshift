@@ -607,14 +607,16 @@ loop_review_refused() {
 }
 
 conductor_review_round() {
-  local u="ns-conductor review-round <id> <phase> <approve|changes>"
+  local u="ns-conductor review-round <id> <phase> <approve|approve-after-nits|changes>"
   [ $# -eq 3 ] || ns_usage "$u"
   valid_phase_id "$2" || ns_usage "$u"
   case "$3" in
-    approve | changes) ;;
+    approve | approve-after-nits | changes) ;;
     *) ns_usage "$u" ;;
   esac
-  local phase="$2" verdict="$3" tier max n pbranch head rf rel line fv fh hj
+  local phase="$2" verdict="$3" tier max n pbranch head rf rel line fv fh hj fhfull
+  local approving=0
+  [ "$verdict" = changes ] || approving=1
   load_run "$1"
   budget_guard review-round || return
   tier=$(loop_tier)
@@ -633,7 +635,7 @@ conductor_review_round() {
   if [ -n "$pbranch" ]; then
     if git -C "$wt" fetch -q origin "$pbranch" 2>/dev/null; then
       head=$(git -C "$wt" rev-parse -q --verify "origin/$pbranch" 2>/dev/null) || head=""
-    elif [ "$verdict" = approve ]; then
+    elif [ "$approving" = 1 ]; then
       # never compare an approval with a stale remote-tracking ref
       ns_die "could not fetch origin $pbranch"
     fi
@@ -644,7 +646,7 @@ conductor_review_round() {
   if [ -f "$rf" ]; then
     line=$(awk '{ sub(/\r$/, "") } NF { l = $0 } END { sub(/[ \t]+$/, "", l); print l }' "$rf")
     # the verdict first, then the head on its own, so a malformed head gets its own message
-    if [[ $line =~ ^REVIEW\ verdict=(approve|changes)(\ head=(.*))?$ ]]; then
+    if [[ $line =~ ^REVIEW\ verdict=(approve-after-nits|approve|changes)(\ head=(.*))?$ ]]; then
       fv="${BASH_REMATCH[1]}"
       fh="${BASH_REMATCH[3]}"
       if [ -n "${BASH_REMATCH[2]}" ] && ! [[ $fh =~ ^[0-9a-f]{7,64}$ ]]; then
@@ -652,11 +654,11 @@ conductor_review_round() {
       fi
     fi
   fi
-  if [ "$verdict" = approve ] && [ ! -f "$rf" ]; then
+  if [ "$approving" = 1 ] && [ ! -f "$rf" ]; then
     loop_review_refused "$rel does not exist: an approval needs the review file of round $n"
     return 9
   fi
-  if [ "$verdict" = approve ] && [ -z "$fv" ]; then
+  if [ "$approving" = 1 ] && [ -z "$fv" ]; then
     loop_review_refused "$rel has no REVIEW verdict line: an approval needs one"
     return 9
   fi
@@ -664,16 +666,27 @@ conductor_review_round() {
     loop_review_refused "$rel ends with '$line', not verdict $verdict"
     return 9
   fi
-  if [ "$verdict" = approve ] && [ "$fhbad" = 1 ]; then
+  if [ "$approving" = 1 ] && [ "$fhbad" = 1 ]; then
     loop_review_refused "$rel: head='${fh:0:20}' is not 7 to 64 lowercase hex"
     return 9
   fi
-  if [ "$verdict" = approve ]; then
+  if [ "$verdict" = approve-after-nits ] && grep -qE '^- blocking · ' "$rf"; then
+    loop_review_refused "$rel has blocking findings: approve-after-nits needs every finding non-blocking; a blocking finding needs a re-review"
+    return 9
+  fi
+  if [ "$approving" = 1 ]; then
     if [ -z "$fh" ]; then
       loop_review_refused "$rel has no head=<sha> on its verdict line: an approval names the head it reviewed"
       return 9
     fi
-    if [ -z "$head" ] || [[ $head != "$fh"* ]]; then
+    if [ "$verdict" = approve-after-nits ]; then
+      # the nit fixes sit on top of the reviewed head: it must be an ancestor of (or equal to) the branch head
+      fhfull=$(git -C "$wt" rev-parse -q --verify "$fh^{commit}" 2>/dev/null) || fhfull=""
+      if [ -z "$head" ] || [ -z "$fhfull" ] || ! git -C "$wt" merge-base --is-ancestor "$fhfull" "$head" 2>/dev/null; then
+        loop_review_refused "$rel reviewed head=${fh:0:12}, which is not the head of origin/$pbranch (${head:-missing}) or an ancestor of it: the review is of another head"
+        return 9
+      fi
+    elif [ -z "$head" ] || [[ $head != "$fh"* ]]; then
       loop_review_refused "$rel approved head=${fh:0:12}, but origin/$pbranch is ${head:-missing}: the review is of another head"
       return 9
     fi
@@ -723,7 +736,7 @@ conductor_merge() {
   pj=$(jstr "$phase")
   verdict=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .review_verdict] | (.[0] // \"none\")")
   rhead=$(lg get "$ledger" "[.phases[] | select(.id == $pj) | .reviewed_head] | (.[0] // \"\")")
-  if [ -z "$head" ] || [ "$verdict" != approve ] || [ "$rhead" != "$head" ]; then
+  if [ -z "$head" ] || { [ "$verdict" != approve ] && [ "$verdict" != approve-after-nits ]; } || [ "$rhead" != "$head" ]; then
     printf 'no approved review of origin/%s at %s (last review: %s of %s): run a review round on this head first\n' \
       "$pbranch" "${head:0:12}" "$verdict" "${rhead:0:12}"
     return 8

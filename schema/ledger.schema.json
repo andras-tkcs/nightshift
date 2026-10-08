@@ -76,7 +76,7 @@
           "usage_limits": { "type": "integer", "minimum": 0, "description": "Usage limits the phase hit; past 3 the conductor escalates." },
           "transient_retries": { "type": "integer", "minimum": 0, "description": "Retries after a capacity 429 or 529 overload since the last normal finish (at most 1)." },
           "not_before": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }], "description": "Earliest restart after a transient error." },
-          "review_verdict": { "enum": ["approve", "changes"], "description": "Verdict of the last review round, as passed to ns-conductor review-round." },
+          "review_verdict": { "enum": ["approve", "approve-after-nits", "changes"], "description": "Verdict of the last review round, as passed to ns-conductor review-round." },
           "reviewed_head": { "$ref": "#/$defs/nullable_string", "description": "origin/<phase branch> when the last review round was counted; ns-conductor merge needs it to equal the current head." }
         }
       }
