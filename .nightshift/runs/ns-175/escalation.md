@@ -9,3 +9,5 @@ The full suite does not finish inside the tool time limit (10 min foreground, 10
 
 ## Owner's answer
 
+allow longer
+
