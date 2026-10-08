@@ -1267,3 +1267,13 @@ x5_usage() {
   ns-conductor checks sbx-12 feature --force >/dev/null
   [ "$(grep -c '^== run ' "$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log")" = 2 ]
 }
+
+@test "checks cache hit appends == cached and no second == run (ns-174)" {
+  commit_plan
+  ns-conductor feature sbx-12 >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  ns-conductor checks sbx-12 feature >/dev/null
+  log="$NS_CONFIG_DIR/logs/sbx-12/feature.checks.log"
+  [ "$(grep -c '^== run ' "$log")" = 1 ]
+  [ "$(grep -c '^== cached ' "$log")" = 1 ]
+}

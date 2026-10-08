@@ -486,7 +486,9 @@ conductor_risk_check() {
     rec="$floor"
   fi
   lg set "$ledger" ".risk_floor = \"$floor\" | .tags = (((.tags // []) + $tags) | unique)${rec:+ | .tier_recommended = \"$rec\"}"
-  lg event "$ledger" risk-check "risk_floor $floor${tags:+ tags $(jq -r 'join(",")' <<<"$tags")}"
+  local ev="risk_floor $floor"
+  [ "$tags" = "[]" ] || ev="$ev tags $(jq -r 'join(",")' <<<"$tags")"
+  lg event "$ledger" risk-check "$ev"
   lg checkpoint "$ledger"
   printf 'risk_floor %s\n' "$floor"
   [ -z "$rec" ] || printf 'tier_recommended %s\n' "$rec"

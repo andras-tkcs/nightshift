@@ -47,7 +47,7 @@ Only tag specialists the profile lists under `specialists`.
 - An invariant of the project is at stake: floor T2.
 - A new trust boundary: floor T3.
 
-The owner can always override with `--tier`; triage still records its own recommendation (R-TRI-2).
+The owner can always override with `--tier`; triage does not run with `--tier` (R-TRI-2). `ns-conductor risk-check` applies the floor rules at Sync: `risk_zones` and CI `platform_paths` matches give T1.
 
 ## Budgets
 
