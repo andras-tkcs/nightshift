@@ -26,12 +26,12 @@ feature_branch: feature/x7
 pr: null
 release: v0.1.8
 created: '2026-10-07T10:06:18Z'
-updated: '2026-10-08T11:19:25Z'
+updated: '2026-10-08T11:23:37Z'
 budget:
-  used: 10.06
+  used: 10.13
   limit: 12
   paused: false
-  since: '2026-10-08T11:18:58Z'
+  since: '2026-10-08T11:23:10Z'
   integrate_from: '2026-10-08T11:19:24Z'
 phases:
 - id: p1-note-cli
