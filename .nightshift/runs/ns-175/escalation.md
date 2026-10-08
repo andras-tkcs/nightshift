@@ -8,4 +8,4 @@ Give the run more time, or stop it? To continue, raise `budget_hours` below to t
 
 ## Owner's answer
 
-budget_hours: 2
+budget_hours: 4
