@@ -9,14 +9,14 @@ tier_recommended: null
 tags: []
 state: running
 gate: null
-step: implement
+step: integrate
 stop_requested: null
 branch: plan/ns-166
 feature_branch: fix/ns-166
 pr: null
 release: v0.1.10
 created: '2026-10-08T09:47:13Z'
-updated: '2026-10-08T11:55:37Z'
+updated: '2026-10-08T11:55:42Z'
 budget:
   used: 1.88
   limit: 2
@@ -59,6 +59,9 @@ events:
 - time: '2026-10-08T11:55:36Z'
   type: review
   note: fix round 1 approve
+- time: '2026-10-08T11:55:41Z'
+  type: step
+  note: integrate
 queued_for_slot: false
 stack_skipped: []
 stacked_on: main
